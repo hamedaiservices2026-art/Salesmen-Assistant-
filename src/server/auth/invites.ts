@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import * as s from "@/db/schema";
-import { hashSecret, isStrongPin } from "./pin";
+import { hashSecret, isStrongPin, normalizePin } from "./pin";
 import { createSession } from "./sessions";
 import { hashToken, newToken } from "./token";
 
@@ -45,9 +45,10 @@ export async function peekInvite(
 export async function acceptInvite(
   db: Db,
   token: string,
-  pin: string,
+  rawPin: string,
   now: Date = new Date(),
 ): Promise<AcceptInviteResult> {
+  const pin = normalizePin(rawPin);
   const [invite] = await db
     .select({ invite: s.invites, active: s.users.active })
     .from(s.invites)
@@ -59,17 +60,27 @@ export async function acceptInvite(
   if (!isStrongPin(pin)) return { ok: false, error: "weak_pin" };
 
   const pinHash = await hashSecret(pin);
-  // Claim the invite with a conditional update so two concurrent submissions cannot both win.
-  const claimed = await db
-    .update(s.invites)
-    .set({ usedAt: now, updatedAt: now })
-    .where(and(eq(s.invites.id, invite.invite.id), isNull(s.invites.usedAt)))
-    .returning({ id: s.invites.id });
-  if (claimed.length === 0) return { ok: false, error: "used" };
+  const userId = invite.invite.userId;
+  // One transaction: if anything fails the invite stays unused and the rep can retry.
+  return db.transaction(async (tx): Promise<AcceptInviteResult> => {
+    // Claim with a conditional update so two concurrent submissions cannot both win.
+    const claimed = await tx
+      .update(s.invites)
+      .set({ usedAt: now, updatedAt: now })
+      .where(and(eq(s.invites.id, invite.invite.id), isNull(s.invites.usedAt)))
+      .returning({ id: s.invites.id });
+    if (claimed.length === 0) return { ok: false, error: "used" };
 
-  await db
-    .update(s.users)
-    .set({ pinHash, failedAttempts: 0, lockedUntil: null, updatedAt: now })
-    .where(eq(s.users.id, invite.invite.userId));
-  return { ok: true, sessionToken: await createSession(db, invite.invite.userId, now) };
+    // A PIN reset voids every other way in: other invites and all existing sessions.
+    await tx
+      .update(s.invites)
+      .set({ usedAt: now, updatedAt: now })
+      .where(and(eq(s.invites.userId, userId), isNull(s.invites.usedAt)));
+    await tx.delete(s.sessions).where(eq(s.sessions.userId, userId));
+    await tx
+      .update(s.users)
+      .set({ pinHash, failedAttempts: 0, lockedUntil: null, updatedAt: now })
+      .where(eq(s.users.id, userId));
+    return { ok: true, sessionToken: await createSession(tx as unknown as Db, userId, now) };
+  });
 }

@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getDb } from "@/db/client";
 import { LOCALE_COOKIE } from "@/i18n/config";
+import { normalizePin } from "@/server/auth/pin";
 import { acceptInvite } from "@/server/auth/invites";
 import { SESSION_COOKIE, SESSION_TTL_MS, destroySession, getSessionUser, signIn } from "@/server/auth/sessions";
 
@@ -34,7 +35,7 @@ async function startSession(sessionToken: string): Promise<void> {
 
 export async function acceptInviteAction(_prev: AuthFormState, form: FormData): Promise<AuthFormState> {
   const pin = text(form, "pin");
-  if (pin !== text(form, "confirm")) return { error: "mismatch" };
+  if (normalizePin(pin) !== normalizePin(text(form, "confirm"))) return { error: "mismatch" };
   const result = await acceptInvite(await getDb(), text(form, "token"), pin);
   if (!result.ok) return { error: result.error === "weak_pin" ? "weak_pin" : "invite_invalid" };
   await startSession(result.sessionToken);

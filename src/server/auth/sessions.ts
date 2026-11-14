@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, gte, isNull, lt, lte, or, sql } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import * as s from "@/db/schema";
 import type { Ctx } from "@/server/ctx";
-import { hashSecret, verifySecret } from "./pin";
+import { hashSecret, normalizePin, verifySecret } from "./pin";
 import { hashToken, newToken } from "./token";
 
 export const SESSION_COOKIE = "session";
@@ -61,35 +61,47 @@ export async function destroySession(db: Db, token: string): Promise<void> {
 
 export type SignInResult = { ok: true; sessionToken: string } | { ok: false; error: "invalid" | "locked" };
 
-/** Unknown login and wrong PIN give the same `invalid`. Five consecutive failures lock for 15 minutes. */
-export async function signIn(db: Db, login: string, pin: string, now: Date = new Date()): Promise<SignInResult> {
-  const [user] = await db.select().from(s.users).where(eq(s.users.login, login.trim()));
+/**
+ * Unknown login and wrong PIN give the same `invalid`. Five consecutive failures lock for 15 minutes.
+ *
+ * Every attempt first reserves one of the five tries in a single conditional UPDATE that also
+ * checks the lock, so a burst of parallel requests can reach the (slow) PIN check at most five
+ * times. A failure at the limit sets the lock; a success clears the counter only while unlocked.
+ */
+export async function signIn(db: Db, login: string, rawPin: string, now: Date = new Date()): Promise<SignInResult> {
+  const pin = normalizePin(rawPin);
+  const [user] = await db.select().from(s.users).where(eq(s.users.login, login.trim().toLowerCase()));
   if (!user || !user.pinHash || !user.active) {
     decoy ??= hashSecret("000000");
     await verifySecret(pin, await decoy);
     return { ok: false, error: "invalid" };
   }
-  if (user.lockedUntil && user.lockedUntil.getTime() > now.getTime()) {
+
+  const unlocked = or(isNull(s.users.lockedUntil), lte(s.users.lockedUntil, now));
+  const reserved = await db
+    .update(s.users)
+    .set({ failedAttempts: sql`${s.users.failedAttempts} + 1`, updatedAt: now })
+    .where(and(eq(s.users.id, user.id), unlocked, lt(s.users.failedAttempts, MAX_FAILURES)))
+    .returning({ id: s.users.id });
+  if (reserved.length === 0) {
+    // Either locked, or the counter sits at the limit with the lock about to be written.
+    // An expired lock leaves a counter of 0 (reset below), so a stale limit means a live lock.
     return { ok: false, error: "locked" };
   }
+
   if (!(await verifySecret(pin, user.pinHash))) {
-    // Count atomically so parallel guesses cannot dodge the limit.
-    const [updated] = await db
+    await db
       .update(s.users)
-      .set({ failedAttempts: sql`${s.users.failedAttempts} + 1`, updatedAt: now })
-      .where(eq(s.users.id, user.id))
-      .returning({ failedAttempts: s.users.failedAttempts });
-    if (updated && updated.failedAttempts >= MAX_FAILURES) {
-      await db
-        .update(s.users)
-        .set({ failedAttempts: 0, lockedUntil: new Date(now.getTime() + LOCK_MS), updatedAt: now })
-        .where(eq(s.users.id, user.id));
-    }
+      .set({ failedAttempts: 0, lockedUntil: new Date(now.getTime() + LOCK_MS), updatedAt: now })
+      .where(and(eq(s.users.id, user.id), unlocked, gte(s.users.failedAttempts, MAX_FAILURES)));
     return { ok: false, error: "invalid" };
   }
-  await db
+
+  const cleared = await db
     .update(s.users)
     .set({ failedAttempts: 0, lockedUntil: null, updatedAt: now })
-    .where(eq(s.users.id, user.id));
+    .where(and(eq(s.users.id, user.id), unlocked, eq(s.users.active, true)))
+    .returning({ id: s.users.id });
+  if (cleared.length === 0) return { ok: false, error: "locked" };
   return { ok: true, sessionToken: await createSession(db, user.id, now) };
 }

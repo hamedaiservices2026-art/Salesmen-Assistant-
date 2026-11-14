@@ -1,12 +1,18 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { createTestDb } from "@/db/testing";
 import { seedDemo, type SeedResult } from "@/db/seed";
 import type { Db } from "@/db/client";
 import * as s from "@/db/schema";
+import * as pin from "./pin";
 import { hashSecret, verifySecret } from "./pin";
 import { acceptInvite, createInvite } from "./invites";
 import { createSession, destroySession, getSessionUser, signIn } from "./sessions";
+
+vi.mock("./pin", async (orig) => {
+  const actual = await orig<typeof import("./pin")>();
+  return { ...actual, verifySecret: vi.fn(actual.verifySecret) };
+});
 
 let db: Db;
 let seed: SeedResult;
@@ -124,5 +130,94 @@ describe("sessions", () => {
 
   it("rejects unknown tokens", async () => {
     expect(await getSessionUser(db, "nope")).toBeNull();
+  });
+});
+
+describe("lockout under concurrency", () => {
+  beforeEach(async () => {
+    await acceptInvite(db, seed.inviteToken, "482915");
+    vi.mocked(pin.verifySecret).mockClear();
+  });
+
+  it("checks at most five PINs in a burst and never signs in once locked", async () => {
+    const pins = ["000001", "000002", "000003", "000004", "000005", "000006", "000007", "482915", "000009", "000010"];
+    const results = await Promise.all(pins.map((p) => signIn(db, "ahmed", p)));
+    expect(vi.mocked(pin.verifySecret).mock.calls.length).toBeLessThanOrEqual(5);
+    expect(results.every((r) => !r.ok)).toBe(true);
+    const [user] = await db.select().from(s.users).where(eq(s.users.id, "ahmed"));
+    expect(user!.lockedUntil).not.toBeNull();
+    const sessions = await db.select().from(s.sessions).where(eq(s.sessions.userId, "ahmed"));
+    expect(sessions.length).toBe(1); // only the one from accepting the invite
+    expect(await signIn(db, "ahmed", "482915")).toEqual({ ok: false, error: "locked" });
+  });
+
+  it("does not let a correct PIN clear an existing lock", async () => {
+    const t0 = new Date("2026-11-14T10:00:00Z");
+    for (let i = 0; i < 5; i++) await signIn(db, "ahmed", "000000", t0);
+    const [a, b] = await Promise.all([signIn(db, "ahmed", "482915", t0), signIn(db, "ahmed", "482915", t0)]);
+    expect(a).toEqual({ ok: false, error: "locked" });
+    expect(b).toEqual({ ok: false, error: "locked" });
+    const [user] = await db.select().from(s.users).where(eq(s.users.id, "ahmed"));
+    expect(user!.lockedUntil).not.toBeNull();
+  });
+});
+
+describe("invite acceptance side effects", () => {
+  it("voids the user's other invites and existing sessions", async () => {
+    const other = await createInvite(db, "ahmed");
+    const oldSession = await createSession(db, "ahmed");
+    expect((await acceptInvite(db, seed.inviteToken, "482915")).ok).toBe(true);
+    expect(await getSessionUser(db, oldSession)).toBeNull();
+    expect(await acceptInvite(db, other, "739104")).toEqual({ ok: false, error: "used" });
+  });
+
+  it("leaves the invite unused if the flow fails midway", async () => {
+    const real = db.transaction.bind(db);
+    // Make the session insert fail by removing the users row's FK target mid-way: simulate via a broken db.
+    const broken = Object.create(db) as Db;
+    broken.transaction = (async (fn: (tx: never) => Promise<unknown>) =>
+      real(async (tx) => {
+        const proxy = new Proxy(tx, {
+          get(target, prop, recv) {
+            if (prop === "insert") throw new Error("boom");
+            return Reflect.get(target, prop, recv);
+          },
+        });
+        return fn(proxy as never);
+      })) as never;
+    await expect(acceptInvite(broken, seed.inviteToken, "482915")).rejects.toThrow("boom");
+    expect((await acceptInvite(db, seed.inviteToken, "482915")).ok).toBe(true);
+  });
+});
+
+describe("input normalisation", () => {
+  it("signs in with a capitalised, padded login", async () => {
+    await acceptInvite(db, seed.inviteToken, "482915");
+    expect((await signIn(db, " Ahmed ", "482915")).ok).toBe(true);
+  });
+
+  it("treats Arabic-Indic and Persian digits as Western digits", async () => {
+    expect((await acceptInvite(db, seed.inviteToken, "٤٨٢٩١٥")).ok).toBe(true);
+    expect((await signIn(db, "ahmed", "482915")).ok).toBe(true);
+    expect((await signIn(db, "ahmed", "۴۸۲۹۱۵")).ok).toBe(true);
+  });
+
+  it("accepts a Western PIN then signs in with Arabic-Indic digits", async () => {
+    await acceptInvite(db, seed.inviteToken, "482915");
+    expect((await signIn(db, "ahmed", "٤٨٢٩١٥")).ok).toBe(true);
+  });
+
+  it("still rejects weak PINs typed in Arabic-Indic digits", async () => {
+    expect(await acceptInvite(db, seed.inviteToken, "١١١١١١")).toEqual({ ok: false, error: "weak_pin" });
+  });
+});
+
+describe("inactive users", () => {
+  it("cannot sign in and their sessions stop working", async () => {
+    await acceptInvite(db, seed.inviteToken, "482915");
+    const token = await createSession(db, "ahmed");
+    await db.update(s.users).set({ active: false }).where(eq(s.users.id, "ahmed"));
+    expect(await signIn(db, "ahmed", "482915")).toEqual({ ok: false, error: "invalid" });
+    expect(await getSessionUser(db, token)).toBeNull();
   });
 });

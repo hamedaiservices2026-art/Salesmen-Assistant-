@@ -30,3 +30,11 @@ export function isStrongPin(pin: string): boolean {
   if (/^(.)\1{5}$/.test(pin)) return false;
   return pin !== "123456";
 }
+
+/** Maps Arabic-Indic (U+0660-0669) and Persian (U+06F0-06F9) digits to Western digits. */
+export function normalizePin(pin: string): string {
+  return pin.replace(/[\u0660-\u0669\u06F0-\u06F9]/g, (c) => {
+    const code = c.charCodeAt(0);
+    return String(code >= 0x06f0 ? code - 0x06f0 : code - 0x0660);
+  });
+}
