@@ -1,0 +1,68 @@
+# Product
+
+<!-- impeccable:product-schema 1 -->
+
+## Platform
+
+web
+
+## Stack
+
+Delegated: the owner asked for a recommendation. Chosen: one Next.js (TypeScript) codebase delivered as an installable PWA, Supabase (Postgres, auth, storage), deployed from GitHub to Vercel. Built so the same code can be wrapped for the App Store and Play Store later. AI services sit behind a provider layer so models can be swapped.
+
+## Users
+
+- **Sales rep (primary).** FMCG van-sales and pre-sales reps in Saudi Arabia working for distributors. Many are expatriates with limited formal education. Mostly on iPhone, one-handed, in a van or on the street in daylight, and at the warehouse at end of day. They already use the company's sales force automation app all day; this product sits beside it.
+- **Supervisor.** Manages a team of reps, mostly on mobile. Follows who is on pace, pushes focus items and incentives.
+- **Admin.** Works on desktop web. Manages companies, users, targets, commission schemes, incentives, policy documents, and Excel uploads.
+
+## Product Purpose
+
+A personal assistant that tells a rep every day where he stands against his monthly targets, what is left, what to focus on, and what he will earn, so he achieves more. Success: reps open it daily, hit a higher share of target, and trust the commission figure it shows.
+
+## Positioning
+
+Rep-first and independent of any one sales force automation system. Data arrives with almost no effort from the rep (photo of the day-end report, voice note, or company Excel upload), and the commission is calculated transparently so every amount can be traced.
+
+## Operating Context
+
+- Pilot: one rep whose company uses SalesBuzz. No integration in the pilot; data comes from photo, voice, manual entry, and Excel uploaded by the admin.
+- Product is built for companies (multi-company), each with its own targets, commission rules, incentives, and policy documents.
+- Market: Saudi Arabia. Currency: Saudi riyal (SAR), configurable.
+- Daily rhythm: morning brief, selling day, end-of-day close (sales, collections, returns with photos, cash and van-stock reconciliation).
+- Mid-month incentives are common and must reach the rep as a notification with a plain explanation.
+
+## Capabilities and Constraints
+
+- Targets are flexible per rep and per line: a target line can be measured in cases (for example beverages) or in value in SAR (for example food), and one rep can hold a mix of both in the same month. Collection targets are in SAR.
+- Daily standing against target: achieved, expected pace for today, remaining, required daily rate.
+- Focus items set by the company; notifications from supervisor or admin.
+- Day close by photo, voice, or typing; returns logged with photos; history by day and month.
+- Commission engine driven by company-defined criteria; rule-based calculation (not AI) with a what-if simulator.
+- Assistant: answers from the rep's own numbers, explains incentives simply, gives selling tips, and answers policy questions from the company's uploaded documents with the source cited.
+- Languages: Arabic (primary, right-to-left), English, Urdu as an option.
+- One app for the rep. Supervisor uses the same mobile app with a supervisor view. Admin is a web dashboard.
+- Start on free tiers for AI services (image reading, speech to text, text to speech); no paid AI cost in the pilot.
+- Undecided: product name; exact commission schemes; the real day-end report layout (no screenshots yet).
+
+## Brand Commitments
+
+- Must look professional and enterprise-grade, and must not look like a generic AI-generated template.
+- "Simple" means simple presentation, friendly and human, never thin on value.
+
+## Evidence on Hand
+
+None yet. No real screenshots, customer data, logos, or policy documents. All figures shown in mockups are synthetic and must be labeled as sample data. Do not invent customers, testimonials, or performance claims.
+
+## Product Principles
+
+1. The rep's benefit comes first; every screen answers "what do I do next to earn more".
+2. Near-zero data entry: never make the rep retype what the company system already has.
+3. Money figures must be traceable and exact; calculation is rules, not guesses.
+4. One number first, depth on demand.
+5. Works for any company and any sales system through configuration, not custom code.
+
+## Accessibility & Inclusion
+
+- Low-literacy friendly: plain spoken Arabic, large type, voice input and read-aloud.
+- Right-to-left first; Western digits; outdoor daylight legibility; touch targets at least 44px.
