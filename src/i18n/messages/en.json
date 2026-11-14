@@ -1,10 +1,34 @@
 {
-  "app": { "name": "Salesman Assistant" },
+  "app": {
+    "name": "Salesman Assistant"
+  },
   "nav": {
     "home": "Home",
     "close": "Close",
     "commission": "Commission",
     "assistant": "Assistant",
     "history": "History"
+  },
+  "auth": {
+    "invite": {
+      "heading": "Welcome {name}",
+      "instruction": "Choose a 6-digit PIN",
+      "pin": "PIN",
+      "confirm": "Type the PIN again",
+      "submit": "Start"
+    },
+    "signin": {
+      "heading": "Sign in",
+      "login": "Username",
+      "pin": "PIN",
+      "submit": "Sign in"
+    },
+    "errors": {
+      "weak_pin": "Choose a harder PIN",
+      "mismatch": "The two PINs do not match",
+      "invite_invalid": "This link does not work. Ask the office for a new link",
+      "invalid": "Wrong username or PIN",
+      "locked": "Too many tries. Wait 15 minutes and try again"
+    }
   }
 }
