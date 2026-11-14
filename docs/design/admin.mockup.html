@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>لوحة الإدارة</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0}
+a{color:#1F55D0}a:hover{color:#163F9E}
+::selection{background:#CFDDF8}
+button:focus-visible,a:focus-visible{outline:2px solid #1F55D0;outline-offset:2px}
+</style>
+</helmet>
+<div dir="rtl" style="min-height: 100vh; box-sizing: border-box; display: flex; flex-wrap: wrap; background: #F3F5F7; color: #0C1F2E; font-family: 'IBM Plex Sans Arabic', system-ui, sans-serif; font-variant-numeric: tabular-nums; line-height: 1.45">
+
+<aside style="flex: 1 1 232px; max-width: 100%; box-sizing: border-box; background: #0C2A45; color: #FFFFFF; padding: 24px 16px; display: flex; flex-direction: column; gap: 24px">
+<div style="display: flex; flex-direction: column; gap: 2px; padding: 0 8px">
+<span style="font-size: 18px; font-weight: 700">مساعد المندوب</span>
+<span style="font-size: 13px; color: #C9D6E2">[اسم الشركة]</span>
+</div>
+<nav aria-label="أقسام اللوحة" style="display: flex; flex-direction: column; gap: 4px">
+<a href="#" aria-current="page" style="display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 12px; border-radius: 10px; background: rgba(255, 255, 255, 0.14); color: #FFFFFF; font-size: 14.5px; font-weight: 600; text-decoration: none">
+<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"></rect><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"></rect><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"></rect><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"></rect></svg>
+نظرة عامة
+</a>
+<a href="#" style="display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 12px; border-radius: 10px; color: #DCE6EF; font-size: 14.5px; font-weight: 500; text-decoration: none">
+<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"></circle><path d="M2.5 20a6.5 6.5 0 0 1 13 0"></path><path d="M16 4.8a3.5 3.5 0 0 1 0 6.4"></path><path d="M18 14.5a6.5 6.5 0 0 1 3.5 5.5"></path></svg>
+المناديب
+</a>
+<a href="#" style="display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 12px; border-radius: 10px; color: #DCE6EF; font-size: 14.5px; font-weight: 500; text-decoration: none">
+<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"></circle><circle cx="12" cy="12" r="4.5"></circle><circle cx="12" cy="12" r="1"></circle></svg>
+التارجت
+</a>
+<a href="#" style="display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 12px; border-radius: 10px; color: #DCE6EF; font-size: 14.5px; font-weight: 500; text-decoration: none">
+<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="10" rx="1.5"></rect><path d="M3 7h18v3H3z"></path><path d="M12 7v13"></path><path d="M12 7c-1.5-3-5-3-5-.5S10 7 12 7zm0 0c1.5-3 5-3 5-.5S14 7 12 7z"></path></svg>
+الحوافز والعمولات
+</a>
+<a href="#" style="display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 12px; border-radius: 10px; color: #DCE6EF; font-size: 14.5px; font-weight: 500; text-decoration: none">
+<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"></path><path d="M5 17a3 3 0 0 1 3-3h11"></path></svg>
+سياسات الشركة
+</a>
+<a href="#" style="display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 12px; border-radius: 10px; color: #DCE6EF; font-size: 14.5px; font-weight: 500; text-decoration: none">
+<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"></path><path d="m7 9 5-5 5 5"></path><path d="M4 16v4h16v-4"></path></svg>
+رفع البيانات
+</a>
+<a href="#" style="display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 12px; border-radius: 10px; color: #DCE6EF; font-size: 14.5px; font-weight: 500; text-decoration: none">
+<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"></path><path d="M10 20a2 2 0 0 0 4 0"></path></svg>
+الإشعارات
+</a>
+</nav>
+</aside>
+
+<div style="flex: 999 1 560px; min-width: 0; box-sizing: border-box; padding: 28px 32px 40px; display: flex; flex-direction: column; gap: 20px">
+
+<header style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px">
+<div style="display: flex; flex-direction: column; gap: 2px">
+<h1 style="margin: 0; font-size: 24px; font-weight: 700">نظرة عامة</h1>
+<p style="margin: 0; font-size: 14px; color: #4A5B69">نوفمبر 2026 · اليوم 12 من 26 يوم بيع · 8 مناديب</p>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 10px">
+<button style="display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px; border: 1px solid #C5CED6; border-radius: 10px; background: #FFFFFF; color: #0C1F2E; font-family: inherit; font-size: 14.5px; font-weight: 600; cursor: pointer">
+<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"></path><path d="m7 9 5-5 5 5"></path><path d="M4 16v4h16v-4"></path></svg>
+رفع ملف Excel
+</button>
+<button style="display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px; border: 0; border-radius: 10px; background: #1F55D0; color: #FFFFFF; font-family: inherit; font-size: 14.5px; font-weight: 600; cursor: pointer">
+<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"></path></svg>
+حافز جديد
+</button>
+</div>
+</header>
+
+<section aria-label="مؤشرات الفريق" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); background: #FFFFFF; border: 1px solid #DCE2E7; border-radius: 14px">
+<div style="display: flex; flex-direction: column; gap: 6px; padding: 18px 20px; border-inline-end: 1px solid #E9EDF0">
+<span style="font-size: 13.5px; color: #4A5B69">تحقيق البيع</span>
+<div style="display: flex; align-items: baseline; gap: 10px">
+<span style="font-size: 32px; font-weight: 700; line-height: 1.1">39%</span>
+<span style="display: inline-flex; padding: 2px 9px; border-radius: 999px; background: #FFF1DB; color: #7A4100; font-size: 12.5px; font-weight: 600">متأخر 3%</span>
+</div>
+<div style="position: relative; height: 8px; margin-top: 2px">
+<div style="height: 8px; border-radius: 4px; background: #E6EBEF; overflow: hidden"><div style="width: 39%; height: 100%; background: #C77700"></div></div>
+<div style="position: absolute; top: -4px; right: 42%; width: 2px; height: 16px; background: #0C1F2E"></div>
+</div>
+<span style="font-size: 13px; color: #4A5B69">9,360 من 24,000 كرتونة · المفروض 42%</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px; padding: 18px 20px; border-inline-end: 1px solid #E9EDF0">
+<span style="font-size: 13.5px; color: #4A5B69">تحقيق التحصيل</span>
+<div style="display: flex; align-items: baseline; gap: 10px">
+<span style="font-size: 32px; font-weight: 700; line-height: 1.1">44%</span>
+<span style="display: inline-flex; padding: 2px 9px; border-radius: 999px; background: #E4F3EB; color: #0A6B42; font-size: 12.5px; font-weight: 600">سابق 2%</span>
+</div>
+<div style="position: relative; height: 8px; margin-top: 2px">
+<div style="height: 8px; border-radius: 4px; background: #E6EBEF; overflow: hidden"><div style="width: 44%; height: 100%; background: #0B7A4B"></div></div>
+<div style="position: absolute; top: -4px; right: 42%; width: 2px; height: 16px; background: #0C1F2E"></div>
+</div>
+<span style="font-size: 13px; color: #4A5B69">1,584,000 من 3,600,000 ج.م · المفروض 42%</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px; padding: 18px 20px; border-inline-end: 1px solid #E9EDF0">
+<span style="font-size: 13.5px; color: #4A5B69">مناديب على المعدل</span>
+<span style="font-size: 32px; font-weight: 700; line-height: 1.1">5 <span style="font-size: 16px; font-weight: 500; color: #4A5B69">من 8</span></span>
+<span style="font-size: 13px; color: #4A5B69">1 متأخر شوية · 2 محتاجين متابعة</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px; padding: 18px 20px">
+<span style="font-size: 13.5px; color: #4A5B69">قفلات النهارده</span>
+<span style="font-size: 32px; font-weight: 700; line-height: 1.1">6 <span style="font-size: 16px; font-weight: 500; color: #4A5B69">من 8</span></span>
+<span style="font-size: 13px; color: #4A5B69">2 لسه ما سجّلوش</span>
+</div>
+</section>
+
+<div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+
+<section aria-label="أداء المناديب" style="flex: 3 1 560px; min-width: 0; background: #FFFFFF; border: 1px solid #DCE2E7; border-radius: 14px">
+<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 16px 20px">
+<h2 style="margin: 0; font-size: 17px; font-weight: 700">أداء المناديب</h2>
+<span style="font-size: 13px; color: #4A5B69">مترتبين من الأبعد عن المعدل · الخط الأسود = المفروض النهارده</span>
+</div>
+<div style="overflow-x: auto">
+<table style="width: 100%; min-width: 680px; border-collapse: collapse; font-size: 14.5px">
+<thead>
+<tr style="background: #F3F5F7; color: #33465A; font-size: 13px">
+<th scope="col" style="padding: 10px 20px; text-align: start; font-weight: 600">المندوب</th>
+<th scope="col" style="padding: 10px 12px; text-align: start; font-weight: 600">خط السير</th>
+<th scope="col" style="padding: 10px 12px; text-align: start; font-weight: 600">البيع</th>
+<th scope="col" style="padding: 10px 12px; text-align: start; font-weight: 600">التحصيل</th>
+<th scope="col" style="padding: 10px 12px; text-align: start; font-weight: 600">الحالة</th>
+<th scope="col" style="padding: 10px 20px; text-align: start; font-weight: 600">آخر قفلة</th>
+</tr>
+</thead>
+<tbody>
+<tr style="border-top: 1px solid #E9EDF0">
+<th scope="row" style="padding: 12px 20px; text-align: start; font-weight: 600">حسام ربيع</th>
+<td style="padding: 12px; color: #4A5B69">المرج</td>
+<td style="padding: 12px"><div style="display: flex; align-items: center; gap: 10px"><div style="position: relative; width: 120px; height: 8px"><div style="height: 8px; border-radius: 4px; background: #E6EBEF; overflow: hidden"><div style="width: 22%; height: 100%; background: #B3261E"></div></div><div style="position: absolute; top: -3px; right: 42%; width: 2px; height: 14px; background: #0C1F2E"></div></div><span style="font-weight: 700">22%</span></div></td>
+<td style="padding: 12px">39%</td>
+<td style="padding: 12px"><span style="display: inline-flex; padding: 3px 10px; border-radius: 999px; background: #FBE9E7; color: #8E1F18; font-size: 13px; font-weight: 600; white-space: nowrap">محتاج متابعة</span></td>
+<td style="padding: 12px 20px; color: #8E1F18; font-weight: 600">أمس</td>
+</tr>
+<tr style="border-top: 1px solid #E9EDF0">
+<th scope="row" style="padding: 12px 20px; text-align: start; font-weight: 600">إسلام فتحي</th>
+<td style="padding: 12px; color: #4A5B69">الهرم</td>
+<td style="padding: 12px"><div style="display: flex; align-items: center; gap: 10px"><div style="position: relative; width: 120px; height: 8px"><div style="height: 8px; border-radius: 4px; background: #E6EBEF; overflow: hidden"><div style="width: 31%; height: 100%; background: #B3261E"></div></div><div style="position: absolute; top: -3px; right: 42%; width: 2px; height: 14px; background: #0C1F2E"></div></div><span style="font-weight: 700">31%</span></div></td>
+<td style="padding: 12px">38%</td>
+<td style="padding: 12px"><span style="display: inline-flex; padding: 3px 10px; border-radius: 999px; background: #FBE9E7; color: #8E1F18; font-size: 13px; font-weight: 600; white-space: nowrap">محتاج متابعة</span></td>
+<td style="padding: 12px 20px; color: #8E1F18; font-weight: 600">أمس</td>
+</tr>
+<tr style="border-top: 1px solid #E9EDF0">
+<th scope="row" style="padding: 12px 20px; text-align: start; font-weight: 600">أحمد سمير</th>
+<td style="padding: 12px; color: #4A5B69">مدينة نصر</td>
+<td style="padding: 12px"><div style="display: flex; align-items: center; gap: 10px"><div style="position: relative; width: 120px; height: 8px"><div style="height: 8px; border-radius: 4px; background: #E6EBEF; overflow: hidden"><div style="width: 38%; height: 100%; background: #C77700"></div></div><div style="position: absolute; top: -3px; right: 42%; width: 2px; height: 14px; background: #0C1F2E"></div></div><span style="font-weight: 700">38%</span></div></td>
+<td style="padding: 12px">46%</td>
+<td style="padding: 12px"><span style="display: inline-flex; padding: 3px 10px; border-radius: 999px; background: #FFF1DB; color: #7A4100; font-size: 13px; font-weight: 600; white-space: nowrap">متأخر شوية</span></td>
+<td style="padding: 12px 20px; color: #4A5B69">النهارده 6:20 م</td>
+</tr>
+<tr style="border-top: 1px solid #E9EDF0">
+<th scope="row" style="padding: 12px 20px; text-align: start; font-weight: 600">يوسف إبراهيم</th>
+<td style="padding: 12px; color: #4A5B69">العباسية</td>
+<td style="padding: 12px"><div style="display: flex; align-items: center; gap: 10px"><div style="position: relative; width: 120px; height: 8px"><div style="height: 8px; border-radius: 4px; background: #E6EBEF; overflow: hidden"><div style="width: 42%; height: 100%; background: #0B7A4B"></div></div><div style="position: absolute; top: -3px; right: 42%; width: 2px; height: 14px; background: #0C1F2E"></div></div><span style="font-weight: 700">42%</span></div></td>
+<td style="padding: 12px">45%</td>
+<td style="padding: 12px"><span style="display: inline-flex; padding: 3px 10px; border-radius: 999px; background: #E4F3EB; color: #0A6B42; font-size: 13px; font-weight: 600; white-space: nowrap">على المعدل</span></td>
+<td style="padding: 12px 20px; color: #4A5B69">النهارده 5:45 م</td>
+</tr>
+<tr style="border-top: 1px solid #E9EDF0">
+<th scope="row" style="padding: 12px 20px; text-align: start; font-weight: 600">مصطفى علي</th>
+<td style="padding: 12px; color: #4A5B69">حلوان</td>
+<td style="padding: 12px"><div style="display: flex; align-items: center; gap: 10px"><div style="position: relative; width: 120px; height: 8px"><div style="height: 8px; border-radius: 4px; background: #E6EBEF; overflow: hidden"><div style="width: 43%; height: 100%; background: #0B7A4B"></div></div><div style="position: absolute; top: -3px; right: 42%; width: 2px; height: 14px; background: #0C1F2E"></div></div><span style="font-weight: 700">43%</span></div></td>
+<td style="padding: 12px">44%</td>
+<td style="padding: 12px"><span style="display: inline-flex; padding: 3px 10px; border-radius: 999px; background: #E4F3EB; color: #0A6B42; font-size: 13px; font-weight: 600; white-space: nowrap">على المعدل</span></td>
+<td style="padding: 12px 20px; color: #4A5B69">النهارده 6:05 م</td>
+</tr>
+<tr style="border-top: 1px solid #E9EDF0">
+<th scope="row" style="padding: 12px 20px; text-align: start; font-weight: 600">كريم حسن</th>
+<td style="padding: 12px; color: #4A5B69">المعادي</td>
+<td style="padding: 12px"><div style="display: flex; align-items: center; gap: 10px"><div style="position: relative; width: 120px; height: 8px"><div style="height: 8px; border-radius: 4px; background: #E6EBEF; overflow: hidden"><div style="width: 44%; height: 100%; background: #0B7A4B"></div></div><div style="position: absolute; top: -3px; right: 42%; width: 2px; height: 14px; background: #0C1F2E"></div></div><span style="font-weight: 700">44%</span></div></td>
+<td style="padding: 12px">40%</td>
+<td style="padding: 12px"><span style="display: inline-flex; padding: 3px 10px; border-radius: 999px; background: #E4F3EB; color: #0A6B42; font-size: 13px; font-weight: 600; white-space: nowrap">على المعدل</span></td>
+<td style="padding: 12px 20px; color: #4A5B69">النهارده 7:10 م</td>
+</tr>
+<tr style="border-top: 1px solid #E9EDF0">
+<th scope="row" style="padding: 12px 20px; text-align: start; font-weight: 600">عمرو خالد</th>
+<td style="padding: 12px; color: #4A5B69">فيصل</td>
+<td style="padding: 12px"><div style="display: flex; align-items: center; gap: 10px"><div style="position: relative; width: 120px; height: 8px"><div style="height: 8px; border-radius: 4px; background: #E6EBEF; overflow: hidden"><div style="width: 45%; height: 100%; background: #0B7A4B"></div></div><div style="position: absolute; top: -3px; right: 42%; width: 2px; height: 14px; background: #0C1F2E"></div></div><span style="font-weight: 700">45%</span></div></td>
+<td style="padding: 12px">49%</td>
+<td style="padding: 12px"><span style="display: inline-flex; padding: 3px 10px; border-radius: 999px; background: #E4F3EB; color: #0A6B42; font-size: 13px; font-weight: 600; white-space: nowrap">على المعدل</span></td>
+<td style="padding: 12px 20px; color: #4A5B69">النهارده 5:30 م</td>
+</tr>
+<tr style="border-top: 1px solid #E9EDF0">
+<th scope="row" style="padding: 12px 20px; text-align: start; font-weight: 600">محمود عادل</th>
+<td style="padding: 12px; color: #4A5B69">شبرا</td>
+<td style="padding: 12px"><div style="display: flex; align-items: center; gap: 10px"><div style="position: relative; width: 120px; height: 8px"><div style="height: 8px; border-radius: 4px; background: #E6EBEF; overflow: hidden"><div style="width: 47%; height: 100%; background: #0B7A4B"></div></div><div style="position: absolute; top: -3px; right: 42%; width: 2px; height: 14px; background: #0C1F2E"></div></div><span style="font-weight: 700">47%</span></div></td>
+<td style="padding: 12px">51%</td>
+<td style="padding: 12px"><span style="display: inline-flex; padding: 3px 10px; border-radius: 999px; background: #E4F3EB; color: #0A6B42; font-size: 13px; font-weight: 600; white-space: nowrap">على المعدل</span></td>
+<td style="padding: 12px 20px; color: #4A5B69">النهارده 6:40 م</td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+
+<div style="flex: 1 1 300px; min-width: 0; display: flex; flex-direction: column; gap: 20px">
+
+<section aria-label="الحوافز الشغالة" style="background: #FFFFFF; border: 1px solid #DCE2E7; border-radius: 14px; padding: 16px 20px; display: flex; flex-direction: column; gap: 10px">
+<h2 style="margin: 0; font-size: 17px; font-weight: 700">الحوافز الشغالة</h2>
+<div style="display: flex; flex-direction: column; gap: 4px">
+<span style="font-size: 15px; font-weight: 600">حافز المانجو · 500 ج.م</span>
+<span style="font-size: 13.5px; color: #4A5B69">200 كرتونة قبل 20 نوفمبر · اتضاف النهارده</span>
+</div>
+<dl style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 0; padding-top: 10px; border-top: 1px solid #E9EDF0">
+<div style="display: flex; flex-direction: column; gap: 1px"><dt style="font-size: 13px; color: #4A5B69">شافوا الإشعار</dt><dd style="margin: 0; font-size: 16px; font-weight: 700">6 من 8</dd></div>
+<div style="display: flex; flex-direction: column; gap: 1px"><dt style="font-size: 13px; color: #4A5B69">الأقرب</dt><dd style="margin: 0; font-size: 16px; font-weight: 700">محمود · 164</dd></div>
+</dl>
+</section>
+
+<section aria-label="أسئلة المناديب" style="background: #FFFFFF; border: 1px solid #DCE2E7; border-radius: 14px; padding: 16px 20px; display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; flex-direction: column; gap: 2px">
+<h2 style="margin: 0; font-size: 17px; font-weight: 700">المناديب بيسألوا عن إيه</h2>
+<span style="font-size: 13.5px; color: #4A5B69">أكتر أسئلة للمساعد الأسبوع ده</span>
+</div>
+<ol style="list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column">
+<li style="display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid #E9EDF0; font-size: 14.5px"><span>حدود الخصم المسموح</span><span style="font-weight: 700">9</span></li>
+<li style="display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid #E9EDF0; font-size: 14.5px"><span>شروط حافز المانجو</span><span style="font-weight: 700">6</span></li>
+<li style="display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid #E9EDF0; font-size: 14.5px"><span>سياسة المرتجعات</span><span style="font-weight: 700">4</span></li>
+</ol>
+<button style="min-height: 44px; border: 1px solid #C5CED6; border-radius: 10px; background: #FFFFFF; color: #163F9E; font-family: inherit; font-size: 14.5px; font-weight: 600; cursor: pointer">ابعت توضيح للكل</button>
+</section>
+
+<section aria-label="آخر رفع بيانات" style="background: #FFFFFF; border: 1px solid #DCE2E7; border-radius: 14px; padding: 16px 20px; display: flex; flex-direction: column; gap: 6px">
+<h2 style="margin: 0; font-size: 17px; font-weight: 700">آخر رفع بيانات</h2>
+<span dir="ltr" style="font-size: 14.5px; font-weight: 600; text-align: right">sales_2026-11-13.xlsx</span>
+<span style="font-size: 13.5px; color: #4A5B69">أمس 6:40 م · 412 صف · من غير أخطاء</span>
+</section>
+
+</div>
+</div>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>
