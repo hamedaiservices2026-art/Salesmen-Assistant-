@@ -1,0 +1,10 @@
+{
+  "app": { "name": "Salesman Assistant" },
+  "nav": {
+    "home": "Home",
+    "close": "Close",
+    "commission": "Commission",
+    "assistant": "Assistant",
+    "history": "History"
+  }
+}
