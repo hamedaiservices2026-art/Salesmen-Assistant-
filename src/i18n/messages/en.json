@@ -65,10 +65,66 @@
     "unit": {
       "cases": "cases",
       "value": "SAR"
-    }
+    },
+    "missingLink": "Record the close for day {day}"
   },
   "assistant": {
     "title": "Assistant",
     "soon": "The assistant arrives in a later release"
+  },
+  "close": {
+    "title": "Close the day",
+    "dateLine": "{weekday} {day} {month}",
+    "methodLabel": "How to record",
+    "methodPhoto": "Report photo",
+    "methodVoice": "Say it",
+    "methodType": "Type it",
+    "soon": "Soon",
+    "linesTitle": "Today's figures",
+    "moneyTitle": "Money",
+    "stockTitle": "Stock",
+    "focusTitle": "Focus items",
+    "cashSales": "Cash sales",
+    "creditSales": "Credit sales",
+    "collections": "Debt collected",
+    "expenses": "Expenses",
+    "loaded": "Loaded",
+    "sold": "Sold",
+    "returned": "Returned",
+    "returnsTitle": "Returns",
+    "returnsAdd": "Add a return",
+    "returnsRemove": "Remove return",
+    "returnsRow": "Return {n}",
+    "returnDescription": "Item",
+    "returnQuantity": "Quantity",
+    "returnReason": "Reason",
+    "reasons": {
+      "expired": "Expired",
+      "damaged": "Damaged",
+      "other": "Other reason"
+    },
+    "panelTitle": "Cash and stock check before handover",
+    "cashLabel": "Cash to hand over",
+    "cashFormula": "Cash {cash} + collected {collections} − expenses {expenses}",
+    "stockLabel": "Stock left in the van",
+    "stockFormula": "Loaded {loaded} − sold {sold} + returned {returned}",
+    "warnings": {
+      "negative_cash": "Cash is below zero. Check expenses",
+      "negative_stock": "Stock is below zero. Check quantities"
+    },
+    "submit": "Confirm the day",
+    "submitting": "Saving…",
+    "fixErrors": "Some numbers need a look",
+    "errors": {
+      "required": "Type the number",
+      "invalid": "That number is not clear",
+      "negative": "The number must be zero or more",
+      "future": "You cannot record a day that has not come yet",
+      "not_selling_day": "That is not a selling day",
+      "unknown": "This item is not yours"
+    },
+    "notSellingTitle": "Today is not a selling day",
+    "notSellingSub": "There is no close to record today",
+    "backHome": "Back to home"
   }
 }

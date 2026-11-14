@@ -65,10 +65,66 @@
     "unit": {
       "cases": "کارٹن",
       "value": "ریال"
-    }
+    },
+    "missingLink": "{day} تاریخ کا حساب درج کریں"
   },
   "assistant": {
     "title": "معاون",
     "soon": "معاون ایک آنے والے ورژن میں شامل ہوگا"
+  },
+  "close": {
+    "title": "دن کا حساب",
+    "dateLine": "{weekday} {day} {month}",
+    "methodLabel": "درج کرنے کا طریقہ",
+    "methodPhoto": "رپورٹ کی تصویر",
+    "methodVoice": "بول کر بتائیں",
+    "methodType": "لکھیں",
+    "soon": "جلد آ رہا ہے",
+    "linesTitle": "آج کے اعداد",
+    "moneyTitle": "رقم",
+    "stockTitle": "مال",
+    "focusTitle": "توجہ کی اشیا",
+    "cashSales": "نقد فروخت",
+    "creditSales": "ادھار فروخت",
+    "collections": "وصولی",
+    "expenses": "اخراجات",
+    "loaded": "لوڈ کیا",
+    "sold": "فروخت",
+    "returned": "واپس",
+    "returnsTitle": "واپسیاں",
+    "returnsAdd": "واپسی شامل کریں",
+    "returnsRemove": "واپسی ہٹائیں",
+    "returnsRow": "واپسی {n}",
+    "returnDescription": "چیز",
+    "returnQuantity": "تعداد",
+    "returnReason": "وجہ",
+    "reasons": {
+      "expired": "میعاد ختم",
+      "damaged": "خراب",
+      "other": "دوسری وجہ"
+    },
+    "panelTitle": "حوالگی سے پہلے حساب",
+    "cashLabel": "جو نقد دینا ہے",
+    "cashFormula": "نقد {cash} + وصولی {collections} − اخراجات {expenses}",
+    "stockLabel": "گاڑی میں باقی مال",
+    "stockFormula": "لوڈ {loaded} − فروخت {sold} + واپس {returned}",
+    "warnings": {
+      "negative_cash": "نقد صفر سے کم ہے۔ اخراجات دیکھیں",
+      "negative_stock": "مال صفر سے کم ہے۔ تعداد دیکھیں"
+    },
+    "submit": "دن کا حساب پکا کریں",
+    "submitting": "محفوظ ہو رہا ہے…",
+    "fixErrors": "کچھ اعداد دیکھنے ہیں",
+    "errors": {
+      "required": "عدد لکھیں",
+      "invalid": "یہ عدد سمجھ نہیں آیا",
+      "negative": "عدد صفر یا اس سے زیادہ ہونا چاہیے",
+      "future": "آنے والے دن کا حساب درج نہیں ہو سکتا",
+      "not_selling_day": "یہ فروخت کا دن نہیں",
+      "unknown": "یہ چیز آپ کی نہیں"
+    },
+    "notSellingTitle": "آج فروخت کا دن نہیں",
+    "notSellingSub": "آج درج کرنے کے لیے حساب نہیں",
+    "backHome": "ہوم پر واپس"
   }
 }

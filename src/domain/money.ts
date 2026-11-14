@@ -4,15 +4,20 @@ function group(n: number): string {
   return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
 
-/** Cases: grouped integer. Value: halalas shown as SAR, decimals only when non-zero. */
+/** Cases: grouped integer. Value: halalas shown as SAR; two decimals when the fraction is non-zero. */
 export function formatAmount(amount: number, unit: Unit): string {
   if (unit === "cases") return group(amount);
   const sign = amount < 0 ? "-" : "";
   const abs = Math.abs(amount);
   const whole = Math.floor(abs / 100);
   const frac = abs % 100;
-  const fracText = frac === 0 ? "" : "." + String(frac).padStart(2, "0").replace(/0$/, "");
+  const fracText = frac === 0 ? "" : "." + String(frac).padStart(2, "0");
   return `${sign}${group(whole)}${fracText}`;
+}
+
+/** Plain text for pre-filling an input: no grouping, two decimals only when the fraction is non-zero. */
+export function inputValue(amount: number, unit: Unit): string {
+  return formatAmount(amount, unit).replace(/,/g, "");
 }
 
 /** Whole percent, floored. Denominator 0 gives an em dash. */

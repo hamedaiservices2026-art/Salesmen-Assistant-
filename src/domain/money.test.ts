@@ -1,11 +1,27 @@
 import { describe, expect, it } from "vitest";
-import { formatAmount, formatPercent, parseAmount } from "./money";
+import { formatAmount, formatPercent, inputValue, parseAmount } from "./money";
 
 describe("formatAmount", () => {
   it("groups case counts", () => expect(formatAmount(1140, "cases")).toBe("1,140"));
   it("converts halalas to SAR, hiding zero decimals", () => {
     expect(formatAmount(8280000, "value")).toBe("82,800");
     expect(formatAmount(97855, "value")).toBe("978.55");
+  });
+  it("always shows two decimals when the fraction is non-zero", () => {
+    expect(formatAmount(97850, "value")).toBe("978.50");
+    expect(formatAmount(-97850, "value")).toBe("-978.50");
+    expect(formatAmount(825050, "value")).toBe("8,250.50");
+  });
+});
+
+describe("inputValue", () => {
+  it("shows cases as a plain number", () => expect(inputValue(1140, "cases")).toBe("1140"));
+  it("shows value without grouping, with decimals only when needed", () => {
+    expect(inputValue(1900000, "value")).toBe("19000");
+    expect(inputValue(825050, "value")).toBe("8250.50");
+  });
+  it("parses back to the same amount", () => {
+    for (const n of [0, 5, 825050, 1900000, 97855]) expect(parseAmount(inputValue(n, "value"), "value")).toBe(n);
   });
 });
 

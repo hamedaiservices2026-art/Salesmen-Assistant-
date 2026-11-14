@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { ISODate } from "@/domain/calendar";
 import type { DayMark } from "@/domain/pace";
 import { formatAmount, type Unit } from "@/domain/money";
@@ -33,6 +34,7 @@ export function MonthCalendar({
   ariaLabel,
   sectionLabel,
   todayLabel,
+  missingLabel,
   legend,
 }: {
   cells: (CalendarCell | null)[];
@@ -43,6 +45,7 @@ export function MonthCalendar({
   ariaLabel: string;
   sectionLabel: string;
   todayLabel: string;
+  missingLabel: (day: number) => string;
   legend: { hit: string; below: string; missing: string | null };
 }) {
   return (
@@ -54,16 +57,28 @@ export function MonthCalendar({
           </span>
         ))}
       </div>
-      <div role="img" aria-label={ariaLabel} className="grid grid-cols-7 gap-1 text-center">
+      <div role="group" aria-label={ariaLabel} className="grid grid-cols-7 gap-1 text-center">
         {cells.map((c, i) => {
           if (!c) return <div key={`pad-${i}`} aria-hidden="true" />;
           const off = c.mark === "off";
           const quiet = c.mark === "future" || c.mark === "missing";
+          if (c.mark === "missing") {
+            return (
+              <Link
+                key={c.date}
+                href={`/app/close?date=${c.date}`}
+                aria-label={missingLabel(c.day)}
+                className={`${cellClass(c.mark, c.date === today)} no-underline hover:bg-brand-tint focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand`}
+              >
+                <span className="text-[15px] font-semibold">{c.day}</span>
+                <span className="text-xs font-medium">—</span>
+              </Link>
+            );
+          }
           return (
             <div key={c.date} className={cellClass(c.mark, c.date === today)}>
               <span className={"text-[15px] " + (quiet ? "font-semibold" : "font-extrabold")}>{c.day}</span>
               {c.mark === "today" && <span className="text-xs font-bold">{todayLabel}</span>}
-              {c.mark === "missing" && <span className="text-xs font-medium">—</span>}
               {!off && c.amount !== null && (c.mark === "hit" || c.mark === "below") && (
                 <span className="text-xs font-medium">{formatAmount(c.amount, unit)}</span>
               )}

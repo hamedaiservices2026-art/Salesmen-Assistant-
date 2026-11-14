@@ -65,10 +65,66 @@
     "unit": {
       "cases": "كرتونة",
       "value": "ر.س"
-    }
+    },
+    "missingLink": "سجّل قفلة يوم {day}"
   },
   "assistant": {
     "title": "المساعد",
     "soon": "المساعد هيتضاف في إصدار قريب"
+  },
+  "close": {
+    "title": "قفلة اليوم",
+    "dateLine": "{weekday} {day} {month}",
+    "methodLabel": "طريقة التسجيل",
+    "methodPhoto": "صورة التقرير",
+    "methodVoice": "قولها بصوتك",
+    "methodType": "اكتبها",
+    "soon": "قريباً",
+    "linesTitle": "أرقام اليوم",
+    "moneyTitle": "الفلوس",
+    "stockTitle": "البضاعة",
+    "focusTitle": "أصناف التركيز",
+    "cashSales": "بيع نقدي",
+    "creditSales": "بيع آجل",
+    "collections": "تحصيل مديونيات",
+    "expenses": "مصاريف",
+    "loaded": "محمّل",
+    "sold": "مباع",
+    "returned": "مرتجع",
+    "returnsTitle": "المرتجعات",
+    "returnsAdd": "إضافة مرتجع",
+    "returnsRemove": "شيل المرتجع",
+    "returnsRow": "مرتجع {n}",
+    "returnDescription": "الصنف",
+    "returnQuantity": "الكمية",
+    "returnReason": "السبب",
+    "reasons": {
+      "expired": "منتهي الصلاحية",
+      "damaged": "تالف",
+      "other": "سبب تاني"
+    },
+    "panelTitle": "تسوية العهدة قبل التسليم",
+    "cashLabel": "الكاش اللي هتسلّمه",
+    "cashFormula": "نقدي {cash} + تحصيل {collections} − مصاريف {expenses}",
+    "stockLabel": "الباقي في العربية",
+    "stockFormula": "محمّل {loaded} − مباع {sold} + مرتجع {returned}",
+    "warnings": {
+      "negative_cash": "الكاش بالسالب. راجع المصاريف",
+      "negative_stock": "الباقي بالسالب. راجع الكميات"
+    },
+    "submit": "تأكيد القفلة",
+    "submitting": "بنحفظ…",
+    "fixErrors": "فيه أرقام محتاجة مراجعة",
+    "errors": {
+      "required": "اكتب الرقم",
+      "invalid": "الرقم ده مش مفهوم",
+      "negative": "الرقم لازم يكون صفر أو أكتر",
+      "future": "ما ينفعش تسجّل يوم لسه ما جاش",
+      "not_selling_day": "اليوم ده مش يوم بيع",
+      "unknown": "البند ده مش بتاعك"
+    },
+    "notSellingTitle": "النهارده مش يوم بيع",
+    "notSellingSub": "مفيش قفلة تتسجّل النهارده",
+    "backHome": "ارجع للرئيسية"
   }
 }

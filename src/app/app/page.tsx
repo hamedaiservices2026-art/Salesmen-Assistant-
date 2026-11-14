@@ -12,9 +12,7 @@ import { PrimaryLink } from "@/ui/components/PrimaryLink";
 import { StatusChip } from "@/ui/components/StatusChip";
 import { TodayPanel } from "@/ui/components/TodayPanel";
 import { calendarCells } from "@/ui/components/calendar-cells";
-
-/** Intl tag per language; Arabic uses ar-EG for Gregorian month names. Digits are always Western. */
-const INTL_TAG = { ar: "ar-EG", en: "en-GB", ur: "ur-PK" } as const;
+import { INTL_TAG } from "@/ui/intl-tag";
 
 export default async function HomePage({ searchParams }: { searchParams: Promise<{ line?: string | string[] }> }) {
   const ctx = await requireCtx();
@@ -156,6 +154,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
           ariaLabel={summary}
           sectionLabel={t("daysLabel")}
           todayLabel={t("today")}
+          missingLabel={(day) => t("missingLink", { day })}
           legend={{ hit: t("legendHit"), below: t("legendBelow"), missing: hasMissing ? t("legendMissing") : null }}
         />
 
