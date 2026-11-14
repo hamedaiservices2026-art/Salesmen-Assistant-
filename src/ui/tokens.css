@@ -1,0 +1,18 @@
+@theme {
+  --color-brand: #0B4EA2;
+  --color-brand-hover: #083A7A;
+  --color-brand-tint: #E6EEF9;
+  --color-cell: #E3ECF8;
+  --color-cell-ink: #1B3358;
+  --color-ink: #0E1B2E;
+  --color-ink-2: #47566B;
+  --color-muted: #5B6A80;
+  --color-line: #D8DFE9;
+  --color-line-soft: #E3E8F0;
+  --color-on-brand-2: #D5E3F5;
+  --color-alert: #9B1220;
+  --color-alert-tint: #FBE3E5;
+
+  --font-sans: "Alexandria Variable", system-ui, sans-serif;
+  --font-urdu: "Noto Nastaliq Urdu", system-ui, serif;
+}

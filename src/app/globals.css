@@ -1,0 +1,11 @@
+@import "tailwindcss";
+@import "@fontsource-variable/alexandria";
+@import "@fontsource/noto-nastaliq-urdu";
+@import "../ui/tokens.css";
+
+body {
+  background: #ffffff;
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-variant-numeric: tabular-nums;
+}
