@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:seed": "tsx src/db/run-seed.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.16",
@@ -32,6 +34,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.4.6",
     "tailwindcss": "4.3.3",
+    "tsx": "^4.23.15",
     "typescript": "^5",
     "vitest": "^5.1.0"
   },
