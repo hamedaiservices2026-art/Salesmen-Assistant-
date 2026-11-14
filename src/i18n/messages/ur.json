@@ -30,5 +30,45 @@
       "invalid": "صارف نام یا پن غلط ہے",
       "locked": "بہت کوششیں ہو گئیں۔ 15 منٹ بعد دوبارہ کوشش کریں"
     }
+  },
+  "home": {
+    "greetingMorning": "صبح بخیر {name}",
+    "greetingEvening": "شام بخیر {name}",
+    "dateLine": "{weekday} {day} {month} · فروخت کا دن {n} از {total}",
+    "notifications": "اطلاعات",
+    "tabsLabel": "ہدف کی لائنیں",
+    "lineLabel": "{line} کا ہدف",
+    "ofTarget": "از {target} {unit}",
+    "behind": "{gap} {unit} پیچھے",
+    "ahead": "رفتار سے آگے",
+    "noTarget": "ابھی کوئی ہدف نہیں",
+    "expected": "آج تک متوقع {expected}",
+    "daysLabel": "مہینے کے دن",
+    "calendarSummary": "{month}: {hit} دن روزانہ رفتار کے برابر یا اوپر، {below} دن اس سے کم، آج {day} تاریخ ہے",
+    "calendarSummaryRequired": "، اور {required} {unit} درکار ہیں",
+    "today": "آج",
+    "legendHit": "روزانہ رفتار پوری",
+    "legendBelow": "رفتار سے کم",
+    "legendMissing": "بغیر اختتام کا دن",
+    "needTitle": "آج آپ کو بیچنا ہے",
+    "needSub": "{left} دن میں {remaining} باقی",
+    "needLabel": "آج درکار",
+    "doneTitle": "آج کا اختتام درج ہو گیا",
+    "doneSub": "کل درکار",
+    "doneLast": "یہ مہینے کا آخری فروخت کا دن تھا",
+    "focusTitle": "آج توجہ دیں",
+    "focusRow": "بیچیں <b>{perDay}</b> · کمی {remaining}",
+    "focusRemaining": "کمی {remaining}",
+    "focusDone": "ہدف پورا",
+    "close": "آج کا اختتام درج کریں",
+    "navLabel": "مرکزی نیویگیشن",
+    "unit": {
+      "cases": "کارٹن",
+      "value": "ریال"
+    }
+  },
+  "assistant": {
+    "title": "معاون",
+    "soon": "معاون ایک آنے والے ورژن میں شامل ہوگا"
   }
 }

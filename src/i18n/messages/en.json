@@ -30,5 +30,45 @@
       "invalid": "Wrong username or PIN",
       "locked": "Too many tries. Wait 15 minutes and try again"
     }
+  },
+  "home": {
+    "greetingMorning": "Good morning, {name}",
+    "greetingEvening": "Good evening, {name}",
+    "dateLine": "{weekday} {day} {month} · Selling day {n} of {total}",
+    "notifications": "Notifications",
+    "tabsLabel": "Target lines",
+    "lineLabel": "{line} target",
+    "ofTarget": "of {target} {unit}",
+    "behind": "Behind by {gap} {unit}",
+    "ahead": "Ahead of pace",
+    "noTarget": "No target yet",
+    "expected": "Expected by today {expected}",
+    "daysLabel": "Days of the month",
+    "calendarSummary": "{month}: {hit} days at or above the daily pace, {below} days below it, today is day {day} of the month",
+    "calendarSummaryRequired": ", and {required} {unit} are needed",
+    "today": "Today",
+    "legendHit": "Hit daily pace",
+    "legendBelow": "Below pace",
+    "legendMissing": "Day with no close",
+    "needTitle": "You need to sell today",
+    "needSub": "{remaining} left over {left} days",
+    "needLabel": "Needed today",
+    "doneTitle": "Today's close is recorded",
+    "doneSub": "Tomorrow you need",
+    "doneLast": "That was the last selling day of the month",
+    "focusTitle": "Focus on today",
+    "focusRow": "Sell <b>{perDay}</b> · {remaining} short",
+    "focusRemaining": "{remaining} short",
+    "focusDone": "Target reached",
+    "close": "Record today's close",
+    "navLabel": "Main navigation",
+    "unit": {
+      "cases": "cases",
+      "value": "SAR"
+    }
+  },
+  "assistant": {
+    "title": "Assistant",
+    "soon": "The assistant arrives in a later release"
   }
 }

@@ -30,5 +30,45 @@
       "invalid": "اسم المستخدم أو الرقم السري غلط",
       "locked": "جرّبت كتير. استنى 15 دقيقة وجرّب تاني"
     }
+  },
+  "home": {
+    "greetingMorning": "صباح الخير يا {name}",
+    "greetingEvening": "مساء الخير يا {name}",
+    "dateLine": "{weekday} {day} {month} · يوم البيع {n} من {total}",
+    "notifications": "الإشعارات",
+    "tabsLabel": "خطوط التارجت",
+    "lineLabel": "تارجت {line}",
+    "ofTarget": "من {target} {unit}",
+    "behind": "متأخر {gap} {unit}",
+    "ahead": "سابق المعدل",
+    "noTarget": "لسه مفيش تارجت",
+    "expected": "المفروض لحد النهارده {expected}",
+    "daysLabel": "أيام الشهر",
+    "calendarSummary": "أيام {month}: {hit} أيام حققت فيها معدل اليوم و{below} أيام أقل منه، والنهارده يوم {day}",
+    "calendarSummaryRequired": "، والمطلوب {required} {unit}",
+    "today": "اليوم",
+    "legendHit": "حققت معدل اليوم",
+    "legendBelow": "أقل من المعدل",
+    "legendMissing": "يوم من غير قفلة",
+    "needTitle": "النهارده محتاج تبيع",
+    "needSub": "باقي {remaining} على {left} يوم",
+    "needLabel": "المطلوب النهارده",
+    "doneTitle": "قفلة النهارده اتسجّلت",
+    "doneSub": "بكرة المطلوب",
+    "doneLast": "خلصت أيام البيع في الشهر",
+    "focusTitle": "ركّز عليه النهارده",
+    "focusRow": "بيع <b>{perDay}</b> · ناقص {remaining}",
+    "focusRemaining": "ناقص {remaining}",
+    "focusDone": "تحقق التارجت",
+    "close": "سجّل قفلة اليوم",
+    "navLabel": "التنقل الرئيسي",
+    "unit": {
+      "cases": "كرتونة",
+      "value": "ر.س"
+    }
+  },
+  "assistant": {
+    "title": "المساعد",
+    "soon": "المساعد هيتضاف في إصدار قريب"
   }
 }
