@@ -48,7 +48,15 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   }));
 
   if (!line) {
-    return <AppHeader greeting={greeting} dateLine={dateLine} notificationsLabel={t("notifications")} />;
+    return (
+      <>
+        <AppHeader greeting={greeting} dateLine={dateLine} notificationsLabel={t("notifications")} />
+        <main className="flex flex-1 flex-col gap-4 px-5 pb-4 pt-[18px]">
+          <p className="m-0 text-base text-ink-2">{t("noLines")}</p>
+          <PrimaryLink href="/app/close">{t("close")}</PrimaryLink>
+        </main>
+      </>
+    );
   }
 
   const unit: Unit = line.unit;
@@ -56,13 +64,13 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   const amt = (n: number) => formatAmount(n, unit);
   const { pace } = line;
 
-  // Weekday header: short names starting at the company's week start.
-  const weekdayFmt = fmt({ weekday: "short" });
+  // Weekday header: catalog short names (Sunday 0) starting at the company's week start.
+  const shortNames = t.raw("weekdaysShort") as string[];
   const weekdays: string[] = [];
   const fridayIndexes: number[] = [];
   for (let i = 0; i < 7; i++) {
     const wd = (view.weekStartsOn + i) % 7;
-    weekdays.push(weekdayFmt.format(new Date(Date.UTC(2023, 0, 1 + wd))));
+    weekdays.push(shortNames[wd] ?? "");
     if (wd === 5) fridayIndexes.push(i);
   }
 
@@ -79,7 +87,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
 
   let panel: React.ReactNode = null;
   if (view.hasClosedToday) {
-    const tomorrow = view.counts.left > 1 ? Math.ceil(pace.remaining / (view.counts.left - 1)) : null;
+    const tomorrow = line.nextDayRequired;
     panel = (
       <TodayPanel
         label={t("needLabel")}

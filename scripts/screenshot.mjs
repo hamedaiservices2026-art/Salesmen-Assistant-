@@ -25,25 +25,25 @@ const context = await browser.newContext({
 const page = await context.newPage();
 
 async function signedIn() {
-  const res = await page.goto(`${base}/app/assistant`, { waitUntil: "networkidle" });
+  const res = await page.goto(`${base}/app/assistant`, { waitUntil: "load" });
   return res?.ok() && new URL(page.url()).pathname.startsWith("/app");
 }
 
 async function signIn() {
-  await page.goto(`${base}/signin`, { waitUntil: "networkidle" });
+  await page.goto(`${base}/signin`, { waitUntil: "load" });
   await page.fill('input[name="login"]', LOGIN);
   await page.fill('input[name="pin"]', PIN);
   await page.click('button[type="submit"]');
-  await page.waitForLoadState("networkidle");
+  await page.waitForLoadState("load");
   await page.waitForTimeout(500);
 }
 
 async function acceptInvite(invite) {
-  await page.goto(`${base}${invite}`, { waitUntil: "networkidle" });
+  await page.goto(`${base}${invite}`, { waitUntil: "load" });
   await page.fill('input[name="pin"]', PIN);
   await page.fill('input[name="confirm"]', PIN);
   await page.click('button[type="submit"]');
-  await page.waitForLoadState("networkidle");
+  await page.waitForLoadState("load");
   await page.waitForTimeout(500);
 }
 
@@ -60,7 +60,9 @@ if (!(await signedIn())) {
 
 // Sign-in sets the locale cookie from the user's profile, so apply the requested one afterwards.
 if (locale) await context.addCookies([{ name: "locale", value: locale, url: base }]);
-await page.goto(`${base}${path}`, { waitUntil: "networkidle" });
+await page.goto(`${base}${path}`, { waitUntil: "load" });
+await page.waitForSelector("main");
+await page.waitForTimeout(300);
 // Full-page capture: grow the viewport to the content so the sticky bottom nav lands at the end.
 const height = await page.evaluate(() => document.documentElement.scrollHeight);
 await page.setViewportSize({ width: 390, height: Math.max(844, height) });

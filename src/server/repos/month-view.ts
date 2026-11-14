@@ -1,7 +1,7 @@
 import { and, eq, gte, lte } from "drizzle-orm";
 import { dayCounts, type ISODate } from "@/domain/calendar";
 import type { Unit } from "@/domain/money";
-import { computePace, markDay, type DayMark } from "@/domain/pace";
+import { computePace, markDay, nextDayRequired, type DayMark } from "@/domain/pace";
 import * as s from "@/db/schema";
 import type { Ctx } from "@/server/ctx";
 import { loadCalendar, loadMonthTotals, type FocusTotal } from "./month-data";
@@ -15,6 +15,8 @@ export type LineView = {
   target: number;
   achieved: number;
   pace: ReturnType<typeof computePace>;
+  /** Needed per selling day after today (null when none remain). */
+  nextDayRequired: number | null;
   days: { date: ISODate; mark: DayMark; amount: number | null }[]; // every day of the month
 };
 
@@ -81,6 +83,7 @@ export async function getMonthView(
       target,
       achieved,
       pace: computePace({ target, achieved, ...counts }),
+      nextDayRequired: nextDayRequired(Math.max(0, target - achieved), cal.selling, today),
       days: cal.dates.map((date) => {
         const amount = days.amounts.get(`${l.lineId}|${date}`) ?? null;
         const mark = markDay({ date, today, isSellingDay: selling.has(date), amount, target, total: counts.total });

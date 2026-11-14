@@ -58,3 +58,9 @@ export function markDay(i: {
   if (i.amount === null) return i.date === i.today ? "today" : "missing";
   return i.target > 0 && i.amount * i.total >= i.target ? "hit" : "below";
 }
+
+/** What is needed per selling day strictly after `today`; null when no selling days remain. */
+export function nextDayRequired(remaining: number, sellingDays: ISODate[], today: ISODate): number | null {
+  const after = sellingDays.filter((d) => d > today).length;
+  return after > 0 ? ceilDiv(Math.max(0, remaining), after) : null;
+}

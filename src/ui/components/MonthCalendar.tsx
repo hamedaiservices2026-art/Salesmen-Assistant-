@@ -92,7 +92,7 @@ export function MonthCalendar({
           {legend.hit}
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span aria-hidden="true" className="size-3 rounded-[3px] border border-[#B9CBE6] bg-cell" />
+          <span aria-hidden="true" className="size-3 rounded-[3px] border border-line bg-cell" />
           {legend.below}
         </span>
         {legend.missing && (

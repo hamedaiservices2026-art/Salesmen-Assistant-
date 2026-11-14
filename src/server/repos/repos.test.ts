@@ -243,3 +243,20 @@ describe("history", () => {
     expect(other.map((d) => d.lines)).toEqual([{ "other-line": 20 }]);
   });
 });
+
+describe("nextDayRequired in the month view", () => {
+  it("after a close of 130 on 14 Nov: 1730 over the 14 selling days after it", async () => {
+    await saveClose(ahmed(), form(TODAY, { bev: 130 }), { today: TODAY });
+    const { bev } = await bevOf(ahmed());
+    expect(bev.pace.remaining).toBe(1730);
+    expect(bev.nextDayRequired).toBe(124);
+  });
+  it("on a Friday it divides by the selling days after it", async () => {
+    const view = await getMonthView(ahmed(), { year: 2026, month: 11, today: "2026-11-13" });
+    expect(view.lines.find((l) => l.lineId === "bev")!.nextDayRequired).toBe(124); // 1860 / 15
+  });
+  it("is null on the last selling day of the month", async () => {
+    const view = await getMonthView(ahmed(), { year: 2026, month: 11, today: "2026-11-30" });
+    expect(view.lines.find((l) => l.lineId === "bev")!.nextDayRequired).toBeNull();
+  });
+});

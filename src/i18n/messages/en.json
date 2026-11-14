@@ -66,7 +66,17 @@
       "cases": "cases",
       "value": "SAR"
     },
-    "missingLink": "Record the close for day {day}"
+    "missingLink": "Record the close for day {day}",
+    "weekdaysShort": [
+      "Sun",
+      "Mon",
+      "Tue",
+      "Wed",
+      "Thu",
+      "Fri",
+      "Sat"
+    ],
+    "noLines": "No targets have been uploaded for you yet. You can still record your day as usual."
   },
   "assistant": {
     "title": "Assistant",

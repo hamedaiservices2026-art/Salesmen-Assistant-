@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computePace, markDay } from "./pace";
+import { computePace, markDay, nextDayRequired } from "./pace";
 
 const counts = { total: 26, elapsed: 11, left: 15 };
 
@@ -70,5 +70,19 @@ describe("markDay", () => {
   });
   it("zero target is never a hit", () => {
     expect(markDay({ ...base, target: 0, date: "2026-11-08", amount: 5 })).toBe("below");
+  });
+});
+
+describe("nextDayRequired", () => {
+  const selling = ["2026-11-12", "2026-11-14", "2026-11-15", "2026-11-16"];
+  it("divides by selling days strictly after today, rounding up", () => {
+    expect(nextDayRequired(1730, selling, "2026-11-12")).toBe(577);
+    expect(nextDayRequired(10, selling, "2026-11-14")).toBe(5);
+  });
+  it("on a non-selling day counts every later selling day", () => {
+    expect(nextDayRequired(300, selling, "2026-11-13")).toBe(100);
+  });
+  it("is null on the last selling day", () => {
+    expect(nextDayRequired(100, selling, "2026-11-16")).toBeNull();
   });
 });
