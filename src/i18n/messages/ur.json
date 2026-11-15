@@ -90,10 +90,10 @@
     "methodVoice": "بول کر بتائیں",
     "methodType": "لکھیں",
     "soon": "جلد آ رہا ہے",
-    "linesTitle": "آج کے اعداد",
+    "linesTitle": "آج کی فروخت",
     "moneyTitle": "رقم",
     "stockTitle": "مال",
-    "focusTitle": "توجہ کی اشیا",
+    "focusTitle": "توجہ کی اشیا (اختیاری)",
     "cashSales": "نقد فروخت",
     "creditSales": "ادھار فروخت",
     "collections": "وصولی",
@@ -135,6 +135,7 @@
     },
     "notSellingTitle": "آج فروخت کا دن نہیں",
     "notSellingSub": "آج درج کرنے کے لیے حساب نہیں",
-    "backHome": "ہوم پر واپس"
+    "backHome": "ہوم پر واپس",
+    "stockSummary": "گاڑی کا مال (اختیاری)"
   }
 }

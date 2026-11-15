@@ -12,7 +12,6 @@ function data(entries: Record<string, string>): FormData {
   const f = new FormData();
   f.set("date", "2026-11-14");
   f.set("cashSales", "14800");
-  f.set("collections", "19000");
   for (const [k, v] of Object.entries(entries)) f.set(k, v);
   return f;
 }
@@ -71,5 +70,41 @@ describe("parseCloseForm", () => {
       { description: "عصير", quantity: 3, reason: "expired" },
       { description: "علب", quantity: 2, reason: "damaged" },
     ]);
+  });
+
+  it("empty cash sales is required", () => {
+    const r = parseCloseForm(data({ ...good, cashSales: "" }), lines, focus);
+    expect(r).toEqual({ ok: false, errors: { cashSales: "required" } });
+  });
+
+  it("an invalid focus field is invalid", () => {
+    const r = parseCloseForm(data({ ...good, "focus.cola": "ten" }), lines, focus);
+    expect(r).toEqual({ ok: false, errors: { "focus.cola": "invalid" } });
+  });
+
+  it("a three-decimal money value is invalid", () => {
+    const r = parseCloseForm(data({ ...good, "line.food": "10.123" }), lines, focus);
+    expect(r).toEqual({ ok: false, errors: { "line.food": "invalid" } });
+  });
+
+  it("a bad return reason is invalid, not rewritten", () => {
+    const f = data(good);
+    f.set("ret.0.description", "x");
+    f.set("ret.0.quantity", "1");
+    f.set("ret.0.reason", "stolen");
+    expect(parseCloseForm(f, lines, focus)).toEqual({ ok: false, errors: { "ret.0.reason": "invalid" } });
+  });
+
+  it("collections is the sum of collection-kind lines when the company has one", () => {
+    const kinded = lines.map((l) => (l.lineId === "coll" ? { ...l, kind: "collection" as const } : l));
+    const r = parseCloseForm(data(good), kinded, focus);
+    expect(r.ok && r.form.collections).toBe(1900000);
+  });
+
+  it("without a collection line, collections is its own optional field", () => {
+    const none = parseCloseForm(data(good), lines, focus);
+    expect(none.ok && none.form.collections).toBe(0);
+    const typed = parseCloseForm(data({ ...good, collections: "250.5" }), lines, focus);
+    expect(typed.ok && typed.form.collections).toBe(25050);
   });
 });

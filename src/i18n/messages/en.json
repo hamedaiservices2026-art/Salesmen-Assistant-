@@ -90,10 +90,10 @@
     "methodVoice": "Say it",
     "methodType": "Type it",
     "soon": "Soon",
-    "linesTitle": "Today's figures",
+    "linesTitle": "Today's sales",
     "moneyTitle": "Money",
     "stockTitle": "Stock",
-    "focusTitle": "Focus items",
+    "focusTitle": "Focus items (optional)",
     "cashSales": "Cash sales",
     "creditSales": "Credit sales",
     "collections": "Debt collected",
@@ -135,6 +135,7 @@
     },
     "notSellingTitle": "Today is not a selling day",
     "notSellingSub": "There is no close to record today",
-    "backHome": "Back to home"
+    "backHome": "Back to home",
+    "stockSummary": "Van stock (optional)"
   }
 }

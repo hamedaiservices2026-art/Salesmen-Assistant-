@@ -28,7 +28,7 @@ export async function saveCloseAction(_prev: CloseState, data: FormData): Promis
 
   const parsed = parseCloseForm(
     data,
-    view.lines.map((l) => ({ lineId: l.lineId, unit: l.unit })),
+    view.lines.map((l) => ({ lineId: l.lineId, unit: l.unit, kind: l.kind })),
     view.focus.map((f) => ({ id: f.id, unit: f.unit })),
   );
   if (!parsed.ok) return { errors: parsed.errors };

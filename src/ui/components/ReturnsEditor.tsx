@@ -28,7 +28,7 @@ export function ReturnsEditor({
     <section aria-label={t("returnsTitle")} className="flex flex-col gap-3 rounded-[14px] border border-line bg-white p-4">
       <h2 className="m-0 text-[15px] font-bold">{t("returnsTitle")}</h2>
       {rows.map((r, i) => (
-        <fieldset key={r.key} className="m-0 flex flex-col gap-2 rounded-xl border border-line-soft p-3">
+        <fieldset key={r.key} className="m-0 flex min-w-0 flex-col gap-2 rounded-xl border border-line-soft p-3">
           <legend className="px-1 text-[13px] font-semibold text-ink-2">{t("returnsRow", { n: i + 1 })}</legend>
           <label className="flex flex-col gap-1 text-[13px] text-ink-2">
             {t("returnDescription")}
@@ -63,6 +63,9 @@ export function ReturnsEditor({
                 </option>
               ))}
             </select>
+            {errors[`ret.${i}.reason`] && (
+              <span className="text-[13px] font-semibold text-alert">{errors[`ret.${i}.reason`]}</span>
+            )}
           </label>
           <button
             type="button"

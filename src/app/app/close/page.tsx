@@ -86,6 +86,7 @@ export default async function ClosePage({ searchParams }: { searchParams: Promis
     label: lineName(l),
     unitLabel: home(`unit.${l.unit}`),
     mode: l.unit === "cases" ? "numeric" : "decimal",
+    collection: l.kind === "collection",
   }));
   const focusItems: FormItem[] = view.focus.map((f) => ({
     name: `focus.${f.id}`,

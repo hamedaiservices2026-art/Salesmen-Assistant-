@@ -17,7 +17,7 @@ export function ReconciliationPanel({
   stockUnitLabel,
 }: {
   cashSales: string;
-  collections: string;
+  collections: number; // minor units, derived by the form
   expenses: string;
   loaded: string;
   sold: string;
@@ -31,20 +31,21 @@ export function ReconciliationPanel({
   const count = (v: string) => parseAmount(v, "cases") ?? 0;
   const i = {
     cashSales: money(cashSales),
-    collections: money(collections),
+    collections,
     expenses: money(expenses),
     loaded: count(loaded),
     sold: count(sold),
     returned: count(returned),
   };
   const r = reconcile(i);
+  const showStock = [loaded, sold, returned].some((v) => v.trim() !== "");
   return (
     <section aria-label={t("panelTitle")} className="flex flex-col gap-3 rounded-[14px] bg-brand p-4 text-white">
       <h2 className="m-0 text-sm font-medium text-on-brand-2">{t("panelTitle")}</h2>
       <div className="flex items-baseline justify-between gap-3">
         <span className="text-[15px] font-medium">{t("cashLabel")}</span>
         <span aria-live="polite" className="text-[26px] font-bold leading-[1.1]">
-          {formatAmount(r.cashToHandOver, "value")}
+          <bdi dir="ltr">{formatAmount(r.cashToHandOver, "value")}</bdi>
           <span className="ms-1.5 text-sm font-medium">{currencyLabel}</span>
         </span>
       </div>
@@ -55,10 +56,12 @@ export function ReconciliationPanel({
           expenses: formatAmount(i.expenses, "value"),
         })}
       </p>
+      {showStock && (
+        <>
       <div className="flex items-baseline justify-between gap-3 border-t border-white/15 pt-3">
         <span className="text-[15px] font-medium">{t("stockLabel")}</span>
         <span aria-live="polite" className="text-lg font-bold">
-          {formatAmount(r.stockLeft, "cases")}
+          <bdi dir="ltr">{formatAmount(r.stockLeft, "cases")}</bdi>
           <span className="ms-1.5 text-[13px] font-medium">{stockUnitLabel}</span>
         </span>
       </div>
@@ -69,6 +72,8 @@ export function ReconciliationPanel({
           returned: formatAmount(i.returned, "cases"),
         })}
       </p>
+        </>
+      )}
       {r.warnings.map((w) => (
         <p
           key={w}

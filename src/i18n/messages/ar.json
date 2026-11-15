@@ -90,10 +90,10 @@
     "methodVoice": "قولها بصوتك",
     "methodType": "اكتبها",
     "soon": "قريباً",
-    "linesTitle": "أرقام اليوم",
+    "linesTitle": "بيع النهارده",
     "moneyTitle": "الفلوس",
     "stockTitle": "البضاعة",
-    "focusTitle": "أصناف التركيز",
+    "focusTitle": "أصناف الفوكس (اختياري)",
     "cashSales": "بيع نقدي",
     "creditSales": "بيع آجل",
     "collections": "تحصيل مديونيات",
@@ -135,6 +135,7 @@
     },
     "notSellingTitle": "النهارده مش يوم بيع",
     "notSellingSub": "مفيش قفلة تتسجّل النهارده",
-    "backHome": "ارجع للرئيسية"
+    "backHome": "ارجع للرئيسية",
+    "stockSummary": "بضاعة العربية (اختياري)"
   }
 }

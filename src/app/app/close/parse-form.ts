@@ -29,10 +29,12 @@ export function returnIndexes(data: FormData): number[] {
  * Reads the day-close form. Field names: `line.<id>`, `focus.<id>`, the money and stock fields by
  * name, and `ret.<i>.description|quantity|reason`. A required field left empty is `required`, one
  * that cannot be read as a number is `invalid`; nothing unreadable is ever turned into 0.
+ * When the company has a collection-kind line, `collections` is the sum of those lines (the form
+ * has no separate field); otherwise it is read from the `collections` field, optional.
  */
 export function parseCloseForm(
   data: FormData,
-  lines: { lineId: string; unit: Unit }[],
+  lines: { lineId: string; unit: Unit; kind?: "sales" | "collection" }[],
   focus: { id: string; unit: Unit }[],
 ): ParseResult {
   const errors: Record<string, "required" | "invalid"> = {};
@@ -58,7 +60,11 @@ export function parseCloseForm(
 
   const cashSales = read("cashSales", "value", true);
   const creditSales = read("creditSales", "value", false);
-  const collections = read("collections", "value", true);
+  const collectionLines = lines.filter((l) => l.kind === "collection");
+  const collections =
+    collectionLines.length > 0
+      ? collectionLines.reduce((sum, l) => sum + (lineAmounts[l.lineId] ?? 0), 0)
+      : read("collections", "value", false);
   const expenses = read("expenses", "value", false);
   const loaded = read("loaded", "cases", false);
   const sold = read("sold", "cases", false);
@@ -68,11 +74,8 @@ export function parseCloseForm(
   for (const i of returnIndexes(data)) {
     const quantity = read(`ret.${i}.quantity`, "cases", true);
     const reason = text(data, `ret.${i}.reason`);
-    returns.push({
-      description: text(data, `ret.${i}.description`),
-      quantity,
-      reason: (REASONS.includes(reason) ? reason : "other") as ReturnReason,
-    });
+    if (!REASONS.includes(reason)) errors[`ret.${i}.reason`] = "invalid";
+    returns.push({ description: text(data, `ret.${i}.description`), quantity, reason: reason as ReturnReason });
   }
 
   if (Object.keys(errors).length > 0) return { ok: false, errors };
