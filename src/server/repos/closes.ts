@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import type { ISODate } from "@/domain/calendar";
 import * as s from "@/db/schema";
+import type { Db } from "@/db/client";
 import type { Ctx } from "@/server/ctx";
 import { currentDay } from "@/server/today";
 import { loadCalendar, loadLines } from "./month-data";
@@ -89,12 +90,21 @@ async function validate(ctx: Ctx, form: CloseForm, today: ISODate): Promise<Reco
   }
 
   const assigned = await ctx.db
-    .select({ id: s.focusAssignments.focusItemId })
+    .select({ id: s.focusAssignments.focusItemId, startsOn: s.focusItems.startsOn, endsOn: s.focusItems.endsOn })
     .from(s.focusAssignments)
-    .where(and(eq(s.focusAssignments.companyId, ctx.companyId), eq(s.focusAssignments.userId, ctx.userId)));
-  const focusIds = new Set(assigned.map((a) => a.id));
+    .innerJoin(s.focusItems, eq(s.focusItems.id, s.focusAssignments.focusItemId))
+    .where(
+      and(
+        eq(s.focusAssignments.companyId, ctx.companyId),
+        eq(s.focusItems.companyId, ctx.companyId),
+        eq(s.focusAssignments.userId, ctx.userId),
+      ),
+    );
+  const focusById = new Map(assigned.map((a) => [a.id, a]));
   for (const [id, n] of Object.entries(form.focus)) {
-    const e = focusIds.has(id) ? amountError(n) : "unknown";
+    const item = focusById.get(id);
+    const inWindow = item && errors.date === undefined ? form.date >= item.startsOn && form.date <= item.endsOn : true;
+    const e = !item ? "unknown" : !inWindow ? "outside_window" : amountError(n);
     if (e) errors[`focus.${id}`] = e;
   }
 
@@ -115,9 +125,6 @@ async function validate(ctx: Ctx, form: CloseForm, today: ISODate): Promise<Reco
 /** Validates and upserts the rep's close for form.date, replacing its line, focus and return rows. */
 export async function saveClose(ctx: Ctx, form: CloseForm, opts?: { today?: ISODate }): Promise<SaveCloseResult> {
   const today = opts?.today ?? currentDay(ctx.timeZone);
-  const errors = await validate(ctx, form, today);
-  if (Object.keys(errors).length > 0) return { ok: false, errors };
-
   const values = {
     source: "manual" as const,
     status: "confirmed" as const,
@@ -132,7 +139,11 @@ export async function saveClose(ctx: Ctx, form: CloseForm, opts?: { today?: ISOD
   };
   const companyId = ctx.companyId;
 
-  await ctx.db.transaction(async (tx) => {
+  return ctx.db.transaction(async (tx): Promise<SaveCloseResult> => {
+    // Validated inside the transaction so what is checked is what is written.
+    const errors = await validate({ ...ctx, db: tx as unknown as Db }, form, today);
+    if (Object.keys(errors).length > 0) return { ok: false, errors };
+
     const [close] = await tx
       .insert(s.dailyCloses)
       .values({ id: randomUUID(), companyId, userId: ctx.userId, date: form.date, ...values })
@@ -145,8 +156,28 @@ export async function saveClose(ctx: Ctx, form: CloseForm, opts?: { today?: ISOD
     if (!close) throw new Error("close upsert matched no row of the caller's company");
     const closeId = close.id;
 
-    await tx.delete(s.closeLines).where(and(eq(s.closeLines.closeId, closeId), eq(s.closeLines.companyId, companyId)));
-    await tx.delete(s.closeFocus).where(and(eq(s.closeFocus.closeId, closeId), eq(s.closeFocus.companyId, companyId)));
+    // Only the rows being submitted are replaced: amounts of since-deactivated lines or
+    // no-longer-offered focus items on an older day stay as they were.
+    const lineIds = Object.keys(form.lines);
+    if (lineIds.length) {
+      await tx
+        .delete(s.closeLines)
+        .where(
+          and(eq(s.closeLines.closeId, closeId), eq(s.closeLines.companyId, companyId), inArray(s.closeLines.lineId, lineIds)),
+        );
+    }
+    const focusIds = Object.keys(form.focus);
+    if (focusIds.length) {
+      await tx
+        .delete(s.closeFocus)
+        .where(
+          and(
+            eq(s.closeFocus.closeId, closeId),
+            eq(s.closeFocus.companyId, companyId),
+            inArray(s.closeFocus.focusItemId, focusIds),
+          ),
+        );
+    }
     await tx.delete(s.returns).where(and(eq(s.returns.closeId, closeId), eq(s.returns.companyId, companyId)));
 
     const lines = Object.entries(form.lines).map(([lineId, amount]) => ({
@@ -171,6 +202,6 @@ export async function saveClose(ctx: Ctx, form: CloseForm, opts?: { today?: ISOD
         .insert(s.returns)
         .values(form.returns.map((r, i) => ({ id: `${closeId}-r${String(i).padStart(3, "0")}`, companyId, closeId, ...r })));
     }
+    return { ok: true };
   });
-  return { ok: true };
 }

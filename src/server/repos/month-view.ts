@@ -20,7 +20,16 @@ export type LineView = {
   days: { date: ISODate; mark: DayMark; amount: number | null }[]; // every day of the month
 };
 
-export type FocusView = { id: string; name: string; unit: Unit; target: number; achieved: number; perDay: number | null };
+export type FocusView = {
+  id: string;
+  name: string;
+  unit: Unit;
+  target: number;
+  startsOn: ISODate;
+  endsOn: ISODate;
+  achieved: number;
+  perDay: number | null;
+};
 
 export type MonthView = {
   year: number;
@@ -97,6 +106,8 @@ export async function getMonthView(
     name: f.name,
     unit: f.unit,
     target: f.target,
+    startsOn: f.startsOn,
+    endsOn: f.endsOn,
     achieved: f.achieved,
     perDay: focusPerDay(f, cal.selling, today),
   }));

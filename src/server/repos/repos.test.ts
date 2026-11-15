@@ -182,6 +182,38 @@ describe("saveClose", () => {
   });
 });
 
+describe("saveClose across months and windows", () => {
+  const DEC = "2026-12-01";
+
+  it("keeps an earlier month's focus rows when that day is saved again", async () => {
+    const first = form("2026-11-12", { bev: 106, food: 790_000 }, { focus: { mango: 15, cola: 12 } });
+    expect(await saveClose(ahmed(), first, { today: DEC })).toEqual({ ok: true });
+    // The December screen no longer offers the November items, so the post carries none.
+    const again = form("2026-11-12", { bev: 107, food: 790_000 }, { focus: {} });
+    expect(await saveClose(ahmed(), again, { today: DEC })).toEqual({ ok: true });
+    const saved = await getClose(ahmed(), "2026-11-12");
+    expect(saved!.lines.bev).toBe(107);
+    expect(saved!.focus).toEqual({ mango: 15, cola: 12 });
+  });
+
+  it("rejects a focus amount outside the item's window", async () => {
+    const afterMango = await saveClose(ahmed(), form("2026-11-21", { bev: 10 }, { focus: { mango: 4, cola: 4 } }), {
+      today: DEC,
+    });
+    expect(afterMango).toEqual({ ok: false, errors: { "focus.mango": "outside_window" } });
+    const afterCola = await saveClose(ahmed(), form(DEC, { bev: 10 }, { focus: { cola: 4 } }), { today: DEC });
+    expect(afterCola).toEqual({ ok: false, errors: { "focus.cola": "outside_window" } });
+  });
+
+  it("keeps a deactivated line's amount when the same day is saved again", async () => {
+    await saveClose(ahmed(), form("2026-11-12", { bev: 106, food: 790_000 }), { today: DEC });
+    await db.update(s.targetLines).set({ active: false }).where(eq(s.targetLines.id, "bev"));
+    expect(await saveClose(ahmed(), form("2026-11-12", { food: 800_000 }), { today: DEC })).toEqual({ ok: true });
+    const saved = await getClose(ahmed(), "2026-11-12");
+    expect(saved!.lines).toMatchObject({ bev: 106, food: 800_000 });
+  });
+});
+
 describe("getClose", () => {
   it("returns Ahmed's close to Ahmed only", async () => {
     const mine = await getClose(ahmed(), "2026-11-12");

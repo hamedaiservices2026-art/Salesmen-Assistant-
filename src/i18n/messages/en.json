@@ -84,6 +84,7 @@
   },
   "close": {
     "title": "Close the day",
+    "titleDay": "Close for {date}",
     "dateLine": "{weekday} {day} {month}",
     "methodLabel": "How to record",
     "methodPhoto": "Report photo",
@@ -131,7 +132,8 @@
       "negative": "The number must be zero or more",
       "future": "You cannot record a day that has not come yet",
       "not_selling_day": "That is not a selling day",
-      "unknown": "This item is not yours"
+      "unknown": "This item is not yours",
+      "outside_window": "This item is not active on that day"
     },
     "notSellingTitle": "Today is not a selling day",
     "notSellingSub": "There is no close to record today",

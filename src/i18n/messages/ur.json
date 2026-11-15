@@ -84,6 +84,7 @@
   },
   "close": {
     "title": "دن کا حساب",
+    "titleDay": "{date} کا حساب",
     "dateLine": "{weekday} {day} {month}",
     "methodLabel": "درج کرنے کا طریقہ",
     "methodPhoto": "رپورٹ کی تصویر",
@@ -131,7 +132,8 @@
       "negative": "عدد صفر یا اس سے زیادہ ہونا چاہیے",
       "future": "آنے والے دن کا حساب درج نہیں ہو سکتا",
       "not_selling_day": "یہ فروخت کا دن نہیں",
-      "unknown": "یہ چیز آپ کی نہیں"
+      "unknown": "یہ چیز آپ کی نہیں",
+      "outside_window": "یہ چیز اس دن فعال نہیں تھی"
     },
     "notSellingTitle": "آج فروخت کا دن نہیں",
     "notSellingSub": "آج درج کرنے کے لیے حساب نہیں",

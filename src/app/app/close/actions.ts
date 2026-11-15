@@ -5,6 +5,7 @@ import { requireCtx } from "@/server/auth/guard";
 import { saveClose } from "@/server/repos/closes";
 import { getMonthView } from "@/server/repos/month-view";
 import { currentDay } from "@/server/today";
+import { closeMonth, focusOn } from "./close-date";
 import { parseCloseForm, returnIndexes } from "./parse-form";
 
 export type CloseState = { errors: Record<string, string> };
@@ -23,13 +24,15 @@ function formFieldErrors(errors: Record<string, string>, kept: number[]): Record
 export async function saveCloseAction(_prev: CloseState, data: FormData): Promise<CloseState> {
   const ctx = await requireCtx();
   const today = currentDay(ctx.timeZone);
-  const [year, month] = today.split("-").map(Number) as [number, number];
+  const posted = data.get("date");
+  const date = typeof posted === "string" ? posted.trim() : "";
+  const { year, month } = closeMonth(date, today);
   const view = await getMonthView(ctx, { year, month, today });
 
   const parsed = parseCloseForm(
     data,
     view.lines.map((l) => ({ lineId: l.lineId, unit: l.unit, kind: l.kind })),
-    view.focus.map((f) => ({ id: f.id, unit: f.unit })),
+    focusOn(view.focus, date).map((f) => ({ id: f.id, unit: f.unit })),
   );
   if (!parsed.ok) return { errors: parsed.errors };
 

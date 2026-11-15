@@ -84,6 +84,7 @@
   },
   "close": {
     "title": "قفلة اليوم",
+    "titleDay": "قفلة يوم {date}",
     "dateLine": "{weekday} {day} {month}",
     "methodLabel": "طريقة التسجيل",
     "methodPhoto": "صورة التقرير",
@@ -131,7 +132,8 @@
       "negative": "الرقم لازم يكون صفر أو أكتر",
       "future": "ما ينفعش تسجّل يوم لسه ما جاش",
       "not_selling_day": "اليوم ده مش يوم بيع",
-      "unknown": "البند ده مش بتاعك"
+      "unknown": "البند ده مش بتاعك",
+      "outside_window": "خارج فترة الصنف ده"
     },
     "notSellingTitle": "النهارده مش يوم بيع",
     "notSellingSub": "مفيش قفلة تتسجّل النهارده",

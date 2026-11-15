@@ -7,7 +7,7 @@ async function isSellingDay(ctx: Ctx, date: ISODate): Promise<boolean> {
   return (await loadCalendar(ctx, year, month)).selling.includes(date);
 }
 
-function isRealDate(date: string): boolean {
+export function isRealDate(date: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
   const d = new Date(`${date}T00:00:00Z`);
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === date;
@@ -26,4 +26,15 @@ export async function resolveCloseDate(
     return { date: requested, selling: true };
   }
   return { date: today, selling: await isSellingDay(ctx, today) };
+}
+
+/** Year and month of the day being recorded; today's month when the date is not a real date. */
+export function closeMonth(date: string | null | undefined, today: ISODate): { year: number; month: number } {
+  const [year, month] = (date && isRealDate(date) ? date : today).split("-").map(Number) as [number, number];
+  return { year, month };
+}
+
+/** Focus items whose window contains the date. */
+export function focusOn<T extends { startsOn: string; endsOn: string }>(items: T[], date: string): T[] {
+  return items.filter((f) => f.startsOn <= date && date <= f.endsOn);
 }

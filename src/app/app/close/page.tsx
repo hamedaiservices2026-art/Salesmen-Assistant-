@@ -8,7 +8,7 @@ import { currentDay } from "@/server/today";
 import { AppHeader } from "@/ui/components/AppHeader";
 import type { ReturnRow } from "@/ui/components/ReturnsEditor";
 import { INTL_TAG } from "@/ui/intl-tag";
-import { resolveCloseDate } from "./close-date";
+import { closeMonth, focusOn, resolveCloseDate } from "./close-date";
 import { CloseForm, type FormItem } from "./close-form";
 
 /** The three ways to record the day; only typing exists so far. */
@@ -77,7 +77,7 @@ export default async function ClosePage({ searchParams }: { searchParams: Promis
     );
   }
 
-  const [year, month] = today.split("-").map(Number) as [number, number];
+  const { year, month } = closeMonth(date, today);
   const [view, saved] = await Promise.all([getMonthView(ctx, { year, month, today }), getClose(ctx, date)]);
   const lineName = (l: { nameAr: string; nameEn: string }) => (locale === "en" ? l.nameEn : l.nameAr);
 
@@ -88,7 +88,7 @@ export default async function ClosePage({ searchParams }: { searchParams: Promis
     mode: l.unit === "cases" ? "numeric" : "decimal",
     collection: l.kind === "collection",
   }));
-  const focusItems: FormItem[] = view.focus.map((f) => ({
+  const focusItems: FormItem[] = focusOn(view.focus, date).map((f) => ({
     name: `focus.${f.id}`,
     label: f.name,
     unitLabel: home(`unit.${f.unit}`),
@@ -101,7 +101,7 @@ export default async function ClosePage({ searchParams }: { searchParams: Promis
       const n = saved.lines[l.lineId];
       if (n !== undefined) initial[`line.${l.lineId}`] = inputValue(n, l.unit);
     }
-    for (const f of view.focus) {
+    for (const f of focusOn(view.focus, date)) {
       const n = saved.focus[f.id];
       if (n !== undefined) initial[`focus.${f.id}`] = inputValue(n, f.unit);
     }
@@ -117,9 +117,14 @@ export default async function ClosePage({ searchParams }: { searchParams: Promis
     reason: r.reason,
   }));
 
+  const title =
+    date === today
+      ? t("title")
+      : t("titleDay", { date: `${d.getUTCDate()} ${fmt({ month: "long" }).format(d)}` });
+
   return (
     <>
-      <AppHeader greeting={t("title")} dateLine={dateLine} notificationsLabel={home("notifications")} />
+      <AppHeader greeting={title} dateLine={dateLine} notificationsLabel={home("notifications")} />
       <Methods
         labels={{
           group: t("methodLabel"),
