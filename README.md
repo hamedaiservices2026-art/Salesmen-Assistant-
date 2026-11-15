@@ -38,14 +38,14 @@ pnpm e2e         # builds, seeds a temporary database, and drives the whole rep 
 | `PGLITE_DIR` | Directory of the local PGlite database. Default `.data/pglite`. `pnpm e2e` points it at a temporary directory. |
 | `APP_TODAY` | `YYYY-MM-DD`. Overrides "today" for demos, screenshots and `pnpm e2e`. |
 | `ALLOW_APP_TODAY` | Set to `1` to honour `APP_TODAY` in a production build; otherwise it is ignored there. |
-| `ALLOW_LOCAL_DB` | Set to `1` to let a production build (`NODE_ENV=production`) use the local PGlite database when `DATABASE_URL` is unset. Without it a production server refuses to start without `DATABASE_URL`. Needed for local production runs such as `pnpm e2e`. |
+| `ALLOW_LOCAL_DB` | Set to `1` to let a production build (`NODE_ENV=production`) use the local PGlite database when `DATABASE_URL` is unset. Without it every database request of a production server fails with a clear error (the server itself boots; it never silently keeps data in a local folder). Needed for local production runs such as `pnpm e2e`. |
 | `ALLOW_DEMO_SEED` | Set to `1` to let `pnpm db:seed` run while `DATABASE_URL` is set. Without it the seed refuses, because re-seeding resets used invites and adds demo rows. |
 
 ## Deploying
 
 A deployed instance needs:
 
-- `DATABASE_URL`, the Postgres connection string. Without it a production server refuses to start (it will not silently keep data in a local folder). Migrations from `drizzle/` run at start-up under a Postgres advisory lock, so several instances can start together. The connection uses `prepare: false`, so a transaction-mode pooler (Supabase) works.
+- `DATABASE_URL`, the Postgres connection string. Without it every database request of a production server fails with a clear error (it will not silently keep data in a local folder). Migrations from `drizzle/` run at start-up under a Postgres session advisory lock, so several instances can start together. That lock needs a session-level connection: use the **direct** connection string (Supabase port 5432), not the transaction pooler (port 6543), until a separate `MIGRATION_DATABASE_URL` is added in plan 4. The connection already uses `prepare: false`, so the pooler can be adopted for queries once migrations run on a direct connection.
 - `NODE_ENV=production` (set by `next start`).
 - Do not set `APP_TODAY` or `ALLOW_APP_TODAY`; they exist for demos and tests.
 
