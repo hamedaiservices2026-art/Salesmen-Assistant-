@@ -16,7 +16,12 @@ import { INTL_TAG } from "@/ui/intl-tag";
 
 export default async function HomePage({ searchParams }: { searchParams: Promise<{ line?: string | string[] }> }) {
   const ctx = await requireCtx();
-  const [t, locale, params] = await Promise.all([getTranslations("home"), getLocale(), searchParams]);
+  const [t, tSettings, locale, params] = await Promise.all([
+    getTranslations("home"),
+    getTranslations("settings"),
+    getLocale(),
+    searchParams,
+  ]);
   const today = currentDay(ctx.timeZone);
   const [year, month] = today.split("-").map(Number) as [number, number];
   const [view, name] = await Promise.all([getMonthView(ctx, { year, month, today }), getDisplayName(ctx)]);
@@ -50,7 +55,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   if (!line) {
     return (
       <>
-        <AppHeader greeting={greeting} dateLine={dateLine} notificationsLabel={t("notifications")} />
+        <AppHeader greeting={greeting} dateLine={dateLine} notificationsLabel={t("notifications")} settingsLabel={tSettings("open")} />
         <main className="flex flex-1 flex-col gap-4 px-5 pb-4 pt-[18px]">
           <p className="m-0 text-base text-ink-2">{t("noLines")}</p>
           <PrimaryLink href="/app/close">{t("close")}</PrimaryLink>
@@ -127,7 +132,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
 
   return (
     <>
-      <AppHeader greeting={greeting} dateLine={dateLine} notificationsLabel={t("notifications")}>
+      <AppHeader greeting={greeting} dateLine={dateLine} notificationsLabel={t("notifications")} settingsLabel={tSettings("open")}>
         <LineTabs lines={tabs} selectedId={line.lineId} label={t("tabsLabel")} />
       </AppHeader>
       <main className="flex flex-1 flex-col gap-4 px-5 pb-4 pt-[18px]">

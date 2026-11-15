@@ -176,5 +176,26 @@
       "blocked_by_gate": "{gate} پورا ہونے تک رکی ہوئی",
       "no_target": "{line} کا ہدف ابھی نہیں"
     }
+  },
+  "history": {
+    "title": "ریکارڈ",
+    "sub": "آپ کے پچھلے مہینے",
+    "monthsLabel": "مہینے",
+    "commission": "کمیشن",
+    "daysLabel": "مہینے کے دن",
+    "empty": "ابھی کوئی ریکارڈ نہیں۔ پہلا دن بند کرتے ہی یہاں نظر آئے گا۔",
+    "emptyMonth": "اس مہینے میں کوئی دن بند نہیں ہوا۔",
+    "openMonth": "{month} کے دن دیکھیں",
+    "back": "تمام مہینے",
+    "cash": "جمع کرایا",
+    "daySummary": "{weekday} {day}"
+  },
+  "settings": {
+    "title": "ترتیبات",
+    "open": "ترتیبات",
+    "languageTitle": "زبان",
+    "languageLabel": "زبان منتخب کریں",
+    "signOut": "سائن آؤٹ",
+    "signOutNote": "دوبارہ داخل ہونے کے لیے آپ کا پن درکار ہوگا۔"
   }
 }

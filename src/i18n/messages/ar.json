@@ -176,5 +176,26 @@
       "blocked_by_gate": "موقوفة لحد ما {gate} يتحقق",
       "no_target": "لسه مفيش تارجت لـ{line}"
     }
+  },
+  "history": {
+    "title": "السجل",
+    "sub": "شهورك السابقة",
+    "monthsLabel": "الشهور",
+    "commission": "العمولة",
+    "daysLabel": "أيام الشهر",
+    "empty": "لسه مفيش سجل. أول قفلة هتظهر هنا.",
+    "emptyMonth": "مفيش قفلات في الشهر ده.",
+    "openMonth": "شوف أيام {month}",
+    "back": "كل الشهور",
+    "cash": "تسليم",
+    "daySummary": "{weekday} {day}"
+  },
+  "settings": {
+    "title": "الإعدادات",
+    "open": "الإعدادات",
+    "languageTitle": "اللغة",
+    "languageLabel": "اختيار اللغة",
+    "signOut": "تسجيل الخروج",
+    "signOutNote": "هتحتاج رقمك السري عشان تدخل تاني."
   }
 }

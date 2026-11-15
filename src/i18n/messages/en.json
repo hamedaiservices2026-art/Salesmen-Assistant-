@@ -176,5 +176,26 @@
       "blocked_by_gate": "On hold until {gate} is met",
       "no_target": "No target yet for {line}"
     }
+  },
+  "history": {
+    "title": "History",
+    "sub": "Your past months",
+    "monthsLabel": "Months",
+    "commission": "Commission",
+    "daysLabel": "Days of the month",
+    "empty": "No history yet. Your first close will show up here.",
+    "emptyMonth": "No closes in this month.",
+    "openMonth": "See the days of {month}",
+    "back": "All months",
+    "cash": "Handed over",
+    "daySummary": "{weekday} {day}"
+  },
+  "settings": {
+    "title": "Settings",
+    "open": "Settings",
+    "languageTitle": "Language",
+    "languageLabel": "Choose language",
+    "signOut": "Sign out",
+    "signOutNote": "You will need your PIN to sign in again."
   }
 }
