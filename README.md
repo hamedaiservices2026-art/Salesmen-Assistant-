@@ -67,3 +67,7 @@ Next: admin dashboard and Excel upload; photo and voice day close, assistant and
 
 - Design: `docs/superpowers/specs/2026-11-14-salesman-assistant-design.md`
 - Plans: `docs/superpowers/plans/`
+
+## Deploying
+
+Step-by-step pilot deployment (Supabase + Vercel, free tiers): [docs/DEPLOY.md](docs/DEPLOY.md).
