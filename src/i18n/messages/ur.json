@@ -175,7 +175,8 @@
       "bonus_not_met": "{achieved} از {needed} · {gap} کم",
       "blocked_by_gate": "{gate} پورا ہونے تک رکی ہوئی",
       "no_target": "{line} کا ہدف ابھی نہیں"
-    }
+    },
+    "unnamed": "یہ مد"
   },
   "history": {
     "title": "ریکارڈ",

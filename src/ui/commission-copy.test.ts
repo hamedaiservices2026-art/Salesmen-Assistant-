@@ -70,3 +70,12 @@ describe("explainResult", () => {
     expect(out.values).toEqual({ achieved: "#1000", needed: "#2500", gap: "#1500" });
   });
 });
+
+describe("explainResult missing names", () => {
+  it("uses a translated neutral word, never the raw id", () => {
+    const out = explainResult(result("no_target", { lineId: "zzz" }), stub, {}) as unknown as { values: { line: unknown } };
+    expect(out.values.line).toEqual({ key: "unnamed", values: undefined });
+    const gate = explainResult(result("blocked_by_gate", { gateId: "g_x" }), stub, {}) as unknown as { values: { gate: unknown } };
+    expect(gate.values.gate).toEqual({ key: "unnamed", values: undefined });
+  });
+});

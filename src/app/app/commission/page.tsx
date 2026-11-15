@@ -47,7 +47,7 @@ export default async function CommissionPage() {
   if (!scheme) {
     return (
       <>
-        <AppHeader greeting={t("title")} dateLine={dateLine} notificationsLabel={tHome("notifications")} />
+        <AppHeader greeting={t("title")} notificationsLabel={tHome("notifications")} />
         <main className="flex flex-1 flex-col gap-2 px-5 pb-4 pt-[18px]">
           <section aria-label={t("emptyTitle")} className="flex flex-col gap-1.5 rounded-xl bg-brand-tint px-4 py-3.5">
             <h2 className="m-0 text-[15px] font-bold">{t("emptyTitle")}</h2>

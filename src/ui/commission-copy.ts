@@ -16,7 +16,8 @@ export function explainResult(
 ): string {
   const d = r.detail;
   const id = d.lineId ?? d.focusItemId;
-  const line = d.lineId === undefined ? "" : (names[d.lineId] ?? d.lineId);
+  const unnamed = () => t("unnamed");
+  const line = d.lineId === undefined ? "" : (names[d.lineId] ?? unnamed());
   const key = `reason.${r.reason}`;
   switch (r.reason) {
     case "tier":
@@ -34,7 +35,7 @@ export function explainResult(
       return t(key, { achieved: fmt(achieved, id), needed: fmt(needed, id), gap: fmt(Math.max(0, needed - achieved), id) });
     }
     case "blocked_by_gate":
-      return t(key, { gate: d.gateId === undefined ? "" : (names[d.gateId] ?? d.gateId) });
+      return t(key, { gate: d.gateId === undefined ? "" : (names[d.gateId] ?? unnamed()) });
     case "no_target":
       return t(key, { line });
   }

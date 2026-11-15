@@ -3,17 +3,11 @@
 import { useState } from "react";
 import { Minus, Plus } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { evaluateScheme, whatIf, type Scheme, type SchemeInput } from "@/domain/commission";
+import type { Scheme, SchemeInput } from "@/domain/commission";
 import { formatAmount, formatPercent, type Unit } from "@/domain/money";
+import { whatIfAt } from "@/ui/what-if-state";
 
 export type WhatIfLine = { lineId: string; name: string; unit: Unit };
-
-const STEP: Record<Unit, number> = { cases: 5, value: 50_000 };
-
-/** The rep's average per selling day so far, rounded; 0 before any day has elapsed. */
-function startRate(achieved: number, elapsed: number): number {
-  return elapsed === 0 ? 0 : Math.round(achieved / elapsed);
-}
 
 /** Pick a line, step its daily rate, and see the month-end percent and commission, computed here with the pure engine. */
 export function WhatIf({
@@ -33,19 +27,14 @@ export function WhatIf({
 }) {
   const t = useTranslations("commission");
   const [lineId, setLineId] = useState(lines[0]?.lineId ?? "");
-  const [rates, setRates] = useState<Record<string, number>>({});
+  const [steps, setSteps] = useState<Record<string, number>>({});
   const line = lines.find((l) => l.lineId === lineId);
   if (!line) return null;
 
-  const metric = input.lines[line.lineId] ?? { target: 0, achieved: 0 };
-  const rate = rates[line.lineId] ?? startRate(metric.achieved, counts.elapsed);
-  const step = STEP[line.unit];
+  const n = steps[line.lineId] ?? 0;
+  const r = whatIfAt(scheme, input, counts, line, n);
   const unitWord = unitLabels[line.unit];
-  const setRate = (next: number) => setRates((r) => ({ ...r, [line.lineId]: Math.max(0, next) }));
-
-  const projected = whatIf(input, counts, line.lineId, rate);
-  const end = projected.lines[line.lineId] ?? metric;
-  const total = evaluateScheme(scheme, projected).total;
+  const move = (d: number) => setSteps((s) => ({ ...s, [line.lineId]: (s[line.lineId] ?? 0) + d }));
 
   const stepBtn =
     "flex size-[52px] shrink-0 items-center justify-center rounded-xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink";
@@ -76,23 +65,23 @@ export function WhatIf({
       <div className="flex items-center justify-between gap-3">
         <button
           type="button"
-          aria-label={t("whatIfLess", { step: formatAmount(step, line.unit), unit: unitWord })}
-          onClick={() => setRate(rate - step)}
-          disabled={rate <= 0}
+          aria-label={t("whatIfLess", { step: formatAmount(r.step, line.unit), unit: unitWord })}
+          onClick={() => move(-1)}
+          disabled={!r.canDecrease}
           className={stepBtn + " border border-line bg-white text-ink disabled:opacity-40"}
         >
           <Minus aria-hidden="true" size={24} strokeWidth={2} />
         </button>
         <div className="flex flex-col items-center">
           <span className="text-[34px] font-extrabold leading-[1.1]">
-            <bdi dir="ltr">{formatAmount(rate, line.unit)}</bdi>
+            <bdi dir="ltr">{formatAmount(r.rate, line.unit)}</bdi>
           </span>
           <span className="text-[13px] text-ink-2">{t("whatIfPerDay", { unit: unitWord })}</span>
         </div>
         <button
           type="button"
-          aria-label={t("whatIfMore", { step: formatAmount(step, line.unit), unit: unitWord })}
-          onClick={() => setRate(rate + step)}
+          aria-label={t("whatIfMore", { step: formatAmount(r.step, line.unit), unit: unitWord })}
+          onClick={() => move(1)}
           className={stepBtn + " border-0 bg-brand text-white hover:bg-brand-hover"}
         >
           <Plus aria-hidden="true" size={24} strokeWidth={2} />
@@ -102,13 +91,13 @@ export function WhatIf({
         <div className="flex flex-col gap-px">
           <span className="text-[13px] text-ink-2">{t("whatIfMonthEnd")}</span>
           <span className="text-xl font-bold">
-            <bdi dir="ltr" data-testid="whatif-pct">{formatPercent(end.achieved, end.target)}</bdi>
+            <bdi dir="ltr">{formatPercent(r.endAchieved, r.target)}</bdi>
           </span>
         </div>
         <div className="flex flex-col gap-px">
           <span className="text-[13px] text-ink-2">{t("whatIfTotal")}</span>
           <span className="text-xl font-bold text-brand">
-            <bdi dir="ltr" data-testid="whatif-total">{formatAmount(total, "value")}</bdi>{" "}
+            <bdi dir="ltr">{formatAmount(r.total, "value")}</bdi>{" "}
             <span className="text-[13px] font-medium">{currencyLabel}</span>
           </span>
         </div>

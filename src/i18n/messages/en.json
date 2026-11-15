@@ -175,7 +175,8 @@
       "bonus_not_met": "{achieved} of {needed} · {gap} short",
       "blocked_by_gate": "On hold until {gate} is met",
       "no_target": "No target yet for {line}"
-    }
+    },
+    "unnamed": "this item"
   },
   "history": {
     "title": "History",
