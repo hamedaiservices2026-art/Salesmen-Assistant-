@@ -1,4 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
+import { and, eq } from "drizzle-orm";
+import * as s from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import { seedDemo } from "@/db/seed";
 import { getMonthView, type LineView } from "@/server/repos/month-view";
@@ -31,5 +33,21 @@ describe("calendarCells", () => {
     expect(cells[0]).toBeNull();
     expect(cells[1]!.day).toBe(1);
     expect(cells[1]!.date).toBe("2026-11-01");
+  });
+});
+
+describe("calendarCells for a line with no target", () => {
+  it("marks closed days recorded (not below) and keeps their amounts", async () => {
+    const db = await createTestDb();
+    const seed = await seedDemo(db);
+    await db.delete(s.targets).where(and(eq(s.targets.userId, "ahmed"), eq(s.targets.lineId, "bev")));
+    const view = await getMonthView(
+      { db, companyId: seed.companyId, userId: seed.repId, role: "rep", locale: "ar", timeZone: "Asia/Riyadh" },
+      { year: 2026, month: 11, today: "2026-11-14" },
+    );
+    const cells = calendarCells(view.lines.find((l) => l.lineId === "bev")!, 0);
+    const second = cells[1]!;
+    expect(second).toMatchObject({ day: 2, mark: "recorded", amount: 118 });
+    expect(cells.some((c) => c?.mark === "below" || c?.mark === "hit")).toBe(false);
   });
 });

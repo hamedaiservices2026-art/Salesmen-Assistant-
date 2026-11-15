@@ -8,7 +8,7 @@ export const sampleScheme: Scheme = {
     {
       id: "c_bev",
       type: "tiered",
-      label: "Beverages tiers",
+      label: "شرائح المشروبات",
       lineId: "bev",
       tiers: [
         { minPct: 80, pay: { kind: "fixed", amount: 150_000 } },
@@ -19,21 +19,21 @@ export const sampleScheme: Scheme = {
     {
       id: "c_food",
       type: "per_unit",
-      label: "Food value",
+      label: "قيمة الأغذية",
       lineId: "food",
       rate: { kind: "pct_of_value", bps: 50 },
     },
     {
       id: "c_coll",
       type: "tiered",
-      label: "Collection tier",
+      label: "شريحة التحصيل",
       lineId: "coll",
       tiers: [{ minPct: 90, pay: { kind: "fixed", amount: 100_000 } }],
     },
     {
       id: "c_mango",
       type: "bonus",
-      label: "Mango juice bonus",
+      label: "حافز عصير المانجو",
       condition: { kind: "focus_at_least", focusItemId: "mango", min: 200 },
       amount: 50_000,
       startsOn: "2026-11-01",
@@ -42,7 +42,7 @@ export const sampleScheme: Scheme = {
     {
       id: "g_coll",
       type: "gate",
-      label: "Collection gate",
+      label: "شرط التحصيل",
       condition: { kind: "line_pct_at_least", lineId: "coll", minPct: 60 },
       appliesTo: ["c_bev"],
     },

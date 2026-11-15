@@ -7,8 +7,7 @@ import { getHistoryDays, getMonthSellingDays } from "@/server/repos/history";
 import { loadLines } from "@/server/repos/month-data";
 import { currentDay } from "@/server/today";
 import { formatAmount } from "@/domain/money";
-import { mergeDayRows } from "@/ui/history-rows";
-import { parseYm } from "@/ui/history-rows";
+import { mergeDayRows, parseYm } from "@/ui/history-rows";
 import { INTL_TAG } from "@/ui/intl-tag";
 
 export default async function HistoryMonthPage({
@@ -116,7 +115,7 @@ export default async function HistoryMonthPage({
                   </h2>
                   <dl className="m-0 flex flex-col gap-1.5">
                     {[
-                      ...lines.map((l) => ({ ...l, known: true })),
+                      ...lines,
                       ...Object.keys(d.lines)
                         .filter((id) => !lines.some((l) => l.lineId === id))
                         .map((id) => ({
@@ -124,7 +123,6 @@ export default async function HistoryMonthPage({
                           nameAr: t("unknownLine"),
                           nameEn: t("unknownLine"),
                           unit: "cases" as const,
-                          known: false,
                         })),
                     ]
                       .filter((l) => d.lines[l.lineId] !== undefined)

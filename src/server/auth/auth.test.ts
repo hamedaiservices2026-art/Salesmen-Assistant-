@@ -60,7 +60,7 @@ describe("acceptInvite", () => {
   });
 
   it("shows the rep's name and login before the invite is used", async () => {
-    expect(await peekInvite(db, seed.inviteToken)).toEqual({ name: "Ahmed", login: "ahmed" });
+    expect(await peekInvite(db, seed.inviteToken)).toEqual({ name: "أحمد", login: "ahmed" });
     expect(await peekInvite(db, "nope")).toBeNull();
   });
 

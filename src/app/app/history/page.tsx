@@ -5,6 +5,8 @@ import { requireCtx } from "@/server/auth/guard";
 import { getHistoryMonths } from "@/server/repos/history";
 import { loadLines } from "@/server/repos/month-data";
 import { formatAmount } from "@/domain/money";
+import { currentDay } from "@/server/today";
+import { isCurrentMonth } from "@/ui/history-rows";
 import { INTL_TAG } from "@/ui/intl-tag";
 
 export default async function HistoryPage() {
@@ -27,6 +29,7 @@ export default async function HistoryPage() {
     timeZone: "UTC",
   });
   const currency = tHome("unit.value");
+  const today = currentDay(ctx.timeZone);
 
   return (
     <>
@@ -87,7 +90,9 @@ export default async function HistoryPage() {
                     </dl>
                     <div className="flex items-baseline justify-between gap-3 border-t border-line-soft pt-3">
                       <span className="text-[14px] font-medium text-ink-2">
-                        {t("commission")}
+                        {isCurrentMonth(m, today)
+                          ? t("commissionSoFar")
+                          : t("commission")}
                       </span>
                       <span className="text-[17px] font-extrabold text-brand tabular-nums">
                         {m.commission !== null ? (

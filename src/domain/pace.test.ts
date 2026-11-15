@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computePace, markDay, nextDayRequired } from "./pace";
+import { computePace, markDay, nextDayRequired, todayNeed } from "./pace";
 
 const counts = { total: 26, elapsed: 11, left: 15 };
 
@@ -68,8 +68,11 @@ describe("markDay", () => {
     expect(markDay({ ...base, date: "2026-11-14", amount: 130 })).toBe("hit");
     expect(markDay({ ...base, date: "2026-11-15", amount: null })).toBe("future");
   });
-  it("zero target is never a hit", () => {
-    expect(markDay({ ...base, target: 0, date: "2026-11-08", amount: 5 })).toBe("below");
+  it("a closed day on a line with no target is recorded, never hit or below", () => {
+    expect(markDay({ ...base, target: 0, date: "2026-11-08", amount: 5 })).toBe("recorded");
+    expect(markDay({ ...base, target: -1, date: "2026-11-08", amount: 0 })).toBe("recorded");
+    expect(markDay({ ...base, target: 0, date: "2026-11-09", amount: null })).toBe("missing");
+    expect(markDay({ ...base, target: 0, date: "2026-11-15", amount: null })).toBe("future");
   });
 });
 
@@ -84,5 +87,26 @@ describe("nextDayRequired", () => {
   });
   it("is null on the last selling day", () => {
     expect(nextDayRequired(100, selling, "2026-11-16")).toBeNull();
+  });
+});
+
+describe("todayNeed", () => {
+  const base = { isSellingDay: true, hasClosedToday: false, requiredDaily: 120, nextDayRequired: 130, noTarget: false };
+  it("a selling day with an open close needs the daily amount", () => {
+    expect(todayNeed(base)).toEqual({ kind: "need", amount: 120 });
+  });
+  it("a recorded day shows tomorrow's need", () => {
+    expect(todayNeed({ ...base, hasClosedToday: true })).toEqual({ kind: "done", amount: 130 });
+  });
+  it("a day off is a day off with the next selling day's need, not a number to sell today", () => {
+    expect(todayNeed({ ...base, isSellingDay: false, requiredDaily: 130 })).toEqual({ kind: "off", amount: 130 });
+    expect(todayNeed({ ...base, isSellingDay: false, nextDayRequired: null, requiredDaily: null })).toEqual({
+      kind: "off",
+      amount: null,
+    });
+  });
+  it("says nothing without a target or when nothing is left", () => {
+    expect(todayNeed({ ...base, noTarget: true })).toEqual({ kind: "none", amount: null });
+    expect(todayNeed({ ...base, requiredDaily: null })).toEqual({ kind: "none", amount: null });
   });
 });

@@ -41,7 +41,7 @@ export async function seedDemo(db: Db): Promise<SeedResult> {
       { id: otherCompanyId, name: "Other Trading Co.", sellingWeekdays: [6, 0, 1, 2, 3, 4] },
     ]);
     await ins(s.users, [
-      { id: repId, companyId, role: "rep", name: "Ahmed", login: "ahmed" },
+      { id: repId, companyId, role: "rep", name: "أحمد", login: "ahmed" },
       { id: otherRepId, companyId: otherCompanyId, role: "rep", name: "Other Rep", login: "other-rep" },
     ]);
     await ins(s.targetLines, [

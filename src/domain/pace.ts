@@ -43,7 +43,8 @@ export function computePace(i: {
   return { expected, gap, remaining, requiredDaily, status, pct };
 }
 
-export type DayMark = "hit" | "below" | "missing" | "today" | "future" | "off";
+/** `recorded`: a closed day on a line with no target, so there is no rate to hit or miss. */
+export type DayMark = "hit" | "below" | "recorded" | "missing" | "today" | "future" | "off";
 
 export function markDay(i: {
   date: ISODate;
@@ -56,11 +57,30 @@ export function markDay(i: {
   if (!i.isSellingDay) return "off";
   if (i.date > i.today) return "future";
   if (i.amount === null) return i.date === i.today ? "today" : "missing";
-  return i.target > 0 && i.amount * i.total >= i.target ? "hit" : "below";
+  if (i.target <= 0) return "recorded";
+  return i.amount * i.total >= i.target ? "hit" : "below";
 }
 
 /** What is needed per selling day strictly after `today`; null when no selling days remain. */
 export function nextDayRequired(remaining: number, sellingDays: ISODate[], today: ISODate): number | null {
   const after = sellingDays.filter((d) => d > today).length;
   return after > 0 ? ceilDiv(Math.max(0, remaining), after) : null;
+}
+
+/**
+ * What the home panel says about today. A day off never asks the rep to sell: it names the next
+ * selling day's need instead.
+ */
+export function todayNeed(i: {
+  isSellingDay: boolean;
+  hasClosedToday: boolean;
+  requiredDaily: number | null;
+  nextDayRequired: number | null;
+  noTarget: boolean;
+}): { kind: "need" | "done" | "off" | "none"; amount: number | null } {
+  if (i.hasClosedToday) return { kind: "done", amount: i.nextDayRequired };
+  if (i.noTarget) return { kind: "none", amount: null };
+  if (!i.isSellingDay) return { kind: "off", amount: i.nextDayRequired };
+  if (i.requiredDaily === null) return { kind: "none", amount: null };
+  return { kind: "need", amount: i.requiredDaily };
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { sellingDays } from "@/domain/calendar";
-import { mergeDayRows, parseYm } from "./history-rows";
+import { isCurrentMonth, mergeDayRows, parseYm } from "./history-rows";
 
 const selling = sellingDays(2026, 11, [6, 0, 1, 2, 3, 4], []);
 const closedDates = [
@@ -75,5 +75,13 @@ describe("parseYm", () => {
       "2026-11-01",
     ])
       expect(parseYm(v, TODAY)).toBeNull();
+  });
+});
+
+describe("isCurrentMonth", () => {
+  it("is true only for today's own month", () => {
+    expect(isCurrentMonth({ year: 2026, month: 11 }, "2026-11-14")).toBe(true);
+    expect(isCurrentMonth({ year: 2026, month: 10 }, "2026-11-14")).toBe(false);
+    expect(isCurrentMonth({ year: 2025, month: 11 }, "2026-11-14")).toBe(false);
   });
 });

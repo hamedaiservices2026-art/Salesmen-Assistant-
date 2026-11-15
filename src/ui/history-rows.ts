@@ -11,6 +11,11 @@ export function parseYm(
   return { year: Number(m[1]), month: Number(m[2]) };
 }
 
+/** Whether the month is still running, so its commission is the figure so far and not final. */
+export function isCurrentMonth(m: { year: number; month: number }, today: ISODate): boolean {
+  return `${m.year}-${String(m.month).padStart(2, "0")}` === today.slice(0, 7);
+}
+
 export type DayRow<D extends { date: ISODate }> =
   | { kind: "day"; day: D }
   | { kind: "gap"; date: ISODate };

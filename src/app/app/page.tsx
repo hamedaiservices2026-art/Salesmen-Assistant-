@@ -4,6 +4,7 @@ import { getMonthView } from "@/server/repos/month-view";
 import { getDisplayName } from "@/server/repos/profile";
 import { currentDay } from "@/server/today";
 import { formatAmount, formatPercent, type Unit } from "@/domain/money";
+import { todayNeed } from "@/domain/pace";
 import { AppHeader } from "@/ui/components/AppHeader";
 import { FocusList } from "@/ui/components/FocusList";
 import { LineTabs } from "@/ui/components/LineTabs";
@@ -83,32 +84,48 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   const hit = line.days.filter((d) => d.mark === "hit").length;
   const below = line.days.filter((d) => d.mark === "below").length;
   const hasMissing = line.days.some((d) => d.mark === "missing");
-  const needsToday = !view.hasClosedToday && pace.requiredDaily !== null && pace.status !== "no_target";
+  const hasRecorded = line.days.some((d) => d.mark === "recorded");
+  const need = todayNeed({
+    isSellingDay: view.todaySelling,
+    hasClosedToday: view.hasClosedToday,
+    requiredDaily: pace.requiredDaily,
+    nextDayRequired: line.nextDayRequired,
+    noTarget: pace.status === "no_target",
+  });
   const summary =
     t("calendarSummary", { month: fmt({ month: "long" }).format(todayDate), hit, below, day: todayDate.getUTCDate() }) +
-    (needsToday && pace.requiredDaily !== null
-      ? t("calendarSummaryRequired", { required: amt(pace.requiredDaily), unit: unitLabel })
+    (need.kind === "need" && need.amount !== null
+      ? t("calendarSummaryRequired", { required: amt(need.amount), unit: unitLabel })
       : "");
 
   let panel: React.ReactNode = null;
-  if (view.hasClosedToday) {
-    const tomorrow = line.nextDayRequired;
+  if (need.kind === "done") {
     panel = (
       <TodayPanel
         label={t("needLabel")}
         title={t("doneTitle")}
-        sub={tomorrow === null ? t("doneLast") : t("doneSub")}
-        amount={tomorrow === null ? null : amt(tomorrow)}
+        sub={need.amount === null ? t("doneLast") : t("doneSub")}
+        amount={need.amount === null ? null : amt(need.amount)}
         unitLabel={unitLabel}
       />
     );
-  } else if (needsToday && pace.requiredDaily !== null) {
+  } else if (need.kind === "off") {
+    panel = (
+      <TodayPanel
+        label={t("needLabel")}
+        title={t("offTitle")}
+        sub={need.amount === null ? null : t("offSub")}
+        amount={need.amount === null ? null : amt(need.amount)}
+        unitLabel={unitLabel}
+      />
+    );
+  } else if (need.kind === "need" && need.amount !== null) {
     panel = (
       <TodayPanel
         label={t("needLabel")}
         title={t("needTitle")}
         sub={t("needSub", { remaining: amt(pace.remaining), left: view.counts.left })}
-        amount={amt(pace.requiredDaily)}
+        amount={amt(need.amount)}
         unitLabel={unitLabel}
       />
     );
@@ -168,7 +185,12 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
           sectionLabel={t("daysLabel")}
           todayLabel={t("today")}
           missingLabel={(day) => t("missingLink", { day })}
-          legend={{ hit: t("legendHit"), below: t("legendBelow"), missing: hasMissing ? t("legendMissing") : null }}
+          legend={{
+            hit: t("legendHit"),
+            below: t("legendBelow"),
+            missing: hasMissing ? t("legendMissing") : null,
+            recorded: hasRecorded ? t("legendRecorded") : null,
+          }}
         />
 
         {panel}

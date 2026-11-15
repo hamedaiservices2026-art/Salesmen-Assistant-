@@ -40,6 +40,8 @@ export type MonthView = {
   lines: LineView[];
   focus: FocusView[];
   hasClosedToday: boolean;
+  /** Whether `today` is a selling day. */
+  todaySelling: boolean;
 };
 
 /** ceil(remaining ÷ selling days left in the item's window from today); null when nothing is left. */
@@ -121,5 +123,6 @@ export async function getMonthView(
     lines,
     focus,
     hasClosedToday: days.closedDates.has(today),
+    todaySelling: selling.has(today),
   };
 }

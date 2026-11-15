@@ -12,6 +12,7 @@ function cellClass(mark: DayMark, isToday: boolean): string {
     case "hit":
       return `${base} bg-brand text-white${ring}`;
     case "below":
+    case "recorded":
       return `${base} bg-cell text-cell-ink${ring}`;
     case "missing":
       return `${base} border border-dashed border-line text-ink-2`;
@@ -46,7 +47,7 @@ export function MonthCalendar({
   sectionLabel: string;
   todayLabel: string;
   missingLabel: (day: number) => string;
-  legend: { hit: string; below: string; missing: string | null };
+  legend: { hit: string; below: string; missing: string | null; recorded?: string | null };
 }) {
   return (
     <section aria-label={sectionLabel} className="flex flex-col gap-1.5">
@@ -79,7 +80,7 @@ export function MonthCalendar({
             <div key={c.date} className={cellClass(c.mark, c.date === today)}>
               <span className={"text-[15px] " + (quiet ? "font-semibold" : "font-extrabold")}>{c.day}</span>
               {c.mark === "today" && <span className="text-xs font-bold">{todayLabel}</span>}
-              {!off && c.amount !== null && (c.mark === "hit" || c.mark === "below") && (
+              {!off && c.amount !== null && (c.mark === "hit" || c.mark === "below" || c.mark === "recorded") && (
                 <span className="text-xs font-medium">{formatAmount(c.amount, unit)}</span>
               )}
             </div>
@@ -95,6 +96,12 @@ export function MonthCalendar({
           <span aria-hidden="true" className="size-3 rounded-[3px] border border-line bg-cell" />
           {legend.below}
         </span>
+        {legend.recorded && (
+          <span className="inline-flex items-center gap-1.5">
+            <span aria-hidden="true" className="size-3 rounded-[3px] border border-line bg-cell" />
+            {legend.recorded}
+          </span>
+        )}
         {legend.missing && (
           <span className="inline-flex items-center gap-1.5">
             <span aria-hidden="true" className="size-3 rounded-[3px] border border-dashed border-line" />
