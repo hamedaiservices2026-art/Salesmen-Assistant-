@@ -89,12 +89,22 @@ export async function signIn(db: Db, login: string, rawPin: string, now: Date = 
   const unlocked = or(isNull(s.users.lockedUntil), lte(s.users.lockedUntil, now));
   const reserved = await db
     .update(s.users)
-    .set({ failedAttempts: sql`${s.users.failedAttempts} + 1`, updatedAt: now })
-    .where(and(eq(s.users.id, user.id), unlocked, lt(s.users.failedAttempts, MAX_FAILURES)))
+    .set({
+      // A counter left at the limit with no lock (the lock write was lost) restarts once the window has passed.
+      failedAttempts: sql`CASE WHEN ${s.users.failedAttempts} >= ${MAX_FAILURES} THEN 1 ELSE ${s.users.failedAttempts} + 1 END`,
+      updatedAt: now,
+    })
+    .where(
+      and(
+        eq(s.users.id, user.id),
+        unlocked,
+        or(lt(s.users.failedAttempts, MAX_FAILURES), lte(s.users.updatedAt, new Date(now.getTime() - LOCK_MS))),
+      ),
+    )
     .returning({ id: s.users.id });
   if (reserved.length === 0) {
-    // Either locked, or the counter sits at the limit with the lock about to be written.
-    // An expired lock leaves a counter of 0 (reset below), so a stale limit means a live lock.
+    // Either locked, or the counter sits at the limit with the lock about to be written
+    // (its last update is less than the lock window old).
     return { ok: false, error: "locked" };
   }
 

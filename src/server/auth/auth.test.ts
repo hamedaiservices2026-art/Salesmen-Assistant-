@@ -181,6 +181,52 @@ describe("lockout under concurrency", () => {
   });
 });
 
+describe("a counter stuck at the limit", () => {
+  beforeEach(async () => {
+    await acceptInvite(db, seed.inviteToken, "482915");
+  });
+  const t0 = new Date("2026-11-14T10:00:00Z");
+  const stick = (minutesAgo: number) =>
+    db
+      .update(s.users)
+      .set({ failedAttempts: 5, lockedUntil: null, updatedAt: new Date(t0.getTime() - minutesAgo * 60_000) })
+      .where(eq(s.users.id, "ahmed"));
+
+  it("lets the right PIN in once the lock window has passed (16 minutes)", async () => {
+    await stick(16);
+    const r = await signIn(db, "ahmed", "482915", t0);
+    expect(r.ok).toBe(true);
+    const [user] = await db.select().from(s.users).where(eq(s.users.id, "ahmed"));
+    expect(user!.failedAttempts).toBe(0);
+  });
+
+  it("stays locked inside the window (5 minutes)", async () => {
+    await stick(5);
+    expect(await signIn(db, "ahmed", "482915", t0)).toEqual({ ok: false, error: "locked" });
+  });
+
+  it("restarts the count at 1 after a wrong PIN past the window", async () => {
+    await stick(16);
+    expect(await signIn(db, "ahmed", "000000", t0)).toEqual({ ok: false, error: "invalid" });
+    const [user] = await db.select().from(s.users).where(eq(s.users.id, "ahmed"));
+    expect(user!.failedAttempts).toBe(1);
+  });
+
+  it("refuses a reserved correct PIN when parallel failures set a lock meanwhile", async () => {
+    vi.mocked(pin.verifySecret).mockImplementationOnce(async () => {
+      await db
+        .update(s.users)
+        .set({ failedAttempts: 0, lockedUntil: new Date(t0.getTime() + 15 * 60_000) })
+        .where(eq(s.users.id, "ahmed"));
+      return true;
+    });
+    const before = (await db.select().from(s.sessions).where(eq(s.sessions.userId, "ahmed"))).length;
+    expect(await signIn(db, "ahmed", "482915", t0)).toEqual({ ok: false, error: "locked" });
+    const after = (await db.select().from(s.sessions).where(eq(s.sessions.userId, "ahmed"))).length;
+    expect(after).toBe(before);
+  });
+});
+
 describe("invite acceptance side effects", () => {
   it("voids the user's other invites and existing sessions", async () => {
     const other = await createInvite(db, "ahmed");
