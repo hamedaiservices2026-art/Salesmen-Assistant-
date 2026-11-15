@@ -189,7 +189,9 @@
     "openMonth": "See the days of {month}",
     "back": "All months",
     "cash": "Handed over",
-    "daySummary": "{weekday} {day}"
+    "daySummary": "{weekday} {day}",
+    "gap": "Not recorded · record it now",
+    "unknownLine": "Old target line"
   },
   "settings": {
     "title": "Settings",

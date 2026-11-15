@@ -3,10 +3,12 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { getLocale, getTranslations } from "next-intl/server";
 import { requireCtx } from "@/server/auth/guard";
-import { getHistoryDays } from "@/server/repos/history";
+import { getHistoryDays, getMonthSellingDays } from "@/server/repos/history";
 import { loadLines } from "@/server/repos/month-data";
 import { currentDay } from "@/server/today";
 import { formatAmount } from "@/domain/money";
+import { mergeDayRows } from "@/ui/history-rows";
+import { parseYm } from "@/ui/history-rows";
 import { INTL_TAG } from "@/ui/intl-tag";
 
 export default async function HistoryMonthPage({
@@ -15,22 +17,21 @@ export default async function HistoryMonthPage({
   params: Promise<{ ym: string }>;
 }) {
   const { ym } = await params;
-  const match = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(ym);
-  if (!match) notFound();
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-
   const ctx = await requireCtx();
   const today = currentDay(ctx.timeZone);
-  if (ym > today.slice(0, 7)) notFound();
+  const parsed = parseYm(ym, today);
+  if (!parsed) notFound();
+  const { year, month } = parsed;
 
-  const [t, tHome, locale, days, lines] = await Promise.all([
+  const [t, tHome, locale, closed, selling, lines] = await Promise.all([
     getTranslations("history"),
     getTranslations("home"),
     getLocale(),
     getHistoryDays(ctx, year, month),
+    getMonthSellingDays(ctx, year, month),
     loadLines(ctx),
   ]);
+  const rows = mergeDayRows(closed, selling, today);
   const loc = locale as keyof typeof INTL_TAG;
   const tag = INTL_TAG[loc] ?? "ar-EG";
   const first = new Date(Date.UTC(year, month - 1, 1));
@@ -66,7 +67,7 @@ export default async function HistoryMonthPage({
         <h1 className="m-0 text-[18px] font-bold">{title}</h1>
       </header>
       <main className="flex flex-1 flex-col gap-3 px-5 pb-4 pt-[18px]">
-        {days.length === 0 ? (
+        {rows.length === 0 ? (
           <section
             aria-label={title}
             className="rounded-xl bg-brand-tint px-4 py-3.5"
@@ -78,7 +79,29 @@ export default async function HistoryMonthPage({
             aria-label={t("daysLabel")}
             className="m-0 flex list-none flex-col gap-3 p-0"
           >
-            {days.map((d) => {
+            {rows.map((row) => {
+              if (row.kind === "gap") {
+                const gapDate = new Date(`${row.date}T00:00:00Z`);
+                return (
+                  <li key={row.date}>
+                    <Link
+                      href={`/app/close?date=${row.date}`}
+                      className="flex min-h-11 flex-col gap-0.5 rounded-xl border border-dashed border-line bg-white px-4 py-3 text-ink no-underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+                    >
+                      <span className="text-[16px] font-bold">
+                        {t("daySummary", {
+                          weekday: weekday.format(gapDate),
+                          day: gapDate.getUTCDate(),
+                        })}
+                      </span>
+                      <span className="text-[14px] font-medium text-brand">
+                        {t("gap")}
+                      </span>
+                    </Link>
+                  </li>
+                );
+              }
+              const d = row.day;
               const date = new Date(`${d.date}T00:00:00Z`);
               return (
                 <li
@@ -92,7 +115,18 @@ export default async function HistoryMonthPage({
                     })}
                   </h2>
                   <dl className="m-0 flex flex-col gap-1.5">
-                    {lines
+                    {[
+                      ...lines.map((l) => ({ ...l, known: true })),
+                      ...Object.keys(d.lines)
+                        .filter((id) => !lines.some((l) => l.lineId === id))
+                        .map((id) => ({
+                          lineId: id,
+                          nameAr: t("unknownLine"),
+                          nameEn: t("unknownLine"),
+                          unit: "cases" as const,
+                          known: false,
+                        })),
+                    ]
                       .filter((l) => d.lines[l.lineId] !== undefined)
                       .map((l) => (
                         <div

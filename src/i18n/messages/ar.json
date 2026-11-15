@@ -189,7 +189,9 @@
     "openMonth": "شوف أيام {month}",
     "back": "كل الشهور",
     "cash": "تسليم",
-    "daySummary": "{weekday} {day}"
+    "daySummary": "{weekday} {day}",
+    "gap": "ما اتسجّلش · سجّله دلوقتي",
+    "unknownLine": "خط تارجت قديم"
   },
   "settings": {
     "title": "الإعدادات",

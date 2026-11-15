@@ -260,3 +260,11 @@ describe("nextDayRequired in the month view", () => {
     expect(view.lines.find((l) => l.lineId === "bev")!.nextDayRequired).toBeNull();
   });
 });
+
+describe("history without a scheme", () => {
+  it("reports a null commission when no scheme is published", async () => {
+    await db.update(s.schemes).set({ published: false });
+    const [m] = await getHistoryMonths(ahmed());
+    expect(m!.commission).toBeNull();
+  });
+});

@@ -3,7 +3,7 @@ import { ChevronRight } from "lucide-react";
 import { getLocale, getTranslations } from "next-intl/server";
 import { requireCtx } from "@/server/auth/guard";
 import { getHistoryMonths } from "@/server/repos/history";
-import { loadLines, loadScheme } from "@/server/repos/month-data";
+import { loadLines } from "@/server/repos/month-data";
 import { formatAmount } from "@/domain/money";
 import { INTL_TAG } from "@/ui/intl-tag";
 
@@ -16,10 +16,6 @@ export default async function HistoryPage() {
     getHistoryMonths(ctx),
     loadLines(ctx),
   ]);
-  // A month without a published scheme shows no commission, not zero.
-  const hasScheme = await Promise.all(
-    months.map(async (m) => (await loadScheme(ctx, m.year, m.month)) !== null),
-  );
   const names = new Map(
     lines.map((l) => [l.lineId, locale === "en" ? l.nameEn : l.nameAr]),
   );
@@ -51,7 +47,7 @@ export default async function HistoryPage() {
             aria-label={t("monthsLabel")}
             className="m-0 flex list-none flex-col gap-3 p-0"
           >
-            {months.map((m, i) => {
+            {months.map((m) => {
               const title = monthTitle.format(
                 new Date(Date.UTC(m.year, m.month - 1, 1)),
               );
@@ -79,7 +75,7 @@ export default async function HistoryPage() {
                           className="flex items-baseline justify-between gap-3"
                         >
                           <dt className="text-[14px] text-ink-2">
-                            {names.get(l.lineId) ?? l.lineId}
+                            {names.get(l.lineId) ?? t("unknownLine")}
                           </dt>
                           <dd className="m-0 text-[15px] font-bold tabular-nums">
                             <bdi dir="ltr">
@@ -94,7 +90,7 @@ export default async function HistoryPage() {
                         {t("commission")}
                       </span>
                       <span className="text-[17px] font-extrabold text-brand tabular-nums">
-                        {hasScheme[i] ? (
+                        {m.commission !== null ? (
                           <>
                             <bdi dir="ltr">
                               {formatAmount(m.commission, "value")}

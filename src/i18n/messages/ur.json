@@ -189,7 +189,9 @@
     "openMonth": "{month} کے دن دیکھیں",
     "back": "تمام مہینے",
     "cash": "جمع کرایا",
-    "daySummary": "{weekday} {day}"
+    "daySummary": "{weekday} {day}",
+    "gap": "درج نہیں ہوا · ابھی درج کریں",
+    "unknownLine": "پرانی ٹارگٹ لائن"
   },
   "settings": {
     "title": "ترتیبات",
