@@ -6,7 +6,7 @@ import type { Db } from "@/db/client";
 import * as s from "@/db/schema";
 import * as pin from "./pin";
 import { hashSecret, verifySecret } from "./pin";
-import { acceptInvite, createInvite } from "./invites";
+import { acceptInvite, createInvite, peekInvite } from "./invites";
 import { createSession, destroySession, getSessionUser, signIn } from "./sessions";
 
 vi.mock("./pin", async (orig) => {
@@ -57,6 +57,11 @@ describe("acceptInvite", () => {
       expect(await acceptInvite(db, seed.inviteToken, pin)).toEqual({ ok: false, error: "weak_pin" });
     }
     expect((await acceptInvite(db, seed.inviteToken, "482915")).ok).toBe(true);
+  });
+
+  it("shows the rep's name and login before the invite is used", async () => {
+    expect(await peekInvite(db, seed.inviteToken)).toEqual({ name: "Ahmed", login: "ahmed" });
+    expect(await peekInvite(db, "nope")).toBeNull();
   });
 
   it("rejects an unknown token", async () => {
@@ -125,7 +130,21 @@ describe("sessions", () => {
     const rows = await db.select().from(s.sessions);
     expect(rows.some((r) => r.tokenHash === token)).toBe(false);
     expect(await getSessionUser(db, token, new Date(now.getTime() + 89 * 86_400_000))).not.toBeNull();
-    expect(await getSessionUser(db, token, new Date(now.getTime() + 91 * 86_400_000))).toBeNull();
+    const other = await createSession(db, "ahmed", now);
+    expect(await getSessionUser(db, other, new Date(now.getTime() + 91 * 86_400_000))).toBeNull();
+  });
+
+  it("renews its expiry only once less than half the lifetime remains", async () => {
+    const now = new Date("2026-11-14T10:00:00Z");
+    const token = await createSession(db, "ahmed", now);
+    const expiry = async () => (await db.select().from(s.sessions).where(eq(s.sessions.userId, "ahmed")))[0]!.expiresAt;
+    const first = await expiry();
+    await getSessionUser(db, token, new Date(now.getTime() + 40 * 86_400_000)); // 50 days left: untouched
+    expect((await expiry()).getTime()).toBe(first.getTime());
+    const later = new Date(now.getTime() + 50 * 86_400_000); // 40 days left: renewed
+    await getSessionUser(db, token, later);
+    expect((await expiry()).getTime()).toBe(later.getTime() + 90 * 86_400_000);
+    expect(await getSessionUser(db, token, new Date(now.getTime() + 130 * 86_400_000))).not.toBeNull();
   });
 
   it("rejects unknown tokens", async () => {

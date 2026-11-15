@@ -8,6 +8,8 @@ import { hashToken, newToken } from "./token";
 
 export const SESSION_COOKIE = "session";
 export const SESSION_TTL_MS = 90 * 24 * 60 * 60 * 1000;
+/** Browser cookie lifetime; the stored expiry is the authority and is renewed while the rep keeps using the app. */
+export const SESSION_COOKIE_MAX_AGE_S = 365 * 24 * 60 * 60;
 const MAX_FAILURES = 5;
 const LOCK_MS = 15 * 60 * 1000;
 
@@ -45,6 +47,13 @@ export async function getSessionUser(db: Db, token: string, now: Date = new Date
     .innerJoin(s.companies, eq(s.companies.id, s.users.companyId))
     .where(eq(s.sessions.tokenHash, hashToken(token)));
   if (!row || !row.active || row.expiresAt.getTime() <= now.getTime()) return null;
+  if (row.expiresAt.getTime() - now.getTime() < SESSION_TTL_MS / 2) {
+    // Sliding expiry: renewed once less than half the lifetime remains.
+    await db
+      .update(s.sessions)
+      .set({ expiresAt: new Date(now.getTime() + SESSION_TTL_MS), updatedAt: now })
+      .where(eq(s.sessions.tokenHash, hashToken(token)));
+  }
   return {
     db,
     companyId: row.companyId,

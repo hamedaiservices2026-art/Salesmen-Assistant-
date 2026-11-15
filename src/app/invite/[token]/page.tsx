@@ -19,6 +19,12 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
   }
   return (
     <AuthShell title={t("invite.heading", { name: invite.name })}>
+      <p className="m-0 mb-5 text-lg text-ink-2">
+        {t("invite.yourLogin")}{" "}
+        <strong dir="ltr" className="select-all text-2xl text-ink">
+          {invite.login}
+        </strong>
+      </p>
       <InviteForm token={token} />
     </AuthShell>
   );

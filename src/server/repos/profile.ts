@@ -10,3 +10,12 @@ export async function getDisplayName(ctx: Ctx): Promise<string> {
     .where(and(eq(s.users.id, ctx.userId), eq(s.users.companyId, ctx.companyId)));
   return row?.name ?? "";
 }
+
+/** The signed-in user's username, shown in Settings so he can sign in again. */
+export async function getLogin(ctx: Ctx): Promise<string> {
+  const [row] = await ctx.db
+    .select({ login: s.users.login })
+    .from(s.users)
+    .where(and(eq(s.users.id, ctx.userId), eq(s.users.companyId, ctx.companyId)));
+  return row?.login ?? "";
+}

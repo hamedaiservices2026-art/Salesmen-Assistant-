@@ -3,16 +3,14 @@ import { getLocale, getTranslations } from "next-intl/server";
 import { LOCALES } from "@/i18n/config";
 import { signOutAction } from "@/app/(auth-actions)/actions";
 import { requireCtx } from "@/server/auth/guard";
+import { getLogin } from "@/server/repos/profile";
 import { setLocaleAction } from "./actions";
 
 const OWN_NAME = { ar: "العربية", en: "English", ur: "اردو" } as const;
 
 export default async function SettingsPage() {
-  await requireCtx();
-  const [t, locale] = await Promise.all([
-    getTranslations("settings"),
-    getLocale(),
-  ]);
+  const ctx = await requireCtx();
+  const [t, locale, login] = await Promise.all([getTranslations("settings"), getLocale(), getLogin(ctx)]);
   return (
     <>
       <header className="bg-brand px-5 py-4 text-white">
@@ -60,6 +58,12 @@ export default async function SettingsPage() {
           </form>
         </section>
         <form action={signOutAction} className="flex flex-col gap-2">
+          <p className="m-0 flex flex-wrap items-baseline gap-2 text-[15px]">
+            <span className="text-ink-2">{t("loginLabel")}</span>
+            <strong dir="ltr" className="select-all text-[18px]">
+              {login}
+            </strong>
+          </p>
           <button
             type="submit"
             className="flex min-h-[52px] items-center justify-center rounded-xl border border-line bg-white text-base font-bold text-ink hover:bg-brand-tint focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"

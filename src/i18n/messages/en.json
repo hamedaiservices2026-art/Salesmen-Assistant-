@@ -12,6 +12,7 @@
   "auth": {
     "invite": {
       "heading": "Welcome {name}",
+      "yourLogin": "Your username:",
       "instruction": "Choose a 6-digit PIN",
       "pin": "PIN",
       "confirm": "Type the PIN again",
@@ -201,6 +202,7 @@
     "languageTitle": "Language",
     "languageLabel": "Choose language",
     "signOut": "Sign out",
-    "signOutNote": "You will need your PIN to sign in again."
+    "loginLabel": "Username",
+    "signOutNote": "You will need your username and PIN to sign in again."
   }
 }

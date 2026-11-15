@@ -9,7 +9,7 @@ import { hashToken, newToken } from "./token";
 export const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 export type AcceptInviteResult =
-  | { ok: true; sessionToken: string }
+  | { ok: true; sessionToken: string; login: string }
   | { ok: false; error: "invalid" | "expired" | "used" | "weak_pin" };
 
 /** Creates an invite for a user and returns the raw token (only its hash is stored). */
@@ -32,14 +32,14 @@ export async function peekInvite(
   db: Db,
   token: string,
   now: Date = new Date(),
-): Promise<{ name: string } | null> {
+): Promise<{ name: string; login: string } | null> {
   const [row] = await db
-    .select({ name: s.users.name, usedAt: s.invites.usedAt, expiresAt: s.invites.expiresAt, active: s.users.active })
+    .select({ name: s.users.name, login: s.users.login, usedAt: s.invites.usedAt, expiresAt: s.invites.expiresAt, active: s.users.active })
     .from(s.invites)
     .innerJoin(s.users, eq(s.users.id, s.invites.userId))
     .where(eq(s.invites.tokenHash, hashToken(token)));
   if (!row || !row.active || row.usedAt || row.expiresAt.getTime() <= now.getTime()) return null;
-  return { name: row.name };
+  return { name: row.name, login: row.login };
 }
 
 export async function acceptInvite(
@@ -50,7 +50,7 @@ export async function acceptInvite(
 ): Promise<AcceptInviteResult> {
   const pin = normalizePin(rawPin);
   const [invite] = await db
-    .select({ invite: s.invites, active: s.users.active })
+    .select({ invite: s.invites, active: s.users.active, login: s.users.login })
     .from(s.invites)
     .innerJoin(s.users, eq(s.users.id, s.invites.userId))
     .where(eq(s.invites.tokenHash, hashToken(token)));
@@ -81,6 +81,6 @@ export async function acceptInvite(
       .update(s.users)
       .set({ pinHash, failedAttempts: 0, lockedUntil: null, updatedAt: now })
       .where(eq(s.users.id, userId));
-    return { ok: true, sessionToken: await createSession(tx as unknown as Db, userId, now) };
+    return { ok: true, sessionToken: await createSession(tx as unknown as Db, userId, now), login: invite.login };
   });
 }
