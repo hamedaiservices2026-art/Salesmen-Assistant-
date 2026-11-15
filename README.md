@@ -37,7 +37,18 @@ pnpm e2e         # builds, seeds a fresh database, and drives the whole rep flow
 | `DATABASE_URL` | Postgres connection string. When unset, the app uses a local PGlite database in `.data/pglite`. |
 | `APP_TODAY` | `YYYY-MM-DD`. Overrides "today" for demos, screenshots and `pnpm e2e`. |
 | `ALLOW_APP_TODAY` | Set to `1` to honour `APP_TODAY` in a production build; otherwise it is ignored there. |
+| `ALLOW_LOCAL_DB` | Set to `1` to let a production build (`NODE_ENV=production`) use the local PGlite database when `DATABASE_URL` is unset. Without it a production server refuses to start without `DATABASE_URL`. Needed for local production runs such as `pnpm e2e`. |
 | `ALLOW_DEMO_SEED` | Set to `1` to let `pnpm db:seed` run while `DATABASE_URL` is set. Without it the seed refuses, because re-seeding resets used invites and adds demo rows. |
+
+## Deploying
+
+A deployed instance needs:
+
+- `DATABASE_URL`, the Postgres connection string. Without it a production server refuses to start (it will not silently keep data in a local folder). Migrations from `drizzle/` run at start-up under a Postgres advisory lock, so several instances can start together. The connection uses `prepare: false`, so a transaction-mode pooler (Supabase) works.
+- `NODE_ENV=production` (set by `next start`).
+- Do not set `APP_TODAY` or `ALLOW_APP_TODAY`; they exist for demos and tests.
+
+The demo seed is not part of a deployment. To seed a deployed database anyway (a staging copy, for example) set `ALLOW_DEMO_SEED=1` together with `DATABASE_URL`; without it `pnpm db:seed` refuses.
 
 ## Local database warning
 

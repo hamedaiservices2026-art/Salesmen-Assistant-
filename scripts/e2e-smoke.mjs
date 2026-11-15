@@ -55,7 +55,7 @@ async function waitForServer(base) {
 }
 
 async function main() {
-  const env = { APP_TODAY: "2026-11-14", ALLOW_APP_TODAY: "1" };
+  const env = { APP_TODAY: "2026-11-14", ALLOW_APP_TODAY: "1", ALLOW_LOCAL_DB: "1" };
   delete process.env.DATABASE_URL;
 
   console.log("Building...");

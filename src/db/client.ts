@@ -1,31 +1,31 @@
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import * as schema from "./schema";
+import { resolveDbTarget } from "./target";
 
 /** Drizzle database type that both the Postgres and PGlite drivers satisfy. */
 export type Db = PgDatabase<PgQueryResultHKT, typeof schema>;
 
-const PGLITE_DIR = ".data/pglite";
-
 async function open(): Promise<Db> {
-  const url = process.env.DATABASE_URL;
-  if (url) {
+  const target = resolveDbTarget(process.env);
+  if (target.kind === "postgres") {
     const [{ drizzle }, { default: postgres }, { migratePostgres }] = await Promise.all([
       import("drizzle-orm/postgres-js"),
       import("postgres"),
       import("./migrate"),
     ]);
-    const db = drizzle(postgres(url), { schema });
-    await migratePostgres(db as never);
-    return db as unknown as Db;
+    await migratePostgres(target.url);
+    // prepare: false keeps it working behind a transaction-mode pooler (Supabase).
+    return drizzle(postgres(target.url, { prepare: false }), { schema }) as unknown as Db;
   }
-  const [{ drizzle }, { PGlite }, { migratePglite }, { mkdir }] = await Promise.all([
+  const [{ drizzle }, { PGlite }, { migratePglite }, { mkdir }, { dirname }] = await Promise.all([
     import("drizzle-orm/pglite"),
     import("@electric-sql/pglite"),
     import("./migrate"),
     import("node:fs/promises"),
+    import("node:path"),
   ]);
-  await mkdir(".data", { recursive: true });
-  const db = drizzle(new PGlite(PGLITE_DIR), { schema });
+  await mkdir(dirname(target.dir), { recursive: true });
+  const db = drizzle(new PGlite(target.dir), { schema });
   await migratePglite(db as never);
   return db as unknown as Db;
 }
