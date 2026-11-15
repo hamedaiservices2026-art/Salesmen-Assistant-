@@ -101,6 +101,12 @@ describe("parseCloseForm", () => {
     expect(r.ok && r.form.collections).toBe(1900000);
   });
 
+  it("without a collection line, an unreadable standalone collections field is invalid", () => {
+    const noColl = lines.filter((l) => l.lineId !== "coll");
+    const r = parseCloseForm(data({ "line.bev": "130", "line.food": "100", collections: "abc" }), noColl, focus);
+    expect(r).toEqual({ ok: false, errors: { collections: "invalid" } });
+  });
+
   it("without a collection line, collections is its own optional field", () => {
     const none = parseCloseForm(data(good), lines, focus);
     expect(none.ok && none.form.collections).toBe(0);

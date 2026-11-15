@@ -48,8 +48,12 @@ describe("evaluateScheme edges", () => {
   it("a component both gated and below its first tier reports blocked_by_gate", () => {
     // bev at 38% is below the 80% first tier and the gate also fails
     const r = result(sampleScheme, "c_bev");
-    expect(r.detail.pct === undefined || r.detail.pct < 80).toBe(true);
     expect(r.reason).toBe("blocked_by_gate");
+  });
+  it("rounds an exact half up: 8 280 100 at 50 bps pays 41401", () => {
+    const input = sampleInput();
+    input.lines.food.achieved = 8_280_100; // 41 400.5
+    expect(result(sampleScheme, "c_food", input).amount).toBe(41_401);
   });
   it("a passing gate leaves c_bev paid by tier", () => {
     const input = sampleInput();

@@ -96,6 +96,22 @@ describe("nearestWin", () => {
   it("returns null for a scheme with no components", () => {
     expect(nearestWin({ id: "x", name: "x", components: [] }, sampleInput())).toBeNull();
   });
+  it("on an exact tie keeps the component that comes first in the scheme", () => {
+    const bonus = (id: string, focusItemId: string) => ({
+      id,
+      type: "bonus" as const,
+      label: id,
+      condition: { kind: "focus_at_least" as const, focusItemId, min: 200 },
+      amount: 50_000,
+      startsOn: "2026-11-01",
+      endsOn: "2026-11-30",
+    });
+    const input = sampleInput(); // mango and cola both at 120 of 200
+    const ab = { id: "x", name: "x", components: [bonus("b_cola", "cola"), bonus("b_mango", "mango")] };
+    const ba = { id: "x", name: "x", components: [bonus("b_mango", "mango"), bonus("b_cola", "cola")] };
+    expect(nearestWin(ab, input)).toMatchObject({ componentId: "b_cola", gap: 80 });
+    expect(nearestWin(ba, input)).toMatchObject({ componentId: "b_mango", gap: 80 });
+  });
   it("offers the gate when lifting it unlocks pay", () => {
     const input = sampleInput();
     input.lines.bev.achieved = 2700; // 90%, blocked by gate

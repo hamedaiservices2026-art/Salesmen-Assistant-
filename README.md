@@ -4,7 +4,7 @@ A personal assistant for field sales reps. Every day it tells the rep where he s
 
 ## Requirements
 
-- Node 22
+- Node 22 or newer (`engines` in `package.json`, `.nvmrc` says 22)
 - pnpm 10
 
 ## Run locally
@@ -25,16 +25,17 @@ pnpm test        # unit tests
 pnpm typecheck
 pnpm lint
 pnpm build
-pnpm e2e         # builds, seeds a fresh database, and drives the whole rep flow in a browser
+pnpm e2e         # builds, seeds a temporary database, and drives the whole rep flow in a browser
 ```
 
-`pnpm e2e` needs the Playwright that is pre-installed globally; it is not a project dependency. It deletes `.data`, so do not run it while a dev server is using that database.
+`pnpm e2e` needs Playwright installed globally; it is not a project dependency. It uses a temporary database directory (through `PGLITE_DIR`) that it removes at the end, so your `.data` is left alone, and it starts its own server on a free port.
 
 ## Environment variables
 
 | Variable | Purpose |
 | --- | --- |
-| `DATABASE_URL` | Postgres connection string. When unset, the app uses a local PGlite database in `.data/pglite`. |
+| `DATABASE_URL` | Postgres connection string. When unset, the app uses a local PGlite database (see `PGLITE_DIR`). |
+| `PGLITE_DIR` | Directory of the local PGlite database. Default `.data/pglite`. `pnpm e2e` points it at a temporary directory. |
 | `APP_TODAY` | `YYYY-MM-DD`. Overrides "today" for demos, screenshots and `pnpm e2e`. |
 | `ALLOW_APP_TODAY` | Set to `1` to honour `APP_TODAY` in a production build; otherwise it is ignored there. |
 | `ALLOW_LOCAL_DB` | Set to `1` to let a production build (`NODE_ENV=production`) use the local PGlite database when `DATABASE_URL` is unset. Without it a production server refuses to start without `DATABASE_URL`. Needed for local production runs such as `pnpm e2e`. |

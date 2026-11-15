@@ -158,6 +158,23 @@ describe("saveClose", () => {
     expect(await getClose(ahmed(), TODAY)).toBeNull();
   });
 
+  it("treats an inactive own-company line as unknown", async () => {
+    await db.update(s.targetLines).set({ active: false }).where(eq(s.targetLines.id, "bev"));
+    const r = await saveClose(ahmed(), form(TODAY, { bev: 5 }), { today: TODAY });
+    expect(r).toEqual({ ok: false, errors: { "lines.bev": "unknown" } });
+  });
+
+  it("treats a focus item that is not assigned to the rep as unknown", async () => {
+    await db.delete(s.focusAssignments).where(eq(s.focusAssignments.focusItemId, "mango"));
+    const r = await saveClose(ahmed(), form(TODAY, { bev: 5 }, { focus: { mango: 1 } }), { today: TODAY });
+    expect(r).toEqual({ ok: false, errors: { "focus.mango": "unknown" } });
+  });
+
+  it("rejects an impossible calendar date as invalid", async () => {
+    const r = await saveClose(ahmed(), form("2026-02-30", { bev: 5 }), { today: TODAY });
+    expect(r).toEqual({ ok: false, errors: { date: "invalid" } });
+  });
+
   it("round-trips a full close through getClose", async () => {
     const full = form(
       TODAY,

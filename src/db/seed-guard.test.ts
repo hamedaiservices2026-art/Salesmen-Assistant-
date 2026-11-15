@@ -10,6 +10,11 @@ describe("seedRefusal", () => {
     expect(seedRefusal({ DATABASE_URL: "postgres://x" })).toMatch(/ALLOW_DEMO_SEED=1/);
     expect(seedRefusal({ DATABASE_URL: "postgres://x", ALLOW_DEMO_SEED: "0" })).not.toBeNull();
   });
+  it("still refuses ALLOW_DEMO_SEED values other than exactly 1", () => {
+    for (const v of ["true", "TRUE", "yes", " ", " 1", "1 ", ""]) {
+      expect(seedRefusal({ DATABASE_URL: "postgres://x", ALLOW_DEMO_SEED: v })).not.toBeNull();
+    }
+  });
   it("allows it when ALLOW_DEMO_SEED is 1", () => {
     expect(seedRefusal({ DATABASE_URL: "postgres://x", ALLOW_DEMO_SEED: "1" })).toBeNull();
   });

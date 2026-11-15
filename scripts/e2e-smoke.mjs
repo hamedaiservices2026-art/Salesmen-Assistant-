@@ -1,17 +1,27 @@
-// End-to-end check: fresh local database, seed, production build, then the rep flow in a browser.
-// Usage: pnpm e2e   (builds first; takes a few minutes)
+// End-to-end check: temporary local database, seed, production build, then the rep flow in a browser.
+// Usage: pnpm e2e   (builds first; takes a few minutes). The developer's .data directory is never touched.
 import { spawn, spawnSync } from "node:child_process";
-import { rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import { createServer } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 // Playwright is installed globally; require() honours NODE_PATH where ESM import does not.
-const { chromium } = createRequire(import.meta.url)("playwright");
+let chromium;
+try {
+  ({ chromium } = createRequire(import.meta.url)("playwright"));
+} catch {
+  console.error("Cannot load Playwright. It is not a project dependency: install it globally (npm i -g playwright) and make sure NODE_PATH includes the global node_modules.");
+  process.exit(1);
+}
 
 const PIN = "482915";
 const checks = [];
 let server;
+let serverExited = false;
 let browser;
+let dataRoot;
 
 function fail(msg) {
   throw new Error(msg);
@@ -23,8 +33,16 @@ function check(name, ok, expected, found) {
 }
 const has = (name, text, needle) =>
   check(name, text.includes(needle), `text containing "${needle}"`, text.replace(/\s+/g, " "));
-const hasNot = (name, text, needle) =>
-  check(name, !text.includes(needle), `text without "${needle}"`, `found "${needle}"`);
+
+/** Whole-token match: the figure is not part of a longer number (118 is not in 1,180 or 118.5). */
+function containsToken(text, figure) {
+  const esc = figure.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?<![\\d,.])${esc}(?!\\d|[,.]\\d)`).test(text);
+}
+const hasToken = (name, text, figure) =>
+  check(name, containsToken(text, figure), `token "${figure}"`, text.replace(/\s+/g, " "));
+const hasNoToken = (name, text, figure) =>
+  check(name, !containsToken(text, figure), `no token "${figure}"`, `found "${figure}"`);
 
 function run(cmd, args, env = {}) {
   const r = spawnSync(cmd, args, { stdio: ["ignore", "pipe", "inherit"], encoding: "utf8", env: { ...process.env, ...env } });
@@ -45,6 +63,7 @@ function freePort() {
 
 async function waitForServer(base) {
   for (let i = 0; i < 120; i++) {
+    if (serverExited) fail("server exited before it was ready");
     try {
       const res = await fetch(`${base}/signin`);
       if (res.ok) return;
@@ -55,13 +74,19 @@ async function waitForServer(base) {
 }
 
 async function main() {
-  const env = { APP_TODAY: "2026-11-14", ALLOW_APP_TODAY: "1", ALLOW_LOCAL_DB: "1" };
+  // A throwaway database directory: the developer's .data is not touched, and nothing else uses this one.
+  dataRoot = mkdtempSync(join(tmpdir(), "salesman-e2e-"));
+  const env = {
+    APP_TODAY: "2026-11-14",
+    ALLOW_APP_TODAY: "1",
+    ALLOW_LOCAL_DB: "1",
+    PGLITE_DIR: join(dataRoot, "pglite"),
+  };
   delete process.env.DATABASE_URL;
 
   console.log("Building...");
   run("pnpm", ["build"]);
-  rmSync(".data", { recursive: true, force: true });
-  const seedOut = run("pnpm", ["db:seed"]);
+  const seedOut = run("pnpm", ["db:seed"], env);
   const invites = [...seedOut.matchAll(/\/invite\/\S+/g)].map((m) => m[0]);
   if (invites.length < 2) fail(`expected two invite paths in seed output, found: ${seedOut}`);
   const [ahmedInvite, otherInvite] = invites;
@@ -71,6 +96,9 @@ async function main() {
   server = spawn("node_modules/.bin/next", ["start", "-p", String(port), "-H", "127.0.0.1"], {
     stdio: ["ignore", "inherit", "inherit"],
     env: { ...process.env, ...env, NODE_ENV: "production" },
+  });
+  server.once("exit", () => {
+    serverExited = true;
   });
   await waitForServer(base);
 
@@ -121,13 +149,15 @@ async function main() {
   await page.goto(`${base}/app/commission`, { waitUntil: "load" });
   const headline = (await page.locator("header h2 + span bdi").first().innerText()).trim();
   check("commission headline is a number", /^\d[\d,]*(\.\d+)?$/.test(headline), "digits, optional commas and decimals", headline);
-  const rows = await page.locator("main ul li").count();
-  check("commission breakdown is non-empty", rows > 0, "at least one breakdown row", rows);
+  const breakdown = page.locator('section[aria-label="كشف العمولة"] > ul > li');
+  const rows = await breakdown.count();
+  check("commission breakdown has the four scheme rows", rows === 4, "4 rows", rows);
+  has("commission breakdown names the food component", (await breakdown.allInnerTexts()).join(" "), "قيمة الأغذية");
 
   // History.
   await page.goto(`${base}/app/history/2026-11`, { waitUntil: "load" });
-  const days = await page.locator("main ul li h2").allInnerTexts();
-  check("history has the 14 Nov row", days.some((d) => /\b14\b/.test(d)), "a day row containing 14", JSON.stringify(days));
+  const days = await page.locator('main ul[aria-label] > li > h2').allInnerTexts();
+  check("history has the 14 Nov row", days.some((d) => /\s14$/.test(d.trim())), "a day row ending in 14", JSON.stringify(days));
 
   // Language: English, then back to Arabic.
   await page.goto(`${base}/app/settings`, { waitUntil: "load" });
@@ -150,20 +180,67 @@ async function main() {
   await page.waitForURL(/\/app$/, { timeout: 15000 }).catch(() => {});
   check("sign in again lands on /app", path(page) === "/app", "/app", page.url());
 
-  // The other company's rep must not see Ahmed's figures.
+  // The other company's rep must not see Ahmed's figures, and the check must be able to fail.
   const ctx2 = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const page2 = await ctx2.newPage();
   await acceptInvite(page2, otherInvite);
   await signIn(page2, "other-rep");
   await page2.waitForURL(/\/app$/, { timeout: 15000 }).catch(() => {});
   check("other rep signed in", path(page2) === "/app", "/app", page2.url());
-  for (const p of ["/app/close?date=2026-11-12", "/app/history/2026-11"]) {
-    const res = await ctx2.request.get(`${base}${p}`);
-    const html = await res.text();
-    for (const figure of ["118", "8,100", "1,140", "1,270"]) {
-      hasNot(`${p} hides ${figure} from the other company`, html, figure);
-    }
+
+  // What a person sees on the page: the text plus what sits in the input fields.
+  const visible = async (pg) => {
+    const main = await pg.locator("main").innerText();
+    const values = await pg.$$eval("input", (els) => els.map((e) => e.value));
+    return `${main}\n${values.join("\n")}`;
+  };
+  const open = async (pg, p) => {
+    const res = await pg.goto(`${base}${p}`, { waitUntil: "load" });
+    const url = new URL(pg.url());
+    return { status: res?.status(), landed: url.pathname + url.search, text: await visible(pg) };
+  };
+  const pages = [
+    // path, a figure Ahmed's own session shows there, the other rep's own marker
+    { p: "/app/close?date=2026-11-12", control: ["106"], marker: "مبيعات" },
+    { p: "/app/history/2026-11", control: ["118", "8,100"], marker: "مبيعات" },
+  ];
+  const ahmedFigures = ["118", "8,100", "1,140", "1,270", "106"];
+  for (const { p, control, marker } of pages) {
+    // Positive control: Ahmed's own session does show his figures on the same URL.
+    const own = await open(page, p);
+    check(`Ahmed gets ${p} (200, no redirect)`, own.status === 200 && own.landed === p, `200 at ${p}`, `${own.status} ${own.landed}`);
+    for (const f of control) hasToken(`Ahmed's own ${p} shows ${f} (control)`, own.text, f);
+    // The other rep: the page rendered for them, then Ahmed's figures are absent.
+    const other = await open(page2, p);
+    check(`other rep gets ${p} (200, no redirect)`, other.status === 200 && other.landed === p, `200 at ${p}`, `${other.status} ${other.landed}`);
+    has(`other rep's ${p} shows their own line`, other.text, marker);
+    for (const f of ahmedFigures) hasNoToken(`${p} hides ${f} from the other company`, other.text, f);
   }
+}
+
+async function cleanup() {
+  await browser?.close().catch(() => {});
+  browser = undefined;
+  if (server && !serverExited) {
+    await new Promise((resolve) => {
+      const kill = setTimeout(() => server.kill("SIGKILL"), 5000);
+      server.once("exit", () => {
+        clearTimeout(kill);
+        resolve();
+      });
+      server.kill("SIGTERM");
+    });
+  }
+  // The database directory goes only after the server that held it has exited.
+  if (dataRoot) rmSync(dataRoot, { recursive: true, force: true });
+  dataRoot = undefined;
+}
+
+for (const sig of ["SIGINT", "SIGTERM"]) {
+  process.once(sig, () => {
+    console.error(`\n${sig}: cleaning up`);
+    cleanup().finally(() => process.exit(130));
+  });
 }
 
 let code = 0;
@@ -174,7 +251,6 @@ try {
   console.error(`\n${e.message}`);
   code = 1;
 } finally {
-  await browser?.close().catch(() => {});
-  server?.kill();
+  await cleanup();
 }
 process.exit(code);

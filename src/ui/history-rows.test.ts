@@ -64,6 +64,10 @@ describe("parseYm", () => {
     expect(parseYm("2026-11", TODAY)).toEqual({ year: 2026, month: 11 });
     expect(parseYm("2025-01", TODAY)).toEqual({ year: 2025, month: 1 });
   });
+  it("reads a December month across the year boundary", () => {
+    expect(parseYm("2025-12", "2026-01-15")).toEqual({ year: 2025, month: 12 });
+    expect(parseYm("2026-02", "2026-01-15")).toBeNull();
+  });
   it("rejects malformed and future values", () => {
     for (const v of [
       "2026-13",
