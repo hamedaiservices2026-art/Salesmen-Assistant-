@@ -54,6 +54,20 @@ Rep-first and independent of any one sales force automation system. Data arrives
 
 None yet. No real screenshots, customer data, logos, or policy documents. All figures shown in mockups are synthetic and must be labeled as sample data. Do not invent customers, testimonials, or performance claims.
 
+## Pilot commission rules (confirmed by the owner, pilot company)
+
+Monthly, per rep. Maximum 3,500 SAR. Amounts are paid on the rep's own sales of the month.
+
+Fixed every month (2,500 SAR):
+- Can-size lines, each its own target in cartons: 185 ml, 250 ml, 320 ml. Commission starts at 90% of a line's target; below 90% pays nothing. At 100% the amounts are 300 (185 ml), 600 (250 ml), 600 (320 ml) SAR. Between 90% and 100% and above 100% (110% and beyond) the payout steps up in tiers. Some months the company adds an extra incentive at 100% (for example 250 SAR); not every month.
+- Combined incentive, 1,000 SAR: at least 90% of the Kinza target (a Saudi competitor brand, target in cartons) AND at least 70% of the Food target (in SAR), both in the same month.
+
+Variable every month (1,000 SAR), chosen by the admin or manager at the start of the month, either:
+- Coverage: a customer counts as covered when he bought at least 6 cartons of any item in the month; the rep earns when covered customers reach 85% (or the month's percentage) of the customers on his line. Coverage is a monthly count, not a daily sum.
+- Or a volume incentive on a specific item (for example a cocktail item): sell a stated number of cartons.
+
+Open decisions: the exact payout of each can-size line at 90% to 99% and at 110% and beyond; the size of any extra incentive at 100%; where the covered-customer count comes from before customer-level data exists (monthly entry by rep or admin, or Excel). Do not invent these amounts.
+
 ## Product Principles
 
 1. The rep's benefit comes first; every screen answers "what do I do next to earn more".
