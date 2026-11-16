@@ -66,7 +66,9 @@ Variable every month (1,000 SAR), chosen by the admin or manager at the start of
 - Coverage: a customer counts as covered when he bought at least 6 cartons of any item in the month; the rep earns when covered customers reach 85% (or the month's percentage) of the customers on his line. Coverage is a monthly count, not a daily sum.
 - Or a volume incentive on a specific item (for example a cocktail item): sell a stated number of cartons.
 
-Open decisions: the exact payout of each can-size line at 90% to 99% and at 110% and beyond; the size of any extra incentive at 100%; where the covered-customer count comes from before customer-level data exists (monthly entry by rep or admin, or Excel). Do not invent these amounts.
+Decided: the payout of each can-size line between 90% and 110% and beyond, and any extra incentive at 100% (for example 250 SAR), are not fixed in code: the admin sets the tiers and amounts per month in the commission editor. Do not invent them.
+
+Open: where the covered-customer count comes from. The pilot rep gives the product daily sales only and has no customer-level data. To ask the pilot rep: does his sales system show a coverage or "customers who bought" report, does he or his company know the monthly figure, and in what form. Until answered, plan: a monthly figure (covered customers out of total customers on his line) entered by the rep or the admin, or read from a photo of a report in plan 3; computing it from customer-level sales is a later phase.
 
 ## Product Principles
 
