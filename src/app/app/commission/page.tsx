@@ -3,13 +3,14 @@ import { requireCtx } from "@/server/auth/guard";
 import { getCommissionView } from "@/server/repos/commission";
 import { getMonthView } from "@/server/repos/month-view";
 import { currentDay } from "@/server/today";
-import type { Component } from "@/domain/commission";
+import { componentLabel, type Component } from "@/domain/commission";
 import { formatAmount, type Unit } from "@/domain/money";
 import { AppHeader } from "@/ui/components/AppHeader";
 import { CommissionBreakdown } from "@/ui/components/CommissionBreakdown";
 import { TierTable, type TierCell } from "@/ui/components/TierTable";
 import { WhatIf } from "@/ui/components/WhatIf";
 import { explainResult } from "@/ui/commission-copy";
+import type { Locale } from "@/i18n/config";
 import { INTL_TAG } from "@/ui/intl-tag";
 
 /** Basis points as a percent without floating point: 50 gives "0.5", 100 gives "1". */
@@ -68,14 +69,19 @@ export default async function CommissionPage() {
     units[f.id] = f.unit;
     names[f.id] = f.name;
   }
-  for (const c of scheme.components) if (c.type === "gate") names[c.id] = c.label;
+  const labels: Record<string, string> = {};
+  for (const c of scheme.components) {
+    labels[c.id] = componentLabel(c, locale as Locale);
+    if (c.type === "gate") names[c.id] = labels[c.id]!;
+  }
+  const labelOf = (id: string, fallback: string) => labels[id] ?? fallback;
 
   const fmt = (n: number, id?: string) => formatAmount(n, (id && units[id]) || "cases");
   const results = view.projected.results;
 
   const rows = results.map((r) => ({
     id: r.componentId,
-    label: r.label,
+    label: labelOf(r.componentId, r.label),
     sentence: explainResult(r, t, names, fmt),
     amount: formatAmount(r.amount, "value"),
   }));
@@ -101,12 +107,12 @@ export default async function CommissionPage() {
           here: reached === tier.minPct,
         });
       }
-      return { id: c.id, title: t("tiersTitle", { label: c.label }), cells };
+      return { id: c.id, title: t("tiersTitle", { label: componentLabel(c, locale as Locale) }), cells };
     });
 
   const nearest = view.nearest;
   const nearestId = nearest?.lineId ?? nearest?.focusItemId;
-  const nearestName = (nearestId ? names[nearestId] : undefined) ?? nearest?.label ?? "";
+  const nearestName = (nearestId ? names[nearestId] : undefined) ?? (nearest ? labelOf(nearest.componentId, nearest.label) : "");
   const nearestUnit: Unit = (nearestId ? units[nearestId] : undefined) ?? "cases";
 
   const unitLabels = { cases: tHome("unit.cases"), value: currency, outlets: tHome("unit.outlets") };

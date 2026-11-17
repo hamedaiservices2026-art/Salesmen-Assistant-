@@ -43,14 +43,16 @@ export async function getCommissionView(
   if (!scheme) {
     return { scheme, input, counts, actual: empty(), projected: empty(), atFullTarget: empty(), nearest: null, lines };
   }
+  const asOf = { asOf: today };
+  const projectedInput = projectInput(input, counts);
   return {
     scheme,
     input,
     counts,
-    actual: evaluateScheme(scheme, input),
-    projected: evaluateScheme(scheme, projectInput(input, counts)),
-    atFullTarget: evaluateScheme(scheme, inputAtFullTarget(scheme, input)),
-    nearest: nearestWin(scheme, input),
+    actual: evaluateScheme(scheme, input, asOf),
+    projected: evaluateScheme(scheme, projectedInput, asOf),
+    atFullTarget: evaluateScheme(scheme, inputAtFullTarget(scheme, input, asOf), asOf),
+    nearest: nearestWin(scheme, projectedInput, asOf),
     lines,
   };
 }

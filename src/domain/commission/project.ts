@@ -70,15 +70,19 @@ function withMetric(input: SchemeInput, c: Candidate): SchemeInput {
   return { lines, focus };
 }
 
+/** A condition yields a candidate only when exactly one leaf is unmet and that leaf has a target. */
 function conditionCandidate(id: string, label: string, cond: Condition, input: SchemeInput): Candidate | null {
-  if (cond.kind === "all") return null; // combined conditions are not offered as a nearest win yet
-  const leaf = checkLeaf(cond, input);
-  if (leaf.met || leaf.needed === null) return null;
-  const target = cond.kind === "focus_at_least" ? { focusItemId: cond.focusItemId } : { lineId: cond.lineId };
-  return { componentId: id, label, ...target, needed: leaf.needed, achieved: leaf.achieved };
+  const leaves = cond.kind === "all" ? cond.conditions : [cond];
+  const unmet = leaves.filter((l) => !checkLeaf(l, input).met);
+  if (unmet.length !== 1) return null;
+  const leaf = unmet[0]!;
+  const part = checkLeaf(leaf, input);
+  if (part.needed === null) return null;
+  const target = leaf.kind === "focus_at_least" ? { focusItemId: leaf.focusItemId } : { lineId: leaf.lineId };
+  return { componentId: id, label, ...target, needed: part.needed, achieved: part.achieved };
 }
 
-function candidates(scheme: Scheme, input: SchemeInput): Candidate[] {
+function candidates(scheme: Scheme, input: SchemeInput, opts: EvalOptions): Candidate[] {
   const out: Candidate[] = [];
   for (const c of scheme.components) {
     if (c.type === "tiered") {
@@ -90,6 +94,7 @@ function candidates(scheme: Scheme, input: SchemeInput): Candidate[] {
         out.push({ componentId: c.id, label: c.label, lineId: c.lineId, needed: neededForPct(t.minPct, m.target), achieved: m.achieved });
       }
     } else if (c.type === "bonus" || c.type === "gate") {
+      if (c.type === "bonus" && opts.asOf !== undefined && (opts.asOf > c.endsOn || opts.asOf < c.startsOn)) continue;
       const cand = conditionCandidate(c.id, c.label, c.condition, input);
       if (cand) out.push(cand);
     }
@@ -98,13 +103,13 @@ function candidates(scheme: Scheme, input: SchemeInput): Candidate[] {
 }
 
 /** The unmet threshold with the smallest relative gap (gap ÷ needed) that would raise the total. */
-export function nearestWin(scheme: Scheme, input: SchemeInput): NearestWin {
-  const current = evaluateScheme(scheme, input).total;
+export function nearestWin(scheme: Scheme, input: SchemeInput, opts: EvalOptions = {}): NearestWin {
+  const current = evaluateScheme(scheme, input, opts).total;
   let best: { c: Candidate; gap: number; gain: number } | null = null;
-  for (const c of candidates(scheme, input)) {
+  for (const c of candidates(scheme, input, opts)) {
     const gap = c.needed - c.achieved;
     if (gap <= 0 || c.needed <= 0) continue;
-    const gain = evaluateScheme(scheme, withMetric(input, c)).total - current;
+    const gain = evaluateScheme(scheme, withMetric(input, c), opts).total - current;
     if (gain <= 0) continue;
     // gap / needed < best.gap / best.needed, compared exactly by cross-multiplying; ties keep the earlier one.
     if (!best || BigInt(gap) * BigInt(best.c.needed) < BigInt(best.gap) * BigInt(c.needed)) best = { c, gap, gain };

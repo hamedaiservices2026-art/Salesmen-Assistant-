@@ -4,6 +4,7 @@ import { evaluateScheme } from "@/domain/commission";
 import { reconcile } from "@/domain/reconciliation";
 import * as s from "@/db/schema";
 import type { Ctx } from "@/server/ctx";
+import { currentDay } from "@/server/today";
 import {
   loadCalendar,
   loadMonthTotals,
@@ -59,7 +60,12 @@ async function activeMonths(
     .map((k) => ({ year: Math.floor(k / 100), month: k % 100 }));
 }
 
-export async function getHistoryMonths(ctx: Ctx): Promise<HistoryMonth[]> {
+export async function getHistoryMonths(
+  ctx: Ctx,
+  opts: { today?: ISODate } = {},
+): Promise<HistoryMonth[]> {
+  const today = opts.today ?? currentDay(ctx.timeZone);
+  const thisMonth = today.slice(0, 7);
   const months = await activeMonths(ctx);
   return Promise.all(
     months.map(async ({ year, month }) => {
@@ -75,8 +81,10 @@ export async function getHistoryMonths(ctx: Ctx): Promise<HistoryMonth[]> {
           pct: target > 0 ? Math.floor((achieved * 100) / target) : null,
         };
       });
+      const key = `${year}-${String(month).padStart(2, "0")}`;
+      const asOf = key < thisMonth ? monthBounds(year, month).end : today;
       const commission = scheme
-        ? evaluateScheme(scheme, schemeInput(totals)).total
+        ? evaluateScheme(scheme, schemeInput(totals), { asOf }).total
         : null;
       return { year, month, lines, commission };
     }),

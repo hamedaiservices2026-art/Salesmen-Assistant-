@@ -159,7 +159,7 @@
     "tierHere": "إنت هنا",
     "tierPay": "{pct}% من المبيعات",
     "nearestTitle": "أقرب مكسب ليك",
-    "nearestBody": "{name} · ناقص {gap} {unit}",
+    "nearestBody": "{name} · {gap} {unit} زيادة عن معدلك",
     "nearestGain": "تزوّد عمولتك {gain} {currency}",
     "whatIfTitle": "جرّب بنفسك",
     "whatIfPrompt": "لو بعت كام في اليوم؟",
@@ -182,7 +182,9 @@
       "bonus_expired": "خلصت مدته يوم {endsOn}",
       "bonus_not_started": "يبدأ يوم {startsOn}",
       "blocked_by_gate": "موقوفة لحد ما {gate} يتحقق",
-      "no_target": "لسه مفيش تارجت لـ{line}"
+      "no_target": "لسه مفيش تارجت لـ{line}",
+      "part": "{name} {pct}% من {minPct}%",
+      "partCount": "{name} {achieved} من {needed}"
     },
     "unnamed": "البند"
   },

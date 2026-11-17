@@ -80,8 +80,56 @@ describe("whatIf", () => {
   });
 });
 
+describe("nearestWin on the projection", () => {
+  const projected = () => projectInput(sampleInput(), days);
+  const combined = (endsOn = "2026-11-30", startsOn = "2026-11-01"): Scheme => ({
+    id: "x",
+    name: "x",
+    components: [
+      {
+        id: "b_pair",
+        type: "bonus",
+        label: "pair",
+        condition: {
+          kind: "all",
+          conditions: [
+            { kind: "line_pct_at_least", lineId: "bev", minPct: 100 },
+            { kind: "line_pct_at_least", lineId: "coll", minPct: 100 },
+          ],
+        },
+        amount: 70_000,
+        startsOn,
+        endsOn,
+      },
+    ],
+  });
+  it("points to beverages, 5 cases above the pace, worth 100000", () => {
+    expect(nearestWin(sampleScheme, projected())).toMatchObject({
+      componentId: "c_bev",
+      lineId: "bev",
+      gap: 5,
+      gain: 100_000,
+    });
+  });
+  it("offers no candidate from a combined bonus while both leaves are unmet", () => {
+    expect(nearestWin(combined(), projected())).toBeNull();
+  });
+  it("offers the only unmet leaf of a combined bonus", () => {
+    const input = projected();
+    input.lines.bev!.achieved = 3000;
+    expect(nearestWin(combined(), input)).toMatchObject({ componentId: "b_pair", lineId: "coll", gain: 70_000 });
+  });
+  it("never returns an expired or not-yet-started bonus", () => {
+    const input = projected();
+    input.lines.bev!.achieved = 3000;
+    expect(nearestWin(combined("2026-11-20"), input, { asOf: "2026-11-21" })).toBeNull();
+    expect(nearestWin(combined("2026-11-30", "2026-11-20"), input, { asOf: "2026-11-14" })).toBeNull();
+    expect(nearestWin(combined("2026-11-30"), input, { asOf: "2026-11-14" })).not.toBeNull();
+  });
+});
+
 describe("nearestWin", () => {
-  it("on the actuals points to the mango bonus", () => {
+  it("on the actuals (unprojected) points to the mango bonus", () => {
     expect(nearestWin(sampleScheme, sampleInput())).toMatchObject({
       componentId: "c_mango",
       focusItemId: "mango",

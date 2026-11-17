@@ -249,7 +249,7 @@ describe("getCommissionView", () => {
     expect(v.actual.total).toBe(41400);
     expect(v.projected.total).toBe(347855);
     expect(v.atFullTarget.total).toBe(640000);
-    expect(v.nearest?.componentId).toBe("c_mango");
+    expect(v.nearest).toMatchObject({ componentId: "c_bev", lineId: "bev", gap: 5, gain: 100_000 });
     expect(v.lines.map((l) => l.lineId)).toEqual(["bev", "food", "coll"]);
   });
 
@@ -265,7 +265,7 @@ describe("getCommissionView", () => {
 
 describe("history", () => {
   it("lists one month with its commission", async () => {
-    const months = await getHistoryMonths(ahmed());
+    const months = await getHistoryMonths(ahmed(), { today: TODAY });
     expect(months).toEqual([
       {
         year: 2026,
@@ -313,7 +313,7 @@ describe("nextDayRequired in the month view", () => {
 describe("history without a scheme", () => {
   it("reports a null commission when no scheme is published", async () => {
     await db.update(s.schemes).set({ published: false });
-    const [m] = await getHistoryMonths(ahmed());
+    const [m] = await getHistoryMonths(ahmed(), { today: TODAY });
     expect(m!.commission).toBeNull();
   });
 });

@@ -159,7 +159,7 @@
     "tierHere": "آپ یہاں ہیں",
     "tierPay": "فروخت کا {pct}%",
     "nearestTitle": "سب سے قریب کامیابی",
-    "nearestBody": "{name} · {gap} {unit} کم",
+    "nearestBody": "{name} · {gap} {unit} آپ کی رفتار سے زیادہ",
     "nearestGain": "آپ کی کمیشن میں {gain} {currency} کا اضافہ",
     "whatIfTitle": "خود آزما کر دیکھیں",
     "whatIfPrompt": "اگر روزانہ اتنا بیچیں تو؟",
@@ -182,7 +182,9 @@
       "bonus_expired": "{endsOn} کو ختم ہو گیا",
       "bonus_not_started": "{startsOn} سے شروع",
       "blocked_by_gate": "{gate} پورا ہونے تک رکی ہوئی",
-      "no_target": "{line} کا ہدف ابھی نہیں"
+      "no_target": "{line} کا ہدف ابھی نہیں",
+      "part": "{name} {pct}% از {minPct}%",
+      "partCount": "{name} {achieved} از {needed}"
     },
     "unnamed": "یہ مد"
   },

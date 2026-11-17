@@ -159,7 +159,7 @@
     "tierHere": "You are here",
     "tierPay": "{pct}% of sales",
     "nearestTitle": "Your nearest win",
-    "nearestBody": "{name} · {gap} {unit} short",
+    "nearestBody": "{name} · {gap} {unit} above your pace",
     "nearestGain": "Adds {gain} {currency} to your commission",
     "whatIfTitle": "Try it yourself",
     "whatIfPrompt": "What if you sell this much each day?",
@@ -182,7 +182,9 @@
       "bonus_expired": "Ended on {endsOn}",
       "bonus_not_started": "Starts on {startsOn}",
       "blocked_by_gate": "On hold until {gate} is met",
-      "no_target": "No target yet for {line}"
+      "no_target": "No target yet for {line}",
+      "part": "{name} {pct}% of {minPct}%",
+      "partCount": "{name} {achieved} of {needed}"
     },
     "unnamed": "this item"
   },

@@ -43,10 +43,35 @@ describe("explainResult", () => {
     });
   });
   it("bonus_not_met", () => {
-    expect(explain(result("bonus_not_met", { focusItemId: "mango", achieved: 120, needed: 200 }))).toEqual({
+    expect(explain(result("bonus_not_met", { focusItemId: "mango", achieved: 120, needed: 200, gap: 80 }))).toEqual({
       key: "reason.bonus_not_met",
       values: { achieved: 120, needed: 200, gap: 80 },
     });
+  });
+  it("bonus_expired passes the end date", () => {
+    expect(explain(result("bonus_expired", { focusItemId: "mango", endsOn: "2026-11-20" }))).toEqual({
+      key: "reason.bonus_expired",
+      values: { endsOn: "2026-11-20" },
+    });
+  });
+  it("bonus_not_started passes the start date", () => {
+    expect(explain(result("bonus_not_started", { startsOn: "2026-11-25" }))).toEqual({
+      key: "reason.bonus_not_started",
+      values: { startsOn: "2026-11-25" },
+    });
+  });
+  it("a two-part bonus joins one sentence per leaf and reads the gap from the detail", () => {
+    const r = result("bonus_not_met", {
+      parts: [
+        { lineId: "bev", pct: 80, minPct: 100, achieved: 2400, needed: 3000, met: false },
+        { focusItemId: "mango", achieved: 120, needed: 200, met: false },
+      ],
+    });
+    const str = (key: string, v?: Record<string, string | number>) => `${key}:${JSON.stringify(v)}`;
+    const out = explainResult(r, str, { ...names, mango: "Mango" }, (n) => `#${n}`);
+    expect(out).toBe(
+      'reason.part:{"name":"Beverages","pct":80,"minPct":100}، reason.partCount:{"name":"Mango","achieved":"#120","needed":"#200"}',
+    );
   });
   it("blocked_by_gate", () => {
     expect(explain(result("blocked_by_gate", { lineId: "bev", gateId: "g_coll" }))).toEqual({
@@ -62,7 +87,7 @@ describe("explainResult", () => {
   });
   it("formats amounts with the supplied formatter", () => {
     const out = explainResult(
-      result("bonus_not_met", { lineId: "bev", achieved: 1000, needed: 2500 }),
+      result("bonus_not_met", { lineId: "bev", achieved: 1000, needed: 2500, gap: 1500 }),
       stub,
       names,
       (n) => `#${n}`,

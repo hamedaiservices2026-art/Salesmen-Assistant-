@@ -19,6 +19,18 @@ export function explainResult(
   const unnamed = () => t("unnamed");
   const line = d.lineId === undefined ? "" : (names[d.lineId] ?? unnamed());
   const key = `reason.${r.reason}`;
+  const parts = d.parts;
+  if (parts && (r.reason === "bonus_not_met" || r.reason === "bonus_met")) {
+    return parts
+      .map((p) => {
+        const pid = p.lineId ?? p.focusItemId;
+        const name = pid === undefined ? "" : (names[pid] ?? unnamed());
+        return p.pct !== undefined && p.minPct !== undefined
+          ? t("reason.part", { name, pct: p.pct, minPct: p.minPct })
+          : t("reason.partCount", { name, achieved: fmt(p.achieved, pid), needed: fmt(p.needed ?? 0, pid) });
+      })
+      .join("، ");
+  }
   switch (r.reason) {
     case "tier":
       return t(key, { pct: d.pct ?? 0, tierMinPct: d.tierMinPct ?? 0 });
@@ -30,9 +42,7 @@ export function explainResult(
     case "bonus_met":
       return t(key, { achieved: fmt(d.achieved ?? 0, id), needed: fmt(d.needed ?? 0, id) });
     case "bonus_not_met": {
-      const achieved = d.achieved ?? 0;
-      const needed = d.needed ?? 0;
-      return t(key, { achieved: fmt(achieved, id), needed: fmt(needed, id), gap: fmt(Math.max(0, needed - achieved), id) });
+      return t(key, { achieved: fmt(d.achieved ?? 0, id), needed: fmt(d.needed ?? 0, id), gap: fmt(d.gap ?? 0, id) });
     }
     case "bonus_expired":
       return t(key, { endsOn: d.endsOn ?? "" });
