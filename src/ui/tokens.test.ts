@@ -9,6 +9,7 @@ describe("design tokens", () => {
     "--color-alert: #9B1220",
     "--color-ink: #0E1B2E",
     "--color-cell: #E3ECF8",
+    "--color-canvas: #F3F6FA",
   ])("defines %s", (token) => {
     expect(css).toContain(token);
   });

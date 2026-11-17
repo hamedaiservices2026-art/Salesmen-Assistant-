@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { createTestDb } from "@/db/testing";
 import { seedDemo, type SeedResult } from "@/db/seed";
@@ -45,5 +45,19 @@ describe("saveLocale", () => {
     const before = await stored(seed.otherRepId);
     await saveLocale(ctx(), "ur");
     expect(await stored(seed.otherRepId)).toBe(before);
+  });
+});
+
+describe("setLocale cookie", () => {
+  it("is secure in production, like the session cookie", async () => {
+    const set = vi.fn();
+    vi.resetModules();
+    vi.doMock("next/headers", () => ({ cookies: async () => ({ set }) }));
+    vi.stubEnv("NODE_ENV", "production");
+    const { setLocale } = await import("./locale");
+    expect(await setLocale(ctx(), "en")).toEqual({ ok: true });
+    expect(set).toHaveBeenCalledWith("locale", "en", expect.objectContaining({ secure: true }));
+    vi.unstubAllEnvs();
+    vi.doUnmock("next/headers");
   });
 });

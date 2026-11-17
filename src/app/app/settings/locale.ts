@@ -20,7 +20,12 @@ export async function saveLocale(ctx: Ctx, locale: string): Promise<{ ok: boolea
 export async function setLocale(ctx: Ctx, locale: string): Promise<{ ok: boolean }> {
   const result = await saveLocale(ctx, locale);
   if (result.ok) {
-    (await cookies()).set(LOCALE_COOKIE, locale, { sameSite: "lax", path: "/", maxAge: SESSION_TTL_MS / 1000 });
+    (await cookies()).set(LOCALE_COOKIE, locale, {
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: SESSION_TTL_MS / 1000,
+    });
   }
   return result;
 }

@@ -3,7 +3,9 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getDb } from "@/db/client";
-import { currentCtx } from "@/server/auth/guard";
+import { revalidatePath } from "next/cache";
+import { setLocale } from "@/app/app/settings/locale";
+import { currentCtx, requireRole } from "@/server/auth/guard";
 import { acceptAdminInvite } from "@/server/auth/invites";
 import { PASSWORD_ROLES, homeFor, type Role } from "@/server/auth/roles";
 import { clearSessionCookie, startSessionCookies } from "@/server/auth/session-cookie";
@@ -49,4 +51,12 @@ export async function adminSignOutAction(): Promise<void> {
   if (token) await destroySession(await getDb(), token);
   await clearSessionCookie();
   redirect("/admin/signin");
+}
+
+/** The console's language select: saves the language on the signed-in admin's or owner's row and sets the cookie. */
+export async function setAdminLocaleAction(form: FormData): Promise<void> {
+  const ctx = await requireRole(["admin", "owner"]);
+  const value = form.get("locale");
+  const result = await setLocale(ctx, typeof value === "string" ? value : "");
+  if (result.ok) revalidatePath("/", "layout");
 }

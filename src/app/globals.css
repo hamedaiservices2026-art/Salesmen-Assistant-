@@ -9,3 +9,8 @@ body {
   font-family: var(--font-sans);
   font-variant-numeric: tabular-nums;
 }
+
+/* Nastaliq glyphs reach far above and below the line; the admin's tight Tailwind line heights clip them. */
+html[lang="ur"] .admin-console :where(h1, h2, h3, p, span, label, th, td, a, button, option, output) {
+  line-height: 2;
+}

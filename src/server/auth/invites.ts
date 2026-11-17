@@ -18,6 +18,11 @@ export type AcceptAdminInviteResult =
   | { ok: true; sessionToken: string; login: string }
   | { ok: false; error: "invalid" | "expired" | "used" | "weak_password" };
 
+/** The page that accepts an invite for a user of `role`: PIN roles use `/invite`, password roles `/admin/invite`. */
+export function invitePath(role: Role, token: string): string {
+  return (PIN_ROLES as readonly Role[]).includes(role) ? `/invite/${token}` : `/admin/invite/${token}`;
+}
+
 /** Creates an invite for a user and returns the raw token (only its hash is stored). */
 export async function createInvite(db: Db, userId: string, now: Date = new Date()): Promise<string> {
   const [user] = await db.select({ companyId: s.users.companyId }).from(s.users).where(eq(s.users.id, userId));

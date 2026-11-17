@@ -8,8 +8,8 @@ describe("seedRefusal", () => {
   });
   it("refuses when DATABASE_URL is set without ALLOW_DEMO_SEED=1", () => {
     expect(seedRefusal({ DATABASE_URL: "postgres://x" })).toMatch(/ALLOW_DEMO_SEED=1/);
-    // The demo owner and admin carry published passwords: the refusal says so, so they never reach a real database unnoticed.
-    expect(seedRefusal({ DATABASE_URL: "postgres://x" })).toMatch(/owner and admin accounts with published passwords/);
+    // A deployed seed creates demo owner and admin accounts (with invite links, no password): the refusal says so.
+    expect(seedRefusal({ DATABASE_URL: "postgres://x" })).toMatch(/owner and admin accounts.*invite links and no password/);
     expect(seedRefusal({ DATABASE_URL: "postgres://x", ALLOW_DEMO_SEED: "0" })).not.toBeNull();
   });
   it("still refuses ALLOW_DEMO_SEED values other than exactly 1", () => {

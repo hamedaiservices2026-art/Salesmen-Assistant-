@@ -3,7 +3,7 @@ export function seedRefusal(env: Record<string, string | undefined>): string | n
   if (!env.DATABASE_URL || env.ALLOW_DEMO_SEED === "1") return null;
   return (
     "Refusing to seed: DATABASE_URL is set, so this may be a real database. " +
-    "Seeding resets used invites and adds demo rows, including demo owner and admin accounts with published passwords. " +
+    "Seeding resets used invites and adds demo rows, including demo owner and admin accounts; on a deployed database they get invite links and no password. " +
     "Set ALLOW_DEMO_SEED=1 to seed it anyway."
   );
 }

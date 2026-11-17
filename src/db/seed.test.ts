@@ -71,4 +71,41 @@ describe("seedDemo", () => {
     await seedDemo(db);
     expect(await counts(db)).toEqual(before);
   });
+
+  describe("deployed mode (R15)", () => {
+    it("creates the demo owner and admin without passwords and returns their invites", async () => {
+      const db = await createTestDb();
+      const r = await seedDemo(db, { deployed: true });
+      const owner = (await db.select().from(s.users).where(eq(s.users.id, r.ownerId)))[0]!;
+      const admin = (await db.select().from(s.users).where(eq(s.users.id, r.adminId)))[0]!;
+      expect(owner.passwordHash).toBeNull();
+      expect(admin.passwordHash).toBeNull();
+      expect(r.ownerInviteToken).toBeTruthy();
+      expect(r.adminInviteToken).toBeTruthy();
+      const { peekAdminInvite, acceptAdminInvite } = await import("@/server/auth/invites");
+      expect(await peekAdminInvite(db, r.ownerInviteToken!)).toMatchObject({ login: "owner@platform.test" });
+      expect(await peekAdminInvite(db, r.adminInviteToken!)).toMatchObject({ login: "admin@demo.test" });
+      expect((await acceptAdminInvite(db, r.adminInviteToken!, "a-long-password-1")).ok).toBe(true);
+    });
+
+    it("does not issue a new owner or admin invite once the password is set", async () => {
+      const db = await createTestDb();
+      const first = await seedDemo(db, { deployed: true });
+      const { acceptAdminInvite } = await import("@/server/auth/invites");
+      await acceptAdminInvite(db, first.adminInviteToken!, "a-long-password-1");
+      const again = await seedDemo(db, { deployed: true });
+      expect(again.adminInviteToken).toBeUndefined();
+      expect(again.ownerInviteToken).toBeTruthy();
+      expect((await db.select().from(s.users).where(eq(s.users.id, again.adminId)))[0]!.passwordHash).toMatch(/^scrypt\$/);
+    });
+
+    it("local mode keeps the demo hashes and returns no admin invites", async () => {
+      const db = await createTestDb();
+      const r = await seedDemo(db, { deployed: false });
+      expect((await db.select().from(s.users).where(eq(s.users.id, r.ownerId)))[0]!.passwordHash).toMatch(/^scrypt\$/);
+      expect((await db.select().from(s.users).where(eq(s.users.id, r.adminId)))[0]!.passwordHash).toMatch(/^scrypt\$/);
+      expect(r.ownerInviteToken).toBeUndefined();
+      expect(r.adminInviteToken).toBeUndefined();
+    });
+  });
 });

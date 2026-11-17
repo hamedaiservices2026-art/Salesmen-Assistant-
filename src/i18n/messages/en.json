@@ -243,6 +243,63 @@
         "invalid": "Wrong email or password",
         "locked": "Too many tries. Wait 15 minutes and try again"
       }
+    },
+    "nav": {
+      "overview": "Overview",
+      "users": "Reps",
+      "lines": "Target lines",
+      "targets": "Targets",
+      "coverage": "Coverage",
+      "schemes": "Incentives and commissions",
+      "policies": "Company policies",
+      "uploads": "Upload data",
+      "settings": "Settings",
+      "companies": "Companies"
+    },
+    "shell": {
+      "navLabel": "Console sections",
+      "signOut": "Sign out",
+      "language": "Language",
+      "languageLabel": "Choose language"
+    },
+    "overview": {
+      "title": "Overview",
+      "placeholder": "The team overview will appear here soon."
+    },
+    "companies": {
+      "title": "Companies",
+      "subtitle": "{count, plural, =0 {No companies yet} =1 {1 company} other {# companies}}",
+      "listTitle": "All companies",
+      "empty": "No company has been added yet. Start with the form.",
+      "cols": {
+        "name": "Company",
+        "currency": "Currency",
+        "admins": "Admins",
+        "reps": "Reps",
+        "created": "Added"
+      },
+      "new": {
+        "title": "New company",
+        "name": "Company name",
+        "currency": "Currency",
+        "timeZone": "Time zone",
+        "defaultLocale": "Company language",
+        "adminName": "Admin name",
+        "adminEmail": "Admin email",
+        "submit": "Create company"
+      },
+      "errors": {
+        "required": "This field is required",
+        "invalid": "This value is not valid",
+        "taken": "This email is already in use"
+      },
+      "invite": {
+        "title": "{company} was created",
+        "body": "Send this link to the admin so they can choose a password. It works for 7 days and will not be shown again.",
+        "copy": "Copy link",
+        "copied": "Copied",
+        "linkLabel": "Admin invite link"
+      }
     }
   }
 }

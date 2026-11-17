@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { sampleScheme } from "@/domain/commission/sample-fixture";
 import { hashToken, newToken } from "@/server/auth/token";
 import type { PgTable } from "drizzle-orm/pg-core";
@@ -31,6 +32,18 @@ export type SeedResult = {
   ownerId: string;
   /** Admin `admin@demo.test` of the demo company. */
   adminId: string;
+  /** Deployed mode only: the owner has no password yet, this invite sets it. */
+  ownerInviteToken?: string;
+  /** Deployed mode only: the admin has no password yet, this invite sets it. */
+  adminInviteToken?: string;
+};
+
+export type SeedOptions = {
+  /**
+   * True for a database reachable from the internet: the demo owner and admin are created without
+   * a password and get invites instead, so no credential written in this repository opens them.
+   */
+  deployed: boolean;
 };
 
 /**
@@ -40,7 +53,8 @@ export type SeedResult = {
  * hash and expiry on the fixed invite row (clearing used_at), so row counts never change
  * and earlier invite links stop working.
  */
-export async function seedDemo(db: Db): Promise<SeedResult> {
+export async function seedDemo(db: Db, options: SeedOptions = { deployed: false }): Promise<SeedResult> {
+  const { deployed } = options;
   const companyId = "demo-co";
   const repId = "ahmed";
   const otherCompanyId = "other-co";
@@ -67,7 +81,7 @@ export async function seedDemo(db: Db): Promise<SeedResult> {
         role: "owner",
         name: "Platform Owner",
         login: "owner@platform.test",
-        passwordHash: DEMO_OWNER_PASSWORD_HASH,
+        passwordHash: deployed ? null : DEMO_OWNER_PASSWORD_HASH,
       },
       {
         id: adminId,
@@ -75,7 +89,7 @@ export async function seedDemo(db: Db): Promise<SeedResult> {
         role: "admin",
         name: "مدير العرض",
         login: "admin@demo.test",
-        passwordHash: DEMO_ADMIN_PASSWORD_HASH,
+        passwordHash: deployed ? null : DEMO_ADMIN_PASSWORD_HASH,
       },
     ]);
     await ins(s.targetLines, [
@@ -213,5 +227,13 @@ export async function seedDemo(db: Db): Promise<SeedResult> {
   const inviteToken = await issue("invite-ahmed", companyId, repId);
   const otherInviteToken = await issue("invite-other-rep", otherCompanyId, otherRepId);
 
-  return { companyId, repId, inviteToken, otherRepId, otherInviteToken, ownerId, adminId };
+  const result: SeedResult = { companyId, repId, inviteToken, otherRepId, otherInviteToken, ownerId, adminId };
+  if (deployed) {
+    // Only while the account still has no password: a re-seed must not reopen an account that is set up.
+    const needsInvite = async (userId: string) =>
+      (await db.select({ hash: s.users.passwordHash }).from(s.users).where(eq(s.users.id, userId)))[0]?.hash == null;
+    if (await needsInvite(ownerId)) result.ownerInviteToken = await issue("invite-owner", platformId, ownerId);
+    if (await needsInvite(adminId)) result.adminInviteToken = await issue("invite-demo-admin", companyId, adminId);
+  }
+  return result;
 }

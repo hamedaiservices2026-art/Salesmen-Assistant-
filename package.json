@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:seed": "tsx src/db/run-seed.ts",
+    "admin:create-owner": "tsx src/db/run-create-owner.ts",
     "e2e": "node scripts/e2e-smoke.mjs"
   },
   "dependencies": {
