@@ -27,6 +27,9 @@ Everything here is checked against the code at this commit except the parts that
 
 ## 3. Load the sample data and get the invite link
 
+> **Do not seed a database that is reachable from the internet until plan 2 task 6 is merged.** Since the admin sign-in exists, the demo seed also creates a demo owner and a demo admin whose passwords are written in the source code. On a deployed database anyone could sign in as them. The rep-only pilot above is safe only if you skip this step and wait for the owner-first path (`pnpm admin:create-owner`) described in plan 2, or delete the demo `platform` and `demo-co` admin users right after seeding.
+
+
 The sample data is a demo company with one rep (login `ahmed`) and one second company used to prove isolation. Run this once, on any computer or cloud session that has the repo and Node 22 with pnpm:
 
 ```bash
