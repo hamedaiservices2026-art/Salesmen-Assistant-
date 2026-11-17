@@ -22,6 +22,13 @@
       "when": 1794932138310,
       "tag": "0002_admin_auth",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1794934914002,
+      "tag": "0003_holiday_names",
+      "breakpoints": true
     }
   ]
 }

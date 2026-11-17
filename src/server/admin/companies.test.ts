@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { createTestDb } from "@/db/testing";
 import { seedDemo, type SeedResult } from "@/db/seed";
@@ -10,6 +10,22 @@ import { acceptAdminInvite, invitePath, peekAdminInvite } from "@/server/auth/in
 import { signInWithPassword } from "@/server/auth/sessions";
 import { createOwner } from "./bootstrap";
 import { createCompany, listCompanies, type NewCompany } from "./companies";
+
+// Lets one test make the invite step of createCompany fail, to prove the transaction rolls back.
+const inviteFailure = vi.hoisted(() => ({ next: false }));
+vi.mock("@/server/auth/invites", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/server/auth/invites")>();
+  return {
+    ...real,
+    createInvite: (...args: Parameters<typeof real.createInvite>) => {
+      if (inviteFailure.next) {
+        inviteFailure.next = false;
+        throw new Error("invite failed");
+      }
+      return real.createInvite(...args);
+    },
+  };
+});
 
 let db: Db;
 let seed: SeedResult;
@@ -33,6 +49,30 @@ const input = (over: Partial<NewCompany> = {}): NewCompany => ({
 });
 
 describe("createCompany", () => {
+  it("stores a time zone typed in another case in its canonical spelling", async () => {
+    const r = await createCompany(ownerCtx(), input({ timeZone: "asia/riyadh" }));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const [company] = await db.select().from(s.companies).where(eq(s.companies.id, r.companyId));
+    expect(company!.timeZone).toBe("Asia/Riyadh");
+  });
+
+  it("refuses offsets and unknown time zones", async () => {
+    for (const timeZone of ["+03:00", "utc+3", "Mars/Base", ""]) {
+      const r = await createCompany(ownerCtx(), input({ timeZone }));
+      expect(r).toEqual({ ok: false, errors: { timeZone: "invalid" } });
+    }
+  });
+
+  it("leaves no company or admin behind when a step inside the transaction fails", async () => {
+    const companies = (await db.select().from(s.companies)).length;
+    const users = (await db.select().from(s.users)).length;
+    inviteFailure.next = true;
+    await expect(createCompany(ownerCtx(), input({ adminEmail: "rollback@pilot.test" }))).rejects.toThrow("invite failed");
+    expect((await db.select().from(s.companies)).length).toBe(companies);
+    expect((await db.select().from(s.users)).length).toBe(users);
+  });
+
   it("creates the company, its admin and an invite the admin can accept", async () => {
     const r = await createCompany(ownerCtx(), input());
     expect(r.ok).toBe(true);

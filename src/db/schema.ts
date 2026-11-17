@@ -37,12 +37,17 @@ export const companies = pgTable("companies", {
   ...stamps(),
 });
 
-export const holidays = pgTable("holidays", {
-  id: id(),
-  companyId: companyId(),
-  date: date("date", { mode: "string" }).notNull(),
-  ...stamps(),
-});
+export const holidays = pgTable(
+  "holidays",
+  {
+    id: id(),
+    companyId: companyId(),
+    date: date("date", { mode: "string" }).notNull(),
+    name: text("name"),
+    ...stamps(),
+  },
+  (t) => [uniqueIndex("holidays_company_date").on(t.companyId, t.date)],
+);
 
 export const users = pgTable("users", {
   id: id(),

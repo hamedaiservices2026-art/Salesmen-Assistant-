@@ -359,6 +359,54 @@
         "copied": "Copied",
         "linkLabel": "Sign-in link"
       }
+    },
+    "settings": {
+      "title": "Settings",
+      "subtitle": "Currency, time zone, selling days and holidays for the whole company",
+      "company": {
+        "title": "Company"
+      },
+      "fields": {
+        "name": "Company name",
+        "currency": "Currency",
+        "timeZone": "Time zone",
+        "defaultLocale": "Default language",
+        "weekStartsOn": "Week starts on",
+        "behindPct": "\"Slightly behind\" threshold",
+        "behindPctHint": "A rep this far under pace or less is \"slightly behind\"; further under, he is \"behind\".",
+        "sellingWeekdays": "Selling days",
+        "sellingWeekdaysHint": "Days on which reps sell. Holidays are taken out on top of these."
+      },
+      "weekdays": {
+        "sun": "Sunday",
+        "mon": "Monday",
+        "tue": "Tuesday",
+        "wed": "Wednesday",
+        "thu": "Thursday",
+        "fri": "Friday",
+        "sat": "Saturday"
+      },
+      "save": "Save settings",
+      "saved": "Settings saved",
+      "errors": {
+        "required": "This field is required",
+        "invalid": "This value is not valid"
+      },
+      "holidays": {
+        "title": "Holidays",
+        "count": "{count, plural, =0 {None} one {# day off} other {# days off}}",
+        "date": "Date",
+        "name": "Name (optional)",
+        "namePlaceholder": "For example, National Day",
+        "add": "Add holiday",
+        "remove": "Remove",
+        "empty": "No holidays yet. A holiday is taken out of every rep's selling days.",
+        "errors": {
+          "exists": "This date is already a holiday",
+          "invalid": "This date is not valid",
+          "not_found": "This holiday was not found"
+        }
+      }
     }
   }
 }

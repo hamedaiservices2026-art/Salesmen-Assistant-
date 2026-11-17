@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { Db } from "@/db/client";
 import * as s from "@/db/schema";
 import { isLocale, type Locale } from "@/i18n/config";
+import { canonicalTimeZone } from "@/domain/time-zone";
 import { CURRENCIES, isCurrency, type Currency } from "@/domain/money";
 import { createInvite } from "@/server/auth/invites";
 import { isEmail, normalizeEmail } from "@/server/auth/password";
@@ -34,15 +35,6 @@ export type CreateCompanyResult =
 /** Selling days and week start of a new company: Saturday to Thursday, the week starting on Saturday. */
 const DEFAULT_SELLING_WEEKDAYS = [6, 0, 1, 2, 3, 4];
 const WEEK_STARTS_ON = 6;
-
-function validTimeZone(tz: string): boolean {
-  try {
-    new Intl.DateTimeFormat("en", { timeZone: tz });
-    return tz.length > 0;
-  } catch {
-    return false;
-  }
-}
 
 function isUniqueViolation(e: unknown): boolean {
   const code = (e as { code?: string; cause?: { code?: string } } | null);
@@ -86,7 +78,8 @@ export async function createCompany(ctx: Ctx, input: NewCompany): Promise<Create
   const errors: Record<string, string> = {};
   if (!name) errors.name = "required";
   if (!isCurrency(input.currency)) errors.currency = "invalid";
-  if (!validTimeZone(input.timeZone)) errors.timeZone = "invalid";
+  const timeZone = canonicalTimeZone(String(input.timeZone ?? ""));
+  if (!timeZone) errors.timeZone = "invalid";
   if (!isLocale(input.defaultLocale)) errors.defaultLocale = "invalid";
   if (!adminName) errors.adminName = "required";
   if (!isEmail(email)) errors.adminEmail = "invalid";
@@ -103,7 +96,7 @@ export async function createCompany(ctx: Ctx, input: NewCompany): Promise<Create
         id: companyId,
         name,
         currency: input.currency,
-        timeZone: input.timeZone,
+        timeZone: timeZone!,
         defaultLocale: input.defaultLocale,
         sellingWeekdays: DEFAULT_SELLING_WEEKDAYS,
         weekStartsOn: WEEK_STARTS_ON,
