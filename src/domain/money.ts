@@ -1,5 +1,13 @@
 export type Unit = "cases" | "value" | "outlets";
 
+/** Two-decimal currencies only, matching the 100-minor-unit rule. */
+export const CURRENCIES = ["SAR", "AED", "QAR", "EGP", "USD"] as const;
+export type Currency = (typeof CURRENCIES)[number];
+
+export function isCurrency(value: string): value is Currency {
+  return (CURRENCIES as readonly string[]).includes(value);
+}
+
 function group(n: number): string {
   return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }

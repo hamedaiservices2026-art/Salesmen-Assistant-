@@ -1,5 +1,8 @@
 import { getLocale, getTranslations } from "next-intl/server";
 import { requireCtx } from "@/server/auth/guard";
+import { getCompanyPrefs } from "@/server/repos/company";
+import { isDailyLine, lineName as localLineName } from "@/domain/lines";
+import { unitLabel as labelFor } from "@/ui/unit-label";
 import { getCommissionView } from "@/server/repos/commission";
 import { getMonthView } from "@/server/repos/month-view";
 import { currentDay } from "@/server/today";
@@ -21,7 +24,14 @@ function bpsText(bps: number): string {
 
 export default async function CommissionPage() {
   const ctx = await requireCtx();
-  const [t, tHome, locale] = await Promise.all([getTranslations("commission"), getTranslations("home"), getLocale()]);
+  const [t, tHome, tRoot, locale, prefs] = await Promise.all([
+    getTranslations("commission"),
+    getTranslations("home"),
+    getTranslations(),
+    getLocale(),
+    getCompanyPrefs(ctx),
+  ]);
+  const label = (u: Unit) => labelFor((k) => tRoot(k as never), u, prefs.currency);
   const today = currentDay(ctx.timeZone);
   const [year, month] = today.split("-").map(Number) as [number, number];
   const [view, monthView] = await Promise.all([
@@ -41,8 +51,8 @@ export default async function CommissionPage() {
     total: view.counts.total,
   });
 
-  const currency = tHome("unit.value");
-  const lineName = (l: { nameAr: string; nameEn: string }) => (locale === "en" ? l.nameEn : l.nameAr);
+  const currency = label("value");
+  const lineName = (l: { nameAr: string; nameEn: string; nameUr: string }) => localLineName(l, locale as Locale);
   const { scheme } = view;
 
   if (!scheme) {
@@ -115,8 +125,8 @@ export default async function CommissionPage() {
   const nearestName = (nearestId ? names[nearestId] : undefined) ?? (nearest ? labelOf(nearest.componentId, nearest.label) : "");
   const nearestUnit: Unit = (nearestId ? units[nearestId] : undefined) ?? "cases";
 
-  const unitLabels = { cases: tHome("unit.cases"), value: currency, outlets: tHome("unit.outlets") };
-  const whatIfLines = view.lines.map((l) => ({ lineId: l.lineId, name: lineName(l), unit: l.unit }));
+  const unitLabels = { cases: label("cases"), value: currency, outlets: label("outlets") };
+  const whatIfLines = view.lines.filter(isDailyLine).map((l) => ({ lineId: l.lineId, name: lineName(l), unit: l.unit }));
 
   return (
     <>

@@ -25,3 +25,8 @@ export function lineName(l: { nameAr: string; nameEn: string; nameUr: string }, 
   const chosen = locale === "en" ? l.nameEn : locale === "ur" ? l.nameUr : l.nameAr;
   return chosen.trim() === "" ? l.nameAr : chosen;
 }
+
+/** Lines shown on the daily screens; coverage lines are tracked on their own panel. */
+export function isDailyLine(l: { kind: LineKind }): boolean {
+  return l.kind !== "coverage";
+}

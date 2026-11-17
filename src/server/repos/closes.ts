@@ -5,6 +5,7 @@ import * as s from "@/db/schema";
 import type { Db } from "@/db/client";
 import type { Ctx } from "@/server/ctx";
 import { currentDay } from "@/server/today";
+import { isDailyLine } from "@/domain/lines";
 import { loadCalendar, loadLines } from "./month-data";
 
 export type ReturnReason = "expired" | "damaged" | "other";
@@ -83,7 +84,7 @@ async function validate(ctx: Ctx, form: CloseForm, today: ISODate): Promise<Reco
     if (!cal.selling.includes(form.date)) errors.date = "not_selling_day";
   }
 
-  const lineIds = new Set((await loadLines(ctx)).map((l) => l.lineId));
+  const lineIds = new Set((await loadLines(ctx)).filter(isDailyLine).map((l) => l.lineId));
   for (const [id, n] of Object.entries(form.lines)) {
     const e = lineIds.has(id) ? amountError(n) : "unknown";
     if (e) errors[`lines.${id}`] = e;

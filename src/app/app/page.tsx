@@ -1,5 +1,9 @@
 import { getLocale, getTranslations } from "next-intl/server";
 import { requireCtx } from "@/server/auth/guard";
+import { getCompanyPrefs } from "@/server/repos/company";
+import { lineName as localLineName } from "@/domain/lines";
+import type { Locale } from "@/i18n/config";
+import { unitLabel as labelFor } from "@/ui/unit-label";
 import { getMonthView } from "@/server/repos/month-view";
 import { getDisplayName } from "@/server/repos/profile";
 import { currentDay } from "@/server/today";
@@ -17,11 +21,13 @@ import { INTL_TAG } from "@/ui/intl-tag";
 
 export default async function HomePage({ searchParams }: { searchParams: Promise<{ line?: string | string[] }> }) {
   const ctx = await requireCtx();
-  const [t, tSettings, locale, params] = await Promise.all([
+  const [t, tSettings, tRoot, locale, params, prefs] = await Promise.all([
     getTranslations("home"),
     getTranslations("settings"),
+    getTranslations(),
     getLocale(),
     searchParams,
+    getCompanyPrefs(ctx),
   ]);
   const today = currentDay(ctx.timeZone);
   const [year, month] = today.split("-").map(Number) as [number, number];
@@ -32,7 +38,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   const loc = locale as keyof typeof INTL_TAG;
   const fmt = (o: Intl.DateTimeFormatOptions) =>
     new Intl.DateTimeFormat(INTL_TAG[loc] ?? "ar-EG", { ...o, numberingSystem: "latn", timeZone: "UTC" });
-  const lineName = (l: { nameAr: string; nameEn: string }) => (locale === "en" ? l.nameEn : l.nameAr);
+  const lineName = (l: { nameAr: string; nameEn: string; nameUr: string }) => localLineName(l, locale as Locale);
 
   const todayDate = new Date(`${today}T00:00:00Z`);
   const hour = Number(
@@ -66,7 +72,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   }
 
   const unit: Unit = line.unit;
-  const unitLabel = t(`unit.${unit}`);
+  const unitLabel = labelFor((k) => tRoot(k as never), unit, prefs.currency);
   const amt = (n: number) => formatAmount(n, unit);
   const { pace } = line;
 

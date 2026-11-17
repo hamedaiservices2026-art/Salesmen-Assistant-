@@ -9,6 +9,7 @@ import {
   type Scheme,
   type SchemeInput,
 } from "@/domain/commission";
+import type { LineKind } from "@/domain/lines";
 import type { Unit } from "@/domain/money";
 import type { Ctx } from "@/server/ctx";
 import { loadCalendar, loadMonthTotals, loadScheme, schemeInput } from "./month-data";
@@ -21,7 +22,7 @@ export type CommissionView = {
   projected: Evaluation;
   atFullTarget: Evaluation;
   nearest: NearestWin;
-  lines: { lineId: string; nameAr: string; nameEn: string; unit: Unit }[];
+  lines: { lineId: string; nameAr: string; nameEn: string; nameUr: string; unit: Unit; kind: LineKind }[];
 };
 
 const empty = (): Evaluation => ({ total: 0, results: [] });
@@ -38,7 +39,7 @@ export async function getCommissionView(
   ]);
   const counts = dayCounts(cal.selling, today);
   const input = schemeInput(totals);
-  const lines = totals.lines.map(({ lineId, nameAr, nameEn, unit }) => ({ lineId, nameAr, nameEn, unit }));
+  const lines = totals.lines.map(({ lineId, nameAr, nameEn, nameUr, unit, kind }) => ({ lineId, nameAr, nameEn, nameUr, unit, kind }));
 
   if (!scheme) {
     return { scheme, input, counts, actual: empty(), projected: empty(), atFullTarget: empty(), nearest: null, lines };

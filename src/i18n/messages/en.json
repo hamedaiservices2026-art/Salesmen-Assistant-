@@ -212,5 +212,12 @@
     "signOut": "Sign out",
     "loginLabel": "Username",
     "signOutNote": "You will need your username and PIN to sign in again."
+  },
+  "currency": {
+    "SAR": "SAR",
+    "AED": "AED",
+    "QAR": "QAR",
+    "EGP": "EGP",
+    "USD": "USD"
   }
 }

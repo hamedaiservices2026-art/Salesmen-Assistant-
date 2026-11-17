@@ -3,10 +3,14 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { getLocale, getTranslations } from "next-intl/server";
 import { requireCtx } from "@/server/auth/guard";
+import { getCompanyPrefs } from "@/server/repos/company";
+import { lineName } from "@/domain/lines";
+import type { Locale } from "@/i18n/config";
+import { unitLabel as labelFor } from "@/ui/unit-label";
 import { getHistoryDays, getMonthSellingDays } from "@/server/repos/history";
 import { loadLines } from "@/server/repos/month-data";
 import { currentDay } from "@/server/today";
-import { formatAmount } from "@/domain/money";
+import { formatAmount, type Unit } from "@/domain/money";
 import { mergeDayRows, parseYm } from "@/ui/history-rows";
 import { INTL_TAG } from "@/ui/intl-tag";
 
@@ -22,13 +26,14 @@ export default async function HistoryMonthPage({
   if (!parsed) notFound();
   const { year, month } = parsed;
 
-  const [t, tHome, locale, closed, selling, lines] = await Promise.all([
+  const [t, tRoot, locale, closed, selling, lines, prefs] = await Promise.all([
     getTranslations("history"),
-    getTranslations("home"),
+    getTranslations(),
     getLocale(),
     getHistoryDays(ctx, year, month),
     getMonthSellingDays(ctx, year, month),
     loadLines(ctx),
+    getCompanyPrefs(ctx),
   ]);
   const rows = mergeDayRows(closed, selling, today);
   const loc = locale as keyof typeof INTL_TAG;
@@ -45,8 +50,9 @@ export default async function HistoryMonthPage({
     numberingSystem: "latn",
     timeZone: "UTC",
   });
-  const currency = tHome("unit.value");
-  const unitLabel = { cases: tHome("unit.cases"), value: currency, outlets: tHome("unit.outlets") };
+  const label = (u: Unit) => labelFor((k) => tRoot(k as never), u, prefs.currency);
+  const currency = label("value");
+  const unitLabel = { cases: label("cases"), value: currency, outlets: label("outlets") };
 
   return (
     <>
@@ -120,8 +126,10 @@ export default async function HistoryMonthPage({
                         .filter((id) => !lines.some((l) => l.lineId === id))
                         .map((id) => ({
                           lineId: id,
+                          code: id,
                           nameAr: t("unknownLine"),
                           nameEn: t("unknownLine"),
+                          nameUr: t("unknownLine"),
                           unit: "cases" as const,
                         })),
                     ]
@@ -132,7 +140,7 @@ export default async function HistoryMonthPage({
                           className="flex items-baseline justify-between gap-3"
                         >
                           <dt className="text-[14px] text-ink-2">
-                            {locale === "en" ? l.nameEn : l.nameAr}
+                            {lineName(l, locale as Locale)}
                           </dt>
                           <dd className="m-0 text-[15px] font-bold tabular-nums">
                             <bdi dir="ltr">

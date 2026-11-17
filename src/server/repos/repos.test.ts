@@ -9,6 +9,7 @@ import { getMonthView } from "./month-view";
 import { getClose, saveClose, type CloseForm } from "./closes";
 import { getCommissionView } from "./commission";
 import { getHistoryDays, getHistoryMonths } from "./history";
+import { getCompanyPrefs } from "./company";
 
 const TODAY = "2026-11-14";
 const NOV = { year: 2026, month: 11, today: TODAY };
@@ -315,5 +316,34 @@ describe("history without a scheme", () => {
     await db.update(s.schemes).set({ published: false });
     const [m] = await getHistoryMonths(ahmed(), { today: TODAY });
     expect(m!.commission).toBeNull();
+  });
+});
+
+describe("company preferences on the rep screens", () => {
+  it("reads the company's preferences with defaults", async () => {
+    expect(await getCompanyPrefs(ahmed())).toEqual({
+      currency: "SAR",
+      behindPct: 10,
+      timeZone: "Asia/Riyadh",
+      defaultLocale: "ar",
+      weekStartsOn: 0,
+    });
+  });
+
+  it("uses the company's behind_pct for pace status", async () => {
+    expect((await bevOf(ahmed())).bev.pace.status).toBe("slightly_behind");
+    await db.update(s.companies).set({ behindPct: 4 }).where(eq(s.companies.id, seed.companyId));
+    expect((await bevOf(ahmed())).bev.pace.status).toBe("behind");
+  });
+
+  it("leaves coverage lines out of the month view and refuses a close amount for one", async () => {
+    await db.insert(s.targetLines).values({
+      id: "cov", companyId: seed.companyId, code: "cov", nameAr: "تغطية", nameEn: "Coverage", nameUr: "کوریج",
+      unit: "outlets", kind: "coverage", sort: 4,
+    });
+    const view = await getMonthView(ahmed(), NOV);
+    expect(view.lines.map((l) => l.lineId)).toEqual(["bev", "food", "coll"]);
+    const r = await saveClose(ahmed(), form(TODAY, { bev: 5, cov: 5 }), { today: TODAY });
+    expect(r).toEqual({ ok: false, errors: { "lines.cov": "unknown" } });
   });
 });

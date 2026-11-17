@@ -1,7 +1,11 @@
 import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
-import { inputValue } from "@/domain/money";
+import { inputValue, type Unit } from "@/domain/money";
 import { requireCtx } from "@/server/auth/guard";
+import { getCompanyPrefs } from "@/server/repos/company";
+import { lineName as localLineName } from "@/domain/lines";
+import type { Locale } from "@/i18n/config";
+import { unitLabel as labelFor } from "@/ui/unit-label";
 import { getClose } from "@/server/repos/closes";
 import { getMonthView } from "@/server/repos/month-view";
 import { currentDay } from "@/server/today";
@@ -36,12 +40,15 @@ function Methods({ labels }: { labels: { group: string; photo: string; voice: st
 
 export default async function ClosePage({ searchParams }: { searchParams: Promise<{ date?: string | string[] }> }) {
   const ctx = await requireCtx();
-  const [t, home, locale, params] = await Promise.all([
+  const [t, home, tRoot, locale, params, prefs] = await Promise.all([
     getTranslations("close"),
     getTranslations("home"),
+    getTranslations(),
     getLocale(),
     searchParams,
+    getCompanyPrefs(ctx),
   ]);
+  const label = (unit: Unit) => labelFor((k) => tRoot(k as never), unit, prefs.currency);
   const today = currentDay(ctx.timeZone);
   const requested = Array.isArray(params.date) ? params.date[0] : params.date;
   const { date, selling } = await resolveCloseDate(ctx, today, requested);
@@ -79,19 +86,19 @@ export default async function ClosePage({ searchParams }: { searchParams: Promis
 
   const { year, month } = closeMonth(date, today);
   const [view, saved] = await Promise.all([getMonthView(ctx, { year, month, today }), getClose(ctx, date)]);
-  const lineName = (l: { nameAr: string; nameEn: string }) => (locale === "en" ? l.nameEn : l.nameAr);
+  const lineName = (l: { nameAr: string; nameEn: string; nameUr: string }) => localLineName(l, locale as Locale);
 
   const lineItems: FormItem[] = view.lines.map((l) => ({
     name: `line.${l.lineId}`,
     label: lineName(l),
-    unitLabel: home(`unit.${l.unit}`),
+    unitLabel: label(l.unit),
     mode: l.unit === "cases" ? "numeric" : "decimal",
     collection: l.kind === "collection",
   }));
   const focusItems: FormItem[] = focusOn(view.focus, date).map((f) => ({
     name: `focus.${f.id}`,
     label: f.name,
-    unitLabel: home(`unit.${f.unit}`),
+    unitLabel: label(f.unit),
     mode: f.unit === "cases" ? "numeric" : "decimal",
   }));
 
@@ -141,8 +148,8 @@ export default async function ClosePage({ searchParams }: { searchParams: Promis
           focusItems={focusItems}
           initial={initial}
           initialReturns={initialReturns}
-          currencyLabel={home("unit.value")}
-          stockUnitLabel={home("unit.cases")}
+          currencyLabel={label("value")}
+          stockUnitLabel={label("cases")}
         />
       </main>
     </>

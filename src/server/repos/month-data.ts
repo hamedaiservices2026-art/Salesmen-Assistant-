@@ -16,7 +16,15 @@ export type MonthCalendar = {
   weekStartsOn: number;
 };
 
-export type LineInfo = { lineId: string; nameAr: string; nameEn: string; unit: Unit; kind: LineKind };
+export type LineInfo = {
+  lineId: string;
+  code: string;
+  nameAr: string;
+  nameEn: string;
+  nameUr: string;
+  unit: Unit;
+  kind: LineKind;
+};
 
 export type FocusTotal = {
   id: string;
@@ -61,14 +69,22 @@ export async function loadCalendar(ctx: Ctx, year: number, month: number): Promi
   };
 }
 
-/** Active target lines of the company, in display order. */
+/** Active target lines of the company, in display order, coverage lines included (see isDailyLine). */
 export async function loadLines(ctx: Ctx): Promise<LineInfo[]> {
   const rows = await ctx.db
     .select()
     .from(s.targetLines)
     .where(and(eq(s.targetLines.companyId, ctx.companyId), eq(s.targetLines.active, true)))
     .orderBy(asc(s.targetLines.sort), asc(s.targetLines.id));
-  return rows.map((r) => ({ lineId: r.id, nameAr: r.nameAr, nameEn: r.nameEn, unit: r.unit, kind: r.kind }));
+  return rows.map((r) => ({
+    lineId: r.id,
+    code: r.code,
+    nameAr: r.nameAr,
+    nameEn: r.nameEn,
+    nameUr: r.nameUr,
+    unit: r.unit,
+    kind: r.kind,
+  }));
 }
 
 async function loadTargets(ctx: Ctx, year: number, month: number): Promise<Map<string, number>> {

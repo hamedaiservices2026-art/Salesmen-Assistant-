@@ -2,6 +2,10 @@ import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { getLocale, getTranslations } from "next-intl/server";
 import { requireCtx } from "@/server/auth/guard";
+import { getCompanyPrefs } from "@/server/repos/company";
+import { lineName } from "@/domain/lines";
+import type { Locale } from "@/i18n/config";
+import { unitLabel } from "@/ui/unit-label";
 import { getHistoryMonths } from "@/server/repos/history";
 import { loadLines } from "@/server/repos/month-data";
 import { formatAmount } from "@/domain/money";
@@ -11,15 +15,16 @@ import { INTL_TAG } from "@/ui/intl-tag";
 
 export default async function HistoryPage() {
   const ctx = await requireCtx();
-  const [t, tHome, locale, months, lines] = await Promise.all([
+  const [t, tRoot, locale, months, lines, prefs] = await Promise.all([
     getTranslations("history"),
-    getTranslations("home"),
+    getTranslations(),
     getLocale(),
     getHistoryMonths(ctx),
     loadLines(ctx),
+    getCompanyPrefs(ctx),
   ]);
   const names = new Map(
-    lines.map((l) => [l.lineId, locale === "en" ? l.nameEn : l.nameAr]),
+    lines.map((l) => [l.lineId, lineName(l, locale as Locale)]),
   );
   const loc = locale as keyof typeof INTL_TAG;
   const monthTitle = new Intl.DateTimeFormat(INTL_TAG[loc] ?? "ar-EG", {
@@ -28,7 +33,7 @@ export default async function HistoryPage() {
     numberingSystem: "latn",
     timeZone: "UTC",
   });
-  const currency = tHome("unit.value");
+  const currency = unitLabel((k) => tRoot(k as never), "value", prefs.currency);
   const today = currentDay(ctx.timeZone);
 
   return (

@@ -1,16 +1,19 @@
-import type { LineKind } from "@/domain/lines";
+import { isDailyLine, type LineKind } from "@/domain/lines";
 import { and, eq, gte, lte } from "drizzle-orm";
 import { dayCounts, type ISODate } from "@/domain/calendar";
 import type { Unit } from "@/domain/money";
 import { computePace, markDay, nextDayRequired, type DayMark } from "@/domain/pace";
 import * as s from "@/db/schema";
 import type { Ctx } from "@/server/ctx";
+import { getCompanyPrefs } from "./company";
 import { loadCalendar, loadMonthTotals, type FocusTotal } from "./month-data";
 
 export type LineView = {
   lineId: string;
+  code: string;
   nameAr: string;
   nameEn: string;
+  nameUr: string;
   unit: Unit;
   kind: LineKind;
   target: number;
@@ -83,18 +86,22 @@ export async function getMonthView(
 ): Promise<MonthView> {
   const { year, month, today } = opts;
   const cal = await loadCalendar(ctx, year, month);
-  const [totals, days] = await Promise.all([loadMonthTotals(ctx, year, month), loadDayAmounts(ctx, cal.start, cal.end)]);
+  const [totals, days, prefs] = await Promise.all([
+    loadMonthTotals(ctx, year, month),
+    loadDayAmounts(ctx, cal.start, cal.end),
+    getCompanyPrefs(ctx),
+  ]);
   const counts = dayCounts(cal.selling, today);
   const selling = new Set(cal.selling);
 
-  const lines: LineView[] = totals.lines.map((l) => {
+  const lines: LineView[] = totals.lines.filter(isDailyLine).map((l) => {
     const target = totals.targets.get(l.lineId) ?? 0;
     const achieved = totals.achieved.get(l.lineId) ?? 0;
     return {
       ...l,
       target,
       achieved,
-      pace: computePace({ target, achieved, ...counts }),
+      pace: computePace({ target, achieved, ...counts, behindPct: prefs.behindPct }),
       nextDayRequired: nextDayRequired(Math.max(0, target - achieved), cal.selling, today),
       days: cal.dates.map((date) => {
         const amount = days.amounts.get(`${l.lineId}|${date}`) ?? null;
