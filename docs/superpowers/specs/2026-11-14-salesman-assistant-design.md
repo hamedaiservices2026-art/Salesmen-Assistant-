@@ -73,7 +73,7 @@ Sign-in **(call)**: the admin creates a user and gets an invite link or QR code.
 
 **Period.** A calendar month per company, with its list of selling days derived from the selling week and holidays.
 
-**Target line.** Defined by the company: a name (for example "Beverages", "Food", "Collection"), a unit (`cases` or `value`), and a kind (`sales` or `collection`). Collection lines are always `value`.
+**Target line.** Defined by the company: a name (for example "Beverages", "Food", "Collection", "Coverage"), a unit (`cases`, `value`, or `outlets`), and a kind (`sales`, `collection`, or `coverage`). Collection lines are always `value`; coverage lines are always `outlets` (a count of customers covered out of the customers on the rep's line, entered as a periodic update by the supervisor, admin, or rep; the latest update counts, never a daily sum); `outlets` is used only by coverage lines.
 
 **Target.** An amount for a rep, a period, and a target line.
 
