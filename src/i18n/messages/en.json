@@ -179,6 +179,8 @@
       "below_threshold": "Projected {pct}% · starts at {tierMinPct}%",
       "bonus_met": "Reached · {achieved} of {needed}",
       "bonus_not_met": "{achieved} of {needed} · {gap} short",
+      "bonus_expired": "Ended on {endsOn}",
+      "bonus_not_started": "Starts on {startsOn}",
       "blocked_by_gate": "On hold until {gate} is met",
       "no_target": "No target yet for {line}"
     },

@@ -179,6 +179,8 @@
       "below_threshold": "متوقع تقفل {pct}% · بتبدأ من {tierMinPct}%",
       "bonus_met": "اتحقق · {achieved} من {needed}",
       "bonus_not_met": "{achieved} من {needed} · ناقص {gap}",
+      "bonus_expired": "خلصت مدته يوم {endsOn}",
+      "bonus_not_started": "يبدأ يوم {startsOn}",
       "blocked_by_gate": "موقوفة لحد ما {gate} يتحقق",
       "no_target": "لسه مفيش تارجت لـ{line}"
     },

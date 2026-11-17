@@ -1,4 +1,15 @@
-import type { Component, ComponentResult, Condition, Evaluation, Pay, Scheme, SchemeInput } from "./types";
+import type {
+  Component,
+  ComponentResult,
+  Condition,
+  ConditionPart,
+  EvalOptions,
+  Evaluation,
+  LeafCondition,
+  Pay,
+  Scheme,
+  SchemeInput,
+} from "./types";
 
 // Integer helpers. Inputs are non-negative integers; BigInt keeps intermediate products exact.
 // (BigInt() rather than literals: the compile target predates ES2020.)
@@ -31,32 +42,70 @@ function focusAchieved(input: SchemeInput, focusItemId: string): number {
   return input.focus[focusItemId]?.achieved ?? 0;
 }
 
-/** Whether a condition holds, with the metric behind it. */
+/** One leaf condition, with the metric behind it. `needed` is null for a line with no target. */
+export function checkLeaf(leaf: LeafCondition, input: SchemeInput): ConditionPart {
+  if (leaf.kind === "focus_at_least") {
+    const achieved = focusAchieved(input, leaf.focusItemId);
+    return { focusItemId: leaf.focusItemId, achieved, needed: leaf.min, met: achieved >= leaf.min };
+  }
+  const { target, achieved } = line(input, leaf.lineId);
+  const pct = pctOf(achieved, target);
+  if (pct === null) return { lineId: leaf.lineId, minPct: leaf.minPct, achieved, needed: null, met: false };
+  return {
+    lineId: leaf.lineId,
+    pct,
+    minPct: leaf.minPct,
+    achieved,
+    needed: neededForPct(leaf.minPct, target),
+    met: pct >= leaf.minPct,
+  };
+}
+
+/**
+ * Whether a condition holds. A leaf carries its own metric; an `all` condition is met when every
+ * leaf is met and lists each leaf in `parts`, in order.
+ */
 export function checkCondition(
   condition: Condition,
   input: SchemeInput,
-): { met: boolean; achieved: number; needed: number | null; pct?: number } {
-  if (condition.kind === "focus_at_least") {
-    const achieved = focusAchieved(input, condition.focusItemId);
-    return { met: achieved >= condition.min, achieved, needed: condition.min };
+): { met: boolean; leaf?: ConditionPart; parts?: ConditionPart[] } {
+  if (condition.kind === "all") {
+    const parts = condition.conditions.map((c) => checkLeaf(c, input));
+    return { met: parts.length > 0 && parts.every((p) => p.met), parts };
   }
-  const { target, achieved } = line(input, condition.lineId);
-  const pct = pctOf(achieved, target);
-  if (pct === null) return { met: false, achieved, needed: null };
-  return { met: pct >= condition.minPct, achieved, needed: neededForPct(condition.minPct, target), pct };
+  const leaf = checkLeaf(condition, input);
+  return { met: leaf.met, leaf };
 }
 
 function payAmount(pay: Pay, achieved: number): number {
   return pay.kind === "fixed" ? pay.amount : mulDivRound(achieved, pay.bps, 10000);
 }
 
+/** needed and gap = max(0, needed − achieved), for a detail that states what is needed. */
+function neededDetail(needed: number, achieved: number): { needed: number; gap: number } {
+  return { needed, gap: Math.max(0, needed - achieved) };
+}
+
 function conditionDetail(condition: Condition): { lineId?: string; focusItemId?: string } {
+  if (condition.kind === "all") return {};
   return condition.kind === "focus_at_least" ? { focusItemId: condition.focusItemId } : { lineId: condition.lineId };
+}
+
+function bonusDetail(c: Extract<Component, { type: "bonus" }>, check: ReturnType<typeof checkCondition>): ComponentResult["detail"] {
+  if (check.parts) return { parts: check.parts };
+  const leaf = check.leaf!;
+  return {
+    ...conditionDetail(c.condition),
+    achieved: leaf.achieved,
+    ...(leaf.needed === null ? {} : neededDetail(leaf.needed, leaf.achieved)),
+    ...(leaf.pct === undefined ? {} : { pct: leaf.pct }),
+  };
 }
 
 function evaluateComponent(
   c: Exclude<Component, { type: "gate" }>,
   input: SchemeInput,
+  opts: EvalOptions,
 ): Omit<ComponentResult, "componentId" | "label"> {
   switch (c.type) {
     case "tiered": {
@@ -74,7 +123,7 @@ function evaluateComponent(
             lineId: c.lineId,
             pct,
             achieved,
-            ...(first === undefined ? {} : { tierMinPct: first, needed: neededForPct(first, target) }),
+            ...(first === undefined ? {} : { tierMinPct: first, ...neededDetail(neededForPct(first, target), achieved) }),
           },
         };
       }
@@ -94,7 +143,13 @@ function evaluateComponent(
           return {
             amount: 0,
             reason: "below_threshold",
-            detail: { lineId: c.lineId, pct, achieved, tierMinPct: c.abovePct, needed: neededForPct(c.abovePct, target) },
+            detail: {
+              lineId: c.lineId,
+              pct,
+              achieved,
+              tierMinPct: c.abovePct,
+              ...neededDetail(neededForPct(c.abovePct, target), achieved),
+            },
           };
       }
       const amount = c.rate.kind === "per_case" ? achieved * c.rate.amount : mulDivRound(achieved, c.rate.bps, 10000);
@@ -102,22 +157,21 @@ function evaluateComponent(
     }
     case "bonus": {
       const check = checkCondition(c.condition, input);
-      const detail = {
-        ...conditionDetail(c.condition),
-        achieved: check.achieved,
-        ...(check.needed === null ? {} : { needed: check.needed }),
-        ...(check.pct === undefined ? {} : { pct: check.pct }),
-      };
-      if (c.condition.kind === "line_pct_at_least" && check.needed === null)
-        return { amount: 0, reason: "no_target", detail };
-      return check.met
-        ? { amount: c.amount, reason: "bonus_met", detail }
-        : { amount: 0, reason: "bonus_not_met", detail };
+      const detail = bonusDetail(c, check);
+      // A met bonus pays whatever the date; an unmet one outside its window says which side it is on.
+      if (check.met) return { amount: c.amount, reason: "bonus_met", detail };
+      if (opts.asOf !== undefined && opts.asOf > c.endsOn)
+        return { amount: 0, reason: "bonus_expired", detail: { ...detail, endsOn: c.endsOn } };
+      if (opts.asOf !== undefined && opts.asOf < c.startsOn)
+        return { amount: 0, reason: "bonus_not_started", detail: { ...detail, startsOn: c.startsOn } };
+      const noTarget = (check.parts ?? [check.leaf!]).find((p) => p.lineId !== undefined && p.needed === null);
+      if (noTarget) return { amount: 0, reason: "no_target", detail: { ...detail, lineId: noTarget.lineId } };
+      return { amount: 0, reason: "bonus_not_met", detail };
     }
   }
 }
 
-export function evaluateScheme(scheme: Scheme, input: SchemeInput): Evaluation {
+export function evaluateScheme(scheme: Scheme, input: SchemeInput, opts: EvalOptions = {}): Evaluation {
   // Gates first: a component protected by a failing gate is blocked regardless of its own result.
   const blockedBy = new Map<string, string>();
   for (const c of scheme.components) {
@@ -134,7 +188,7 @@ export function evaluateScheme(scheme: Scheme, input: SchemeInput): Evaluation {
       results.push({ componentId: c.id, label: c.label, amount: 0, reason: "blocked_by_gate", detail: { ...lineId, gateId } });
       continue;
     }
-    results.push({ componentId: c.id, label: c.label, ...evaluateComponent(c, input) });
+    results.push({ componentId: c.id, label: c.label, ...evaluateComponent(c, input, opts) });
   }
   return { total: results.reduce((s, r) => s + r.amount, 0), results };
 }

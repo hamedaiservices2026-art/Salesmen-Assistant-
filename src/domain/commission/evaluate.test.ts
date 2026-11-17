@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { evaluateScheme } from "./evaluate";
+import { componentLabel } from "./labels";
 import { sampleInput, sampleScheme } from "./sample-fixture";
 import type { Component, Scheme } from "./types";
 
@@ -135,5 +136,87 @@ describe("evaluateScheme edges", () => {
       ],
     };
     expect(result(scheme, "c_b")).toMatchObject({ amount: 10_000, reason: "bonus_met" });
+  });
+});
+
+describe("bonus date windows (asOf)", () => {
+  const mango = sampleScheme.components[3] as Extract<Component, { type: "bonus" }>;
+  function mangoAt(asOf: string | undefined, input = sampleInput(), scheme: Scheme = sampleScheme) {
+    const ev = evaluateScheme(scheme, input, asOf === undefined ? undefined : { asOf });
+    const r = ev.results.find((x) => x.componentId === "c_mango");
+    if (!r) throw new Error("no c_mango");
+    return { ev, r };
+  }
+  it("inside the window an unmet bonus is bonus_not_met and the total stays 41400", () => {
+    const { ev, r } = mangoAt("2026-11-14");
+    expect(r.reason).toBe("bonus_not_met");
+    expect(ev.total).toBe(41400);
+  });
+  it("after endsOn an unmet bonus is bonus_expired", () => {
+    const { ev, r } = mangoAt("2026-11-21");
+    expect(r).toMatchObject({ reason: "bonus_expired", amount: 0 });
+    expect(r.detail.endsOn).toBe("2026-11-20");
+    expect(ev.total).toBe(41400);
+  });
+  it("on endsOn itself the bonus is still open", () => {
+    expect(mangoAt("2026-11-20").r.reason).toBe("bonus_not_met");
+  });
+  it("a met bonus pays whatever asOf", () => {
+    const input = sampleInput();
+    input.focus.mango.achieved = 200;
+    expect(mangoAt("2026-11-21", input).r).toMatchObject({ reason: "bonus_met", amount: 50_000 });
+  });
+  it("before startsOn an unmet bonus is bonus_not_started", () => {
+    const scheme: Scheme = {
+      id: "x",
+      name: "x",
+      components: [{ ...mango, startsOn: "2026-11-15", endsOn: "2026-11-30" }],
+    };
+    const input = sampleInput();
+    input.focus.mango.achieved = 0;
+    const { r } = mangoAt("2026-11-14", input, scheme);
+    expect(r).toMatchObject({ reason: "bonus_not_started", amount: 0 });
+    expect(r.detail.startsOn).toBe("2026-11-15");
+  });
+  it("without asOf the plan-1 results are unchanged", () => {
+    expect(evaluateScheme(sampleScheme, sampleInput())).toEqual(evaluateScheme(sampleScheme, sampleInput(), {}));
+    const { ev, r } = mangoAt(undefined);
+    expect(r.reason).toBe("bonus_not_met");
+    expect(ev.total).toBe(41400);
+    expect(evaluateScheme(sampleScheme, sampleInput()).results.map((x) => x.reason)).toEqual([
+      "blocked_by_gate",
+      "rate",
+      "below_first_tier",
+      "bonus_not_met",
+    ]);
+  });
+});
+
+describe("detail.gap", () => {
+  it("c_mango on actuals has gap 80 (200 − 120)", () => {
+    expect(result(sampleScheme, "c_mango").detail.gap).toBe(80);
+  });
+  it("c_coll below its first tier has gap needed − achieved", () => {
+    const r = result(sampleScheme, "c_coll");
+    expect(r.detail.needed).toBe(40_500_000);
+    expect(r.detail.gap).toBe(40_500_000 - 18_900_000);
+  });
+  it("a met bonus has gap 0", () => {
+    const input = sampleInput();
+    input.focus.mango.achieved = 250;
+    expect(result(sampleScheme, "c_mango", input).detail.gap).toBe(0);
+  });
+});
+
+describe("componentLabel", () => {
+  const bev = sampleScheme.components[0]!;
+  it("uses labelEn for en when set", () => {
+    expect(componentLabel({ ...bev, labelEn: "Beverage tiers" }, "en")).toBe("Beverage tiers");
+  });
+  it("falls back to the Arabic label when labelUr is empty", () => {
+    expect(componentLabel({ ...bev, labelUr: "" }, "ur")).toBe("شرائح المشروبات");
+  });
+  it("ar always uses label", () => {
+    expect(componentLabel({ ...bev, labelEn: "Beverage tiers" }, "ar")).toBe("شرائح المشروبات");
   });
 });

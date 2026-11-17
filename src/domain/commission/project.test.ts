@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { evaluateScheme } from "./evaluate";
 import { inputAtFullTarget, nearestWin, projectInput, whatIf } from "./project";
 import { sampleInput, sampleScheme } from "./sample-fixture";
-import type { SchemeInput } from "./types";
+import type { Scheme, SchemeInput } from "./types";
 
 function lineOf(input: SchemeInput, id: string) {
   const m = input.lines[id];
@@ -121,6 +121,72 @@ describe("nearestWin", () => {
       lineId: "coll",
       gap: 27_000_000 - 18_900_000,
       gain: 250_000,
+    });
+  });
+});
+
+describe("inputAtFullTarget with asOf and gates", () => {
+  it("after the mango window closes, full target pays 590000 (640000 − the expired 50000)", () => {
+    const opts = { asOf: "2026-11-21" };
+    const full = inputAtFullTarget(sampleScheme, sampleInput(), opts);
+    expect(focusOf(full, "mango").achieved).toBe(120); // expired bonus: not raised
+    const ev = evaluateScheme(sampleScheme, full, opts);
+    expect(amountOf(ev, "c_bev")).toBe(400_000);
+    expect(amountOf(ev, "c_food")).toBe(90_000);
+    expect(amountOf(ev, "c_coll")).toBe(100_000);
+    expect(ev.results.find((r) => r.componentId === "c_mango")?.reason).toBe("bonus_expired");
+    expect(ev.total).toBe(590_000);
+  });
+  it("raises a focus item named by a gate so the protected component pays", () => {
+    const scheme: Scheme = {
+      ...sampleScheme,
+      components: [
+        ...sampleScheme.components,
+        {
+          id: "g_cola",
+          type: "gate",
+          label: "شرط الكولا",
+          condition: { kind: "focus_at_least", focusItemId: "cola", min: 400 },
+          appliesTo: ["c_bev"],
+        },
+      ],
+    };
+    const full = inputAtFullTarget(scheme, sampleInput());
+    expect(focusOf(full, "cola").achieved).toBe(400);
+    expect(amountOf(evaluateScheme(scheme, full), "c_bev")).toBe(400_000);
+  });
+  it("raises focus items inside an all condition", () => {
+    const scheme: Scheme = {
+      id: "x",
+      name: "x",
+      components: [
+        {
+          id: "c_all",
+          type: "bonus",
+          label: "all",
+          condition: {
+            kind: "all",
+            conditions: [
+              { kind: "focus_at_least", focusItemId: "cola", min: 300 },
+              { kind: "line_pct_at_least", lineId: "food", minPct: 70 },
+            ],
+          },
+          amount: 10_000,
+          startsOn: "2026-11-01",
+          endsOn: "2026-11-30",
+        },
+      ],
+    };
+    const full = inputAtFullTarget(scheme, sampleInput());
+    expect(focusOf(full, "cola").achieved).toBe(300);
+    expect(evaluateScheme(scheme, full).total).toBe(10_000);
+  });
+  it("keeps the hold flag on lines", () => {
+    const input: SchemeInput = { lines: { cov: { target: 120, achieved: 90, hold: true } }, focus: {} };
+    expect(inputAtFullTarget({ id: "x", name: "x", components: [] }, input).lines.cov).toEqual({
+      target: 120,
+      achieved: 120,
+      hold: true,
     });
   });
 });

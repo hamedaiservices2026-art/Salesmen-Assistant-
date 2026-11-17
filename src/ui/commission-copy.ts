@@ -34,6 +34,10 @@ export function explainResult(
       const needed = d.needed ?? 0;
       return t(key, { achieved: fmt(achieved, id), needed: fmt(needed, id), gap: fmt(Math.max(0, needed - achieved), id) });
     }
+    case "bonus_expired":
+      return t(key, { endsOn: d.endsOn ?? "" });
+    case "bonus_not_started":
+      return t(key, { startsOn: d.startsOn ?? "" });
     case "blocked_by_gate":
       return t(key, { gate: d.gateId === undefined ? "" : (names[d.gateId] ?? unnamed()) });
     case "no_target":

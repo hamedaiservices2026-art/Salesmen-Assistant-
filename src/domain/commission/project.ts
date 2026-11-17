@@ -1,5 +1,5 @@
-import { checkCondition, evaluateScheme, mulDivRound, neededForPct, pctOf } from "./evaluate";
-import type { Condition, NearestWin, Scheme, SchemeInput } from "./types";
+import { checkLeaf, evaluateScheme, mulDivRound, neededForPct, pctOf } from "./evaluate";
+import type { Condition, EvalOptions, NearestWin, Scheme, SchemeInput } from "./types";
 
 type Days = { total: number; elapsed: number };
 
@@ -7,25 +7,42 @@ function copyFocus(input: SchemeInput): SchemeInput["focus"] {
   return Object.fromEntries(Object.entries(input.focus).map(([id, f]) => [id, { ...f }]));
 }
 
-/** Month-end input at the current pace; with no elapsed days each line is assumed to reach its target. */
+/**
+ * Month-end input at the current pace; with no elapsed days each line is assumed to reach its target.
+ * A held metric (a count as of a date, such as coverage) keeps its achieved count.
+ */
 export function projectInput(input: SchemeInput, days: Days): SchemeInput {
   const lines: SchemeInput["lines"] = {};
   for (const [id, m] of Object.entries(input.lines)) {
+    if (m.hold) {
+      lines[id] = { ...m };
+      continue;
+    }
     const achieved = days.elapsed === 0 ? m.target : mulDivRound(m.achieved, days.total, days.elapsed);
-    lines[id] = { target: m.target, achieved };
+    lines[id] = { ...m, achieved };
   }
   return { lines, focus: copyFocus(input) };
 }
 
-/** Input with every line at least at target and every bonus focus item at least at its minimum. */
-export function inputAtFullTarget(scheme: Scheme, input: SchemeInput): SchemeInput {
+function focusLeaves(condition: Condition): { focusItemId: string; min: number }[] {
+  const leaves = condition.kind === "all" ? condition.conditions : [condition];
+  return leaves.flatMap((l) => (l.kind === "focus_at_least" ? [{ focusItemId: l.focusItemId, min: l.min }] : []));
+}
+
+/**
+ * Input with every line at least at target and every focus item named by a bonus or gate condition
+ * (directly or inside an `all`) at least at its minimum. A bonus already expired at `opts.asOf` is skipped.
+ */
+export function inputAtFullTarget(scheme: Scheme, input: SchemeInput, opts: EvalOptions = {}): SchemeInput {
   const lines: SchemeInput["lines"] = {};
-  for (const [id, m] of Object.entries(input.lines)) lines[id] = { target: m.target, achieved: Math.max(m.achieved, m.target) };
+  for (const [id, m] of Object.entries(input.lines)) lines[id] = { ...m, achieved: Math.max(m.achieved, m.target) };
   const focus = copyFocus(input);
   for (const c of scheme.components) {
-    if (c.type !== "bonus" || c.condition.kind !== "focus_at_least") continue;
-    const id = c.condition.focusItemId;
-    focus[id] = { achieved: Math.max(focus[id]?.achieved ?? 0, c.condition.min) };
+    if (c.type !== "bonus" && c.type !== "gate") continue;
+    if (c.type === "bonus" && opts.asOf !== undefined && opts.asOf > c.endsOn) continue;
+    for (const { focusItemId, min } of focusLeaves(c.condition)) {
+      focus[focusItemId] = { achieved: Math.max(focus[focusItemId]?.achieved ?? 0, min) };
+    }
   }
   return { lines, focus };
 }
@@ -54,10 +71,11 @@ function withMetric(input: SchemeInput, c: Candidate): SchemeInput {
 }
 
 function conditionCandidate(id: string, label: string, cond: Condition, input: SchemeInput): Candidate | null {
-  const check = checkCondition(cond, input);
-  if (check.met || check.needed === null) return null;
+  if (cond.kind === "all") return null; // combined conditions are not offered as a nearest win yet
+  const leaf = checkLeaf(cond, input);
+  if (leaf.met || leaf.needed === null) return null;
   const target = cond.kind === "focus_at_least" ? { focusItemId: cond.focusItemId } : { lineId: cond.lineId };
-  return { componentId: id, label, ...target, needed: check.needed, achieved: check.achieved };
+  return { componentId: id, label, ...target, needed: leaf.needed, achieved: leaf.achieved };
 }
 
 function candidates(scheme: Scheme, input: SchemeInput): Candidate[] {

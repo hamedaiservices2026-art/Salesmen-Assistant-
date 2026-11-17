@@ -179,6 +179,8 @@
       "below_threshold": "متوقع {pct}% · {tierMinPct}% سے شروع",
       "bonus_met": "پورا ہوا · {achieved} از {needed}",
       "bonus_not_met": "{achieved} از {needed} · {gap} کم",
+      "bonus_expired": "{endsOn} کو ختم ہو گیا",
+      "bonus_not_started": "{startsOn} سے شروع",
       "blocked_by_gate": "{gate} پورا ہونے تک رکی ہوئی",
       "no_target": "{line} کا ہدف ابھی نہیں"
     },
