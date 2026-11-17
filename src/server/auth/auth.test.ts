@@ -64,6 +64,14 @@ describe("acceptInvite", () => {
     expect(await peekInvite(db, "nope")).toBeNull();
   });
 
+  it("peekInvite returns null for an expired invite and for a used invite (plan-1 regression)", async () => {
+    const later = new Date(Date.now() + 8 * 24 * 60 * 60 * 1000);
+    expect(await peekInvite(db, seed.inviteToken, later)).toBeNull();
+    expect(await peekInvite(db, seed.inviteToken)).not.toBeNull();
+    await acceptInvite(db, seed.inviteToken, "482915");
+    expect(await peekInvite(db, seed.inviteToken)).toBeNull();
+  });
+
   it("rejects an unknown token", async () => {
     expect(await acceptInvite(db, "not-a-real-token", "482915")).toEqual({ ok: false, error: "invalid" });
   });
@@ -186,13 +194,15 @@ describe("a counter stuck at the limit", () => {
     await acceptInvite(db, seed.inviteToken, "482915");
   });
   const t0 = new Date("2026-11-14T10:00:00Z");
-  const stick = (minutesAgo: number) =>
+  // Recovery reads failed_at (written by every reservation); updated_at is "now" so that an
+  // unrelated edit to the user (an admin renaming him) cannot delay or speed up recovery.
+  const stick = (minutesAgo: number, updatedAt: Date = t0) =>
     db
       .update(s.users)
-      .set({ failedAttempts: 5, lockedUntil: null, updatedAt: new Date(t0.getTime() - minutesAgo * 60_000) })
+      .set({ failedAttempts: 5, lockedUntil: null, failedAt: new Date(t0.getTime() - minutesAgo * 60_000), updatedAt })
       .where(eq(s.users.id, "ahmed"));
 
-  it("lets the right PIN in once the lock window has passed (16 minutes)", async () => {
+  it("lets the right PIN in once the lock window has passed (failed_at 16 minutes ago, updated_at now)", async () => {
     await stick(16);
     const r = await signIn(db, "ahmed", "482915", t0);
     expect(r.ok).toBe(true);
@@ -203,6 +213,21 @@ describe("a counter stuck at the limit", () => {
   it("stays locked inside the window (5 minutes)", async () => {
     await stick(5);
     expect(await signIn(db, "ahmed", "482915", t0)).toEqual({ ok: false, error: "locked" });
+  });
+
+  it("stays locked when failed_at is recent even if updated_at is old", async () => {
+    await stick(5, new Date(t0.getTime() - 60 * 60_000));
+    expect(await signIn(db, "ahmed", "482915", t0)).toEqual({ ok: false, error: "locked" });
+  });
+
+  it("records failed_at on every reservation and clears it on success", async () => {
+    await signIn(db, "ahmed", "000000", t0);
+    const [after] = await db.select().from(s.users).where(eq(s.users.id, "ahmed"));
+    expect(after!.failedAt?.getTime()).toBe(t0.getTime());
+    await signIn(db, "ahmed", "482915", t0);
+    const [cleared] = await db.select().from(s.users).where(eq(s.users.id, "ahmed"));
+    expect(cleared!.failedAt).toBeNull();
+    expect(cleared!.failedAttempts).toBe(0);
   });
 
   it("restarts the count at 1 after a wrong PIN past the window", async () => {

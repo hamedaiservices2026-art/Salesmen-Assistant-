@@ -3,11 +3,12 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getDb } from "@/db/client";
-import { LOCALE_COOKIE } from "@/i18n/config";
-import { normalizePin } from "@/server/auth/pin";
+import { currentCtx } from "@/server/auth/guard";
 import { acceptInvite } from "@/server/auth/invites";
-import { LAST_LOGIN_COOKIE } from "@/server/auth/last-login";
-import { SESSION_COOKIE, SESSION_COOKIE_MAX_AGE_S, destroySession, getSessionUser, signIn } from "@/server/auth/sessions";
+import { normalizePin } from "@/server/auth/pin";
+import { PIN_ROLES, homeFor, type Role } from "@/server/auth/roles";
+import { clearSessionCookie, startSessionCookies } from "@/server/auth/session-cookie";
+import { SESSION_COOKIE, destroySession, getSessionUser, signIn } from "@/server/auth/sessions";
 
 export type AuthFormState = {
   error?: "weak_pin" | "mismatch" | "invite_invalid" | "invalid" | "locked";
@@ -19,21 +20,9 @@ function text(form: FormData, name: string): string {
 }
 
 async function startSession(sessionToken: string, login: string): Promise<void> {
-  const jar = await cookies();
-  const maxAge = SESSION_COOKIE_MAX_AGE_S;
-  // The username is not a secret; it only saves typing at the next sign-in.
-  jar.set(LAST_LOGIN_COOKIE, login, { sameSite: "lax", path: "/", maxAge: SESSION_COOKIE_MAX_AGE_S });
-  jar.set(SESSION_COOKIE, sessionToken, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge,
-  });
   const ctx = await getSessionUser(await getDb(), sessionToken);
-  if (ctx) {
-    jar.set(LOCALE_COOKIE, ctx.locale, { sameSite: "lax", path: "/", maxAge });
-  }
+  if (!ctx) return;
+  await startSessionCookies(sessionToken, { locale: ctx.locale, lastLogin: login });
 }
 
 export async function acceptInviteAction(_prev: AuthFormState, form: FormData): Promise<AuthFormState> {
@@ -52,10 +41,12 @@ export async function signInAction(_prev: AuthFormState, form: FormData): Promis
   redirect("/app");
 }
 
+/** Rep-app sign-out. An admin or owner session posted here is left alone and sent home. */
 export async function signOutAction(): Promise<void> {
-  const jar = await cookies();
-  const token = jar.get(SESSION_COOKIE)?.value;
+  const ctx = await currentCtx();
+  if (ctx && !(PIN_ROLES as readonly Role[]).includes(ctx.role)) redirect(homeFor(ctx.role));
+  const token = (await cookies()).get(SESSION_COOKIE)?.value;
   if (token) await destroySession(await getDb(), token);
-  jar.delete(SESSION_COOKIE);
+  await clearSessionCookie();
   redirect("/signin");
 }

@@ -11,6 +11,9 @@ async function main() {
   const r = await seedDemo(await getDb());
   console.log(`Ahmed (rep):   /invite/${r.inviteToken}`);
   console.log(`Other company: /invite/${r.otherInviteToken}`);
+  // Demo-only accounts; their passwords are in src/db/seed.ts and are not printed here.
+  console.log("Admin (demo):  /admin/signin  admin@demo.test");
+  console.log("Owner (demo):  /admin/signin  owner@platform.test");
   process.exit(0);
 }
 

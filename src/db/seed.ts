@@ -11,12 +11,26 @@ const COLL_SAR = [17000, 17000, 17000, 17000, 17000, 17000, 17000, 17000, 17000,
 const FOCUS_PER_DAY = [10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 20]; // sums to 120
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
+/**
+ * DEMO-ONLY credentials for local sample data, never for a real database (the seed guard refuses
+ * a deployed database unless ALLOW_DEMO_SEED=1). Precomputed once so seeding runs no scrypt:
+ * owner@platform.test / demo-owner-2026 and admin@demo.test / demo-admin-2026.
+ */
+const DEMO_OWNER_PASSWORD_HASH =
+  "scrypt$16384$8$1$bfe6bc238e0b044f59845848a0b4617b$9956113c1bdb160f375b9e1fc258ca39f79b108eccd0b70b9f0d2946b3621e86";
+const DEMO_ADMIN_PASSWORD_HASH =
+  "scrypt$16384$8$1$f14288bdc455efbcccc5fed6912a1334$fdd92907e7b022bc7c26cefbd9126f61f74eed068687b9fc14288d80383967cf";
+
 export type SeedResult = {
   companyId: string;
   repId: string;
   inviteToken: string;
   otherRepId: string;
   otherInviteToken: string;
+  /** Platform owner `owner@platform.test` in company `platform`. */
+  ownerId: string;
+  /** Admin `admin@demo.test` of the demo company. */
+  adminId: string;
 };
 
 /**
@@ -31,6 +45,9 @@ export async function seedDemo(db: Db): Promise<SeedResult> {
   const repId = "ahmed";
   const otherCompanyId = "other-co";
   const otherRepId = "other-rep";
+  const platformId = "platform";
+  const ownerId = "owner";
+  const adminId = "demo-admin";
 
   await db.transaction(async (tx) => {
     const ins = <T extends PgTable>(table: T, rows: T["$inferInsert"][]) =>
@@ -39,10 +56,27 @@ export async function seedDemo(db: Db): Promise<SeedResult> {
     await ins(s.companies, [
       { id: companyId, name: "Demo Distribution Co.", sellingWeekdays: [6, 0, 1, 2, 3, 4] },
       { id: otherCompanyId, name: "Other Trading Co.", sellingWeekdays: [6, 0, 1, 2, 3, 4] },
+      { id: platformId, name: "Platform", sellingWeekdays: [6, 0, 1, 2, 3, 4], weekStartsOn: 6 },
     ]);
     await ins(s.users, [
       { id: repId, companyId, role: "rep", name: "أحمد", login: "ahmed" },
       { id: otherRepId, companyId: otherCompanyId, role: "rep", name: "Other Rep", login: "other-rep" },
+      {
+        id: ownerId,
+        companyId: platformId,
+        role: "owner",
+        name: "Platform Owner",
+        login: "owner@platform.test",
+        passwordHash: DEMO_OWNER_PASSWORD_HASH,
+      },
+      {
+        id: adminId,
+        companyId,
+        role: "admin",
+        name: "مدير العرض",
+        login: "admin@demo.test",
+        passwordHash: DEMO_ADMIN_PASSWORD_HASH,
+      },
     ]);
     await ins(s.targetLines, [
       { id: "bev", companyId, code: "bev", nameAr: "مشروبات", nameEn: "Beverages", nameUr: "مشروبات", unit: "cases", kind: "sales", sort: 1 },
@@ -179,5 +213,5 @@ export async function seedDemo(db: Db): Promise<SeedResult> {
   const inviteToken = await issue("invite-ahmed", companyId, repId);
   const otherInviteToken = await issue("invite-other-rep", otherCompanyId, otherRepId);
 
-  return { companyId, repId, inviteToken, otherRepId, otherInviteToken };
+  return { companyId, repId, inviteToken, otherRepId, otherInviteToken, ownerId, adminId };
 }

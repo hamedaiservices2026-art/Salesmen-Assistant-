@@ -55,7 +55,11 @@ export const users = pgTable("users", {
     .default("ar"),
   supervisorId: text("supervisor_id").references((): AnyPgColumn => users.id),
   pinHash: text("pin_hash"),
+  /** Admins and owners only; reps and supervisors sign in with a PIN. */
+  passwordHash: text("password_hash"),
   failedAttempts: integer("failed_attempts").notNull().default(0),
+  /** When the last sign-in try was reserved; a counter left at the limit recovers once this is older than the lock window. */
+  failedAt: timestamp("failed_at", { withTimezone: true }),
   lockedUntil: timestamp("locked_until", { withTimezone: true }),
   active: boolean("active").notNull().default(true),
   ...stamps(),

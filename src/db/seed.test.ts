@@ -18,7 +18,11 @@ describe("seedDemo", () => {
     const db = await createTestDb();
     const r = await seedDemo(db);
 
-    expect((await db.select().from(s.companies)).length).toBe(2);
+    expect((await db.select().from(s.companies)).map((c) => c.id).sort()).toEqual(["demo-co", "other-co", "platform"]);
+    const staff = await db.select().from(s.users).where(eq(s.users.login, "owner@platform.test"));
+    expect(staff[0]).toMatchObject({ id: r.ownerId, companyId: "platform", role: "owner" });
+    const admin = await db.select().from(s.users).where(eq(s.users.login, "admin@demo.test"));
+    expect(admin[0]).toMatchObject({ id: r.adminId, companyId: r.companyId, role: "admin" });
     const lines = await db.select().from(s.targetLines).where(eq(s.targetLines.companyId, r.companyId));
     expect(lines.map((l) => l.id).sort()).toEqual(["bev", "coll", "food"]);
 

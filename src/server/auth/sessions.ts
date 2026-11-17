@@ -1,19 +1,19 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, gte, isNull, lt, lte, or, sql } from "drizzle-orm";
+import { and, eq, gt } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import * as s from "@/db/schema";
 import type { Ctx } from "@/server/ctx";
+import { attemptWithLockout } from "./lockout";
+import { normalizeEmail, PASSWORD_MAX } from "./password";
 import { hashSecret, normalizePin, verifySecret } from "./pin";
+import { PASSWORD_ROLES, PIN_ROLES, type Role } from "./roles";
 import { hashToken, newToken } from "./token";
 
 export const SESSION_COOKIE = "session";
 export const SESSION_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 /** Browser cookie lifetime; the stored expiry is the authority and is renewed while the rep keeps using the app. */
 export const SESSION_COOKIE_MAX_AGE_S = 365 * 24 * 60 * 60;
-const MAX_FAILURES = 5;
-const LOCK_MS = 15 * 60 * 1000;
-
-/** Stored hash used to spend equal time when the login does not exist. */
+/** Stored hash used to spend equal time when the login does not exist or may not use this path. */
 let decoy: Promise<string> | undefined;
 
 export async function createSession(db: Db, userId: string, now: Date = new Date()): Promise<string> {
@@ -52,7 +52,8 @@ export async function getSessionUser(db: Db, token: string, now: Date = new Date
     await db
       .update(s.sessions)
       .set({ expiresAt: new Date(now.getTime() + SESSION_TTL_MS), updatedAt: now })
-      .where(eq(s.sessions.tokenHash, hashToken(token)));
+      // Only while still valid: a session that expires meanwhile is not brought back.
+      .where(and(eq(s.sessions.tokenHash, hashToken(token)), gt(s.sessions.expiresAt, now)));
   }
   return {
     db,
@@ -70,57 +71,47 @@ export async function destroySession(db: Db, token: string): Promise<void> {
 
 export type SignInResult = { ok: true; sessionToken: string } | { ok: false; error: "invalid" | "locked" };
 
+type UserRow = typeof s.users.$inferSelect;
+
 /**
- * Unknown login and wrong PIN give the same `invalid`. Five consecutive failures lock for 15 minutes.
- *
- * Every attempt first reserves one of the five tries in a single conditional UPDATE that also
- * checks the lock, so a burst of parallel requests can reach the (slow) PIN check at most five
- * times. A failure at the limit sets the lock; a success clears the counter only while unlocked.
+ * Shared by both sign-in paths. A user who is missing, inactive, of a role this path does not
+ * admit, or without a stored secret gets `invalid` after checking a decoy hash, so the answer
+ * and its timing do not tell an attacker which it was. The real check runs under the lockout.
  */
-export async function signIn(db: Db, login: string, rawPin: string, now: Date = new Date()): Promise<SignInResult> {
-  const pin = normalizePin(rawPin);
-  const [user] = await db.select().from(s.users).where(eq(s.users.login, login.trim().toLowerCase()));
-  if (!user || !user.pinHash || !user.active) {
-    decoy ??= hashSecret("000000");
-    await verifySecret(pin, await decoy);
+async function signInUser(
+  db: Db,
+  user: UserRow | undefined,
+  roles: readonly Role[],
+  storedHash: (u: UserRow) => string | null,
+  secret: string,
+  now: Date,
+): Promise<SignInResult> {
+  const hash = user && user.active && roles.includes(user.role) ? storedHash(user) : null;
+  if (!user || !hash) {
+    decoy ??= hashSecret("decoy-secret");
+    await verifySecret(secret, await decoy);
     return { ok: false, error: "invalid" };
   }
-
-  const unlocked = or(isNull(s.users.lockedUntil), lte(s.users.lockedUntil, now));
-  const reserved = await db
-    .update(s.users)
-    .set({
-      // A counter left at the limit with no lock (the lock write was lost) restarts once the window has passed.
-      failedAttempts: sql`CASE WHEN ${s.users.failedAttempts} >= ${MAX_FAILURES} THEN 1 ELSE ${s.users.failedAttempts} + 1 END`,
-      updatedAt: now,
-    })
-    .where(
-      and(
-        eq(s.users.id, user.id),
-        unlocked,
-        or(lt(s.users.failedAttempts, MAX_FAILURES), lte(s.users.updatedAt, new Date(now.getTime() - LOCK_MS))),
-      ),
-    )
-    .returning({ id: s.users.id });
-  if (reserved.length === 0) {
-    // Either locked, or the counter sits at the limit with the lock about to be written
-    // (its last update is less than the lock window old).
-    return { ok: false, error: "locked" };
-  }
-
-  if (!(await verifySecret(pin, user.pinHash))) {
-    await db
-      .update(s.users)
-      .set({ failedAttempts: 0, lockedUntil: new Date(now.getTime() + LOCK_MS), updatedAt: now })
-      .where(and(eq(s.users.id, user.id), unlocked, gte(s.users.failedAttempts, MAX_FAILURES)));
-    return { ok: false, error: "invalid" };
-  }
-
-  const cleared = await db
-    .update(s.users)
-    .set({ failedAttempts: 0, lockedUntil: null, updatedAt: now })
-    .where(and(eq(s.users.id, user.id), unlocked, eq(s.users.active, true)))
-    .returning({ id: s.users.id });
-  if (cleared.length === 0) return { ok: false, error: "locked" };
+  const outcome = await attemptWithLockout(db, user.id, () => verifySecret(secret, hash), now);
+  if (outcome !== "ok") return { ok: false, error: outcome };
   return { ok: true, sessionToken: await createSession(db, user.id, now) };
+}
+
+/** PIN sign-in for reps and supervisors. Unknown login and wrong PIN give the same `invalid`. */
+export async function signIn(db: Db, login: string, rawPin: string, now: Date = new Date()): Promise<SignInResult> {
+  const [user] = await db.select().from(s.users).where(eq(s.users.login, login.trim().toLowerCase()));
+  return signInUser(db, user, PIN_ROLES, (u) => u.pinHash, normalizePin(rawPin), now);
+}
+
+/** Password sign-in for admins and owners. Unknown email and wrong password give the same `invalid`. */
+export async function signInWithPassword(
+  db: Db,
+  email: string,
+  password: string,
+  now: Date = new Date(),
+): Promise<SignInResult> {
+  // No stored password is longer than the maximum; bound the work an oversized input can cause.
+  const secret = password.slice(0, PASSWORD_MAX * 2);
+  const [user] = await db.select().from(s.users).where(eq(s.users.login, normalizeEmail(email)));
+  return signInUser(db, user, PASSWORD_ROLES, (u) => u.passwordHash, secret, now);
 }

@@ -219,5 +219,30 @@
     "QAR": "QAR",
     "EGP": "EGP",
     "USD": "USD"
+  },
+  "admin": {
+    "auth": {
+      "signin": {
+        "heading": "Admin sign in",
+        "email": "Email",
+        "password": "Password",
+        "submit": "Sign in"
+      },
+      "invite": {
+        "heading": "Welcome {name}",
+        "yourEmail": "Your email:",
+        "instruction": "Choose a password of at least 10 characters",
+        "password": "Password",
+        "confirm": "Type the password again",
+        "submit": "Start"
+      },
+      "errors": {
+        "weak_password": "Use at least 10 characters, not the same few repeated",
+        "mismatch": "The two passwords do not match",
+        "invite_invalid": "This link does not work. Ask for a new link",
+        "invalid": "Wrong email or password",
+        "locked": "Too many tries. Wait 15 minutes and try again"
+      }
+    }
   }
 }

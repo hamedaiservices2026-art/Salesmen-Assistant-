@@ -23,3 +23,23 @@ describe("migration 0001 line shapes", () => {
     expect(co.rows[0]!.behind_pct).toBe(10);
   });
 });
+
+describe("migration 0002 admin auth", () => {
+  it("adds password_hash and failed_at, backfilling failed_at from updated_at on rows with failures", async () => {
+    const db = await createTestDbAt("0001_line_shapes");
+    await db.execute(sql`insert into companies (id, name, selling_weekdays) values ('c1', 'Co', '{6,0,1,2,3,4}')`);
+    await db.execute(
+      sql`insert into users (id, company_id, role, name, login, failed_attempts, updated_at) values
+          ('stuck', 'c1', 'rep', 'A', 'stuck', 5, '2026-11-14T09:00:00Z'),
+          ('clean', 'c1', 'rep', 'B', 'clean', 0, '2026-11-14T09:00:00Z')`,
+    );
+    await migrateRest(db);
+    const rows = (await db.execute(
+      sql`select id, failed_at, password_hash from users order by id`,
+    )) as unknown as { rows: { id: string; failed_at: string | Date | null; password_hash: string | null }[] };
+    const byId = Object.fromEntries(rows.rows.map((r) => [r.id, r]));
+    expect(byId.clean!.failed_at).toBeNull();
+    expect(new Date(byId.stuck!.failed_at!).toISOString()).toBe("2026-11-14T09:00:00.000Z");
+    expect(byId.stuck!.password_hash).toBeNull();
+  });
+});
