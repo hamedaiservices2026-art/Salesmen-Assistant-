@@ -472,6 +472,50 @@
         "not_found": "This line was not found",
         "row_not_found": "This line was not found"
       }
+    },
+    "targets": {
+      "title": "Monthly targets",
+      "subtitle": "One target per rep and line for the month. Leave a cell empty to remove that target.",
+      "monthNav": "Month",
+      "prevMonth": "Previous month",
+      "nextMonth": "Next month",
+      "gridTitle": "Targets for {month}",
+      "gridAside": "{reps, plural, one {# rep} other {# reps}} · {lines, plural, one {# line} other {# lines}}",
+      "repCol": "Rep",
+      "save": "Save targets",
+      "saving": "Saving…",
+      "saved": "{count, plural, =0 {Nothing changed} one {# target changed} other {# targets changed}}",
+      "emptyGrid": "Add reps and target lines first, then set their targets here.",
+      "cellLabel": "{rep}, {line}",
+      "placeholder": "No target",
+      "errorsSummary": "Nothing was saved. Fix the marked cells and save again.",
+      "errors": {
+        "invalid": "Enter a whole number",
+        "not_found": "This rep or line was not found",
+        "coverage_line": "Coverage numbers come from coverage updates",
+        "period": "This month is not valid"
+      },
+      "changes": {
+        "title": "Change log",
+        "aside": "Last {count}",
+        "empty": "No target has been changed yet.",
+        "cols": {
+          "when": "When",
+          "rep": "Rep",
+          "line": "Line",
+          "month": "Month",
+          "from": "From",
+          "to": "To",
+          "by": "By",
+          "source": "Source"
+        },
+        "removed": "Removed",
+        "none": "None",
+        "source": {
+          "form": "Admin form",
+          "excel": "Excel upload"
+        }
+      }
     }
   }
 }

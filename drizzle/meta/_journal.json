@@ -29,6 +29,13 @@
       "when": 1794934914002,
       "tag": "0003_holiday_names",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794937091270,
+      "tag": "0004_target_changes",
+      "breakpoints": true
     }
   ]
 }

@@ -130,6 +130,28 @@ export const targets = pgTable(
   (t) => [uniqueIndex("targets_user_period_line").on(t.userId, t.year, t.month, t.lineId)],
 );
 
+/** Every change to a monthly target, from the admin form or an Excel upload: who, when, old and new amount. */
+export const targetChanges = pgTable("target_changes", {
+  id: id(),
+  companyId: companyId(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id),
+  lineId: text("line_id")
+    .notNull()
+    .references(() => targetLines.id),
+  year: integer("year").notNull(),
+  month: integer("month").notNull(),
+  oldAmount: amount("old_amount"),
+  newAmount: amount("new_amount"),
+  source: text("source", { enum: ["form", "excel"] }).notNull(),
+  changedBy: text("changed_by")
+    .notNull()
+    .references(() => users.id),
+  uploadId: text("upload_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const dailyCloses = pgTable(
   "daily_closes",
   {
