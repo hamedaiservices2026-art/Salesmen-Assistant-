@@ -300,6 +300,65 @@
         "copied": "Copied",
         "linkLabel": "Admin invite link"
       }
+    },
+    "users": {
+      "title": "Reps and users",
+      "subtitle": "{count, plural, =0 {No users yet} =1 {1 user} other {# users}}",
+      "listTitle": "Everyone in the company",
+      "cols": {
+        "name": "Name",
+        "login": "Login",
+        "role": "Role",
+        "supervisor": "Supervisor",
+        "status": "Status",
+        "lastClose": "Last close",
+        "actions": "Actions"
+      },
+      "roles": {
+        "rep": "Rep",
+        "supervisor": "Supervisor",
+        "admin": "Admin",
+        "owner": "Platform owner"
+      },
+      "status": {
+        "active": "Active",
+        "invited": "Not signed in yet",
+        "inactive": "Stopped"
+      },
+      "noSupervisor": "No supervisor",
+      "noValue": "None",
+      "supervisorFor": "Supervisor of {name}",
+      "actions": {
+        "newLink": "New sign-in link",
+        "deactivate": "Stop",
+        "activate": "Turn on"
+      },
+      "new": {
+        "title": "New user",
+        "name": "Name",
+        "login": "Login",
+        "loginHint": "Reps and supervisors: 3 to 32 lowercase letters, digits, dot, dash or underscore. Admins: an email address.",
+        "role": "Role",
+        "supervisor": "Supervisor (reps only)",
+        "locale": "Language",
+        "submit": "Add user"
+      },
+      "errors": {
+        "required": "This field is required",
+        "invalid": "This value is not valid",
+        "taken": "This login is already in use",
+        "row_not_found": "This user was not found",
+        "row_self": "You cannot stop your own account"
+      },
+      "invite": {
+        "createdTitle": "{name} was added",
+        "createdBody": "Send this link so they can choose how to sign in. It works for 7 days and will not be shown again.",
+        "resetTitle": "New sign-in link for {name}",
+        "resetBody": "{kind, select, password {The old password keeps working until this link is used. When it is used, the old password stops and every device is signed out.} other {The old PIN keeps working until this link is used. When it is used, the old PIN stops and every device is signed out.}} The link works for 7 days and will not be shown again.",
+        "copy": "Copy link",
+        "copied": "Copied",
+        "linkLabel": "Sign-in link"
+      }
     }
   }
 }

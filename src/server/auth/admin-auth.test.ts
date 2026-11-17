@@ -9,7 +9,7 @@ import * as pin from "./pin";
 import { hashSecret, verifySecret } from "./pin";
 import { isStrongPassword } from "./password";
 import { attemptWithLockout } from "./lockout";
-import { Forbidden, assertRole, homeFor } from "./roles";
+import { Forbidden, assertRole, homeFor, signInPathFor } from "./roles";
 import { acceptAdminInvite, acceptInvite, createInvite, peekAdminInvite, peekInvite } from "./invites";
 import { SESSION_TTL_MS, createSession, getSessionUser, signIn, signInWithPassword } from "./sessions";
 import { requireRole } from "./guard";
@@ -324,6 +324,31 @@ describe("roles", () => {
     expect(homeFor("supervisor")).toBe("/app");
     expect(homeFor("admin")).toBe("/admin");
     expect(homeFor("owner")).toBe("/admin");
+  });
+});
+
+describe("signInPathFor", () => {
+  it("sends PIN roles to /signin and password roles to /admin/signin", () => {
+    expect(signInPathFor(["rep"])).toBe("/signin");
+    expect(signInPathFor(["supervisor"])).toBe("/signin");
+    expect(signInPathFor(["rep", "supervisor"])).toBe("/signin");
+    expect(signInPathFor(["admin"])).toBe("/admin/signin");
+    expect(signInPathFor(["owner"])).toBe("/admin/signin");
+    expect(signInPathFor(["admin", "owner"])).toBe("/admin/signin");
+  });
+
+  it("requireRole(['supervisor']) sends a signed-out visitor to the PIN sign-in", async () => {
+    expect(await redirectOf(requireRole(["supervisor"]))).toBe("/signin");
+  });
+});
+
+describe("decoy hash", () => {
+  it("is precomputed: the first unknown login in a fresh module costs one scrypt run, not two", async () => {
+    vi.resetModules();
+    const fresh = await import("./sessions");
+    const before = h.scryptCalls;
+    expect(await fresh.signInWithPassword(db, "nobody@demo.test", "whatever-password")).toEqual({ ok: false, error: "invalid" });
+    expect(h.scryptCalls - before).toBe(1);
   });
 });
 

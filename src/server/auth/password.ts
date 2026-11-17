@@ -12,3 +12,10 @@ export function isStrongPassword(pw: string): boolean {
 export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
+
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** A plausible email address (one `@`, a dot in the domain, no spaces); expects an already normalized value. */
+export function isEmail(email: string): boolean {
+  return EMAIL.test(email);
+}

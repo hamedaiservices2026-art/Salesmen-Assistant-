@@ -13,6 +13,7 @@ async function main() {
   const r = await seedDemo(await getDb(), { deployed });
   console.log(`Ahmed (rep):   /invite/${r.inviteToken}`);
   console.log(`Other company: /invite/${r.otherInviteToken}`);
+  console.log(`Sami (supervisor): /invite/${r.supervisorInviteToken}`);
   if (deployed) {
     // No demo password exists on a deployed database; each link sets the account's own.
     if (r.adminInviteToken) console.log(`Admin (demo):  ${invitePath("admin", r.adminInviteToken)}`);

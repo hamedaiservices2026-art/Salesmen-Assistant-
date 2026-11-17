@@ -94,7 +94,7 @@ describe("listCompanies", () => {
   it("lists demo-co and other-co with counts, not the platform company", async () => {
     const list = await listCompanies(ownerCtx());
     expect(list.map((c) => c.id).sort()).toEqual(["demo-co", "other-co"]);
-    expect(list.find((c) => c.id === "demo-co")).toMatchObject({ name: "Demo Distribution Co.", currency: "SAR", adminCount: 1, repCount: 1 });
+    expect(list.find((c) => c.id === "demo-co")).toMatchObject({ name: "Demo Distribution Co.", currency: "SAR", adminCount: 1, repCount: 4 });
     expect(list.find((c) => c.id === "other-co")).toMatchObject({ adminCount: 0, repCount: 1 });
   });
 

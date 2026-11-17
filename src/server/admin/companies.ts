@@ -5,7 +5,7 @@ import * as s from "@/db/schema";
 import { isLocale, type Locale } from "@/i18n/config";
 import { CURRENCIES, isCurrency, type Currency } from "@/domain/money";
 import { createInvite } from "@/server/auth/invites";
-import { normalizeEmail } from "@/server/auth/password";
+import { isEmail, normalizeEmail } from "@/server/auth/password";
 import { assertRole } from "@/server/auth/roles";
 import type { Ctx } from "@/server/ctx";
 
@@ -34,8 +34,6 @@ export type CreateCompanyResult =
 /** Selling days and week start of a new company: Saturday to Thursday, the week starting on Saturday. */
 const DEFAULT_SELLING_WEEKDAYS = [6, 0, 1, 2, 3, 4];
 const WEEK_STARTS_ON = 6;
-
-const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function validTimeZone(tz: string): boolean {
   try {
@@ -91,7 +89,7 @@ export async function createCompany(ctx: Ctx, input: NewCompany): Promise<Create
   if (!validTimeZone(input.timeZone)) errors.timeZone = "invalid";
   if (!isLocale(input.defaultLocale)) errors.defaultLocale = "invalid";
   if (!adminName) errors.adminName = "required";
-  if (!EMAIL.test(email)) errors.adminEmail = "invalid";
+  if (!isEmail(email)) errors.adminEmail = "invalid";
   if (Object.keys(errors).length > 0) return { ok: false, errors };
 
   const [existing] = await ctx.db.select({ id: s.users.id }).from(s.users).where(eq(s.users.login, email));

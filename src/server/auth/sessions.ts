@@ -5,7 +5,7 @@ import * as s from "@/db/schema";
 import type { Ctx } from "@/server/ctx";
 import { attemptWithLockout } from "./lockout";
 import { normalizeEmail, PASSWORD_MAX } from "./password";
-import { hashSecret, normalizePin, verifySecret } from "./pin";
+import { normalizePin, verifySecret } from "./pin";
 import { PASSWORD_ROLES, PIN_ROLES, type Role } from "./roles";
 import { hashToken, newToken } from "./token";
 
@@ -13,8 +13,13 @@ export const SESSION_COOKIE = "session";
 export const SESSION_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 /** Browser cookie lifetime; the stored expiry is the authority and is renewed while the rep keeps using the app. */
 export const SESSION_COOKIE_MAX_AGE_S = 365 * 24 * 60 * 60;
-/** Stored hash used to spend equal time when the login does not exist or may not use this path. */
-let decoy: Promise<string> | undefined;
+/**
+ * Stored hash used to spend equal time when the login does not exist or may not use this path.
+ * Precomputed (a hash of a throwaway string at the current cost), so the first unknown login of a
+ * process costs one scrypt run like every other.
+ */
+const DECOY_HASH =
+  "scrypt$16384$8$1$8b536842b92f706bb3498ed8198087e9$014a7e8457a3b494c532e208798ab9e8eb0a67ba9ac33744a2ef173396005d88";
 
 export async function createSession(db: Db, userId: string, now: Date = new Date()): Promise<string> {
   const [user] = await db.select({ companyId: s.users.companyId }).from(s.users).where(eq(s.users.id, userId));
@@ -88,8 +93,7 @@ async function signInUser(
 ): Promise<SignInResult> {
   const hash = user && user.active && roles.includes(user.role) ? storedHash(user) : null;
   if (!user || !hash) {
-    decoy ??= hashSecret("decoy-secret");
-    await verifySecret(secret, await decoy);
+    await verifySecret(secret, DECOY_HASH);
     return { ok: false, error: "invalid" };
   }
   const outcome = await attemptWithLockout(db, user.id, () => verifySecret(secret, hash), now);

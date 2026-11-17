@@ -25,5 +25,5 @@ export function homeFor(role: Role): "/app" | "/admin" {
 
 /** Where a visitor without a session goes for a page that admits `roles`. */
 export function signInPathFor(roles: readonly Role[]): "/signin" | "/admin/signin" {
-  return roles.includes("rep") ? "/signin" : "/admin/signin";
+  return roles.some((r) => (PIN_ROLES as readonly Role[]).includes(r)) ? "/signin" : "/admin/signin";
 }

@@ -12,6 +12,13 @@ const COLL_SAR = [17000, 17000, 17000, 17000, 17000, 17000, 17000, 17000, 17000,
 const FOCUS_PER_DAY = [10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 20]; // sums to 120
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
+/** Reps added to the demo team: the same amount on each of the 11 selling days, so their totals are easy to check. */
+const TEAM = [
+  { id: "khaled", name: "خالد", bev: 120, foodSar: 8000, collSar: 20000, supervisor: true },
+  { id: "omar", name: "عمر", bev: 70, foodSar: 5000, collSar: 10000, supervisor: false },
+  { id: "yousef", name: "يوسف", bev: 0, foodSar: 0, collSar: 0, supervisor: false },
+] as const;
+
 /**
  * DEMO-ONLY credentials for local sample data, never for a real database (the seed guard refuses
  * a deployed database unless ALLOW_DEMO_SEED=1). Precomputed once so seeding runs no scrypt:
@@ -28,6 +35,9 @@ export type SeedResult = {
   inviteToken: string;
   otherRepId: string;
   otherInviteToken: string;
+  /** Supervisor `sami` of the demo company, supervising `ahmed` and `khaled`. */
+  supervisorId: string;
+  supervisorInviteToken: string;
   /** Platform owner `owner@platform.test` in company `platform`. */
   ownerId: string;
   /** Admin `admin@demo.test` of the demo company. */
@@ -62,6 +72,7 @@ export async function seedDemo(db: Db, options: SeedOptions = { deployed: false 
   const platformId = "platform";
   const ownerId = "owner";
   const adminId = "demo-admin";
+  const supervisorId = "sami";
 
   await db.transaction(async (tx) => {
     const ins = <T extends PgTable>(table: T, rows: T["$inferInsert"][]) =>
@@ -73,7 +84,16 @@ export async function seedDemo(db: Db, options: SeedOptions = { deployed: false 
       { id: platformId, name: "Platform", sellingWeekdays: [6, 0, 1, 2, 3, 4], weekStartsOn: 6 },
     ]);
     await ins(s.users, [
-      { id: repId, companyId, role: "rep", name: "أحمد", login: "ahmed" },
+      { id: supervisorId, companyId, role: "supervisor", name: "سامي", login: "sami" },
+      { id: repId, companyId, role: "rep", name: "أحمد", login: "ahmed", supervisorId },
+      ...TEAM.map((m) => ({
+        id: m.id,
+        companyId,
+        role: "rep" as const,
+        name: m.name,
+        login: m.id,
+        supervisorId: m.supervisor ? supervisorId : null,
+      })),
       { id: otherRepId, companyId: otherCompanyId, role: "rep", name: "Other Rep", login: "other-rep" },
       {
         id: ownerId,
@@ -108,19 +128,21 @@ export async function seedDemo(db: Db, options: SeedOptions = { deployed: false 
         sort: 1,
       },
     ]);
-    const target = (lineId: string, amount: number) => ({
-      id: `target-${repId}-2026-11-${lineId}`,
+    const target = (userId: string, lineId: string, amount: number) => ({
+      id: `target-${userId}-2026-11-${lineId}`,
       companyId,
-      userId: repId,
+      userId,
       year: 2026,
       month: 11,
       lineId,
       amount,
     });
     await ins(s.targets, [
-      target("bev", 3000),
-      target("food", 18_000_000),
-      target("coll", 45_000_000),
+      ...[repId, ...TEAM.map((m) => m.id)].flatMap((userId) => [
+        target(userId, "bev", 3000),
+        target(userId, "food", 18_000_000),
+        target(userId, "coll", 45_000_000),
+      ]),
       {
         id: "target-other-rep-2026-11-other-line",
         companyId: otherCompanyId,
@@ -172,6 +194,34 @@ export async function seedDemo(db: Db, options: SeedOptions = { deployed: false 
         focus.push({ id: `${closeId}-${item}`, companyId, closeId, focusItemId: item, amount: FOCUS_PER_DAY[i]! });
       }
     });
+    for (const m of TEAM) {
+      if (m.bev === 0) continue;
+      for (const d of DAYS) {
+        const closeId = `close-${m.id}-2026-11-${d}`;
+        const food = m.foodSar * 100;
+        const cash = Math.round(food * 0.6);
+        closes.push({
+          id: closeId,
+          companyId,
+          userId: m.id,
+          date: `2026-11-${d}`,
+          source: "manual",
+          status: "confirmed",
+          cashSales: cash,
+          creditSales: food - cash,
+          collections: m.collSar * 100,
+          expenses: 0,
+          loaded: m.bev,
+          sold: m.bev,
+          returned: 0,
+        });
+        lines.push(
+          { id: `${closeId}-bev`, companyId, closeId, lineId: "bev", amount: m.bev },
+          { id: `${closeId}-food`, companyId, closeId, lineId: "food", amount: food },
+          { id: `${closeId}-coll`, companyId, closeId, lineId: "coll", amount: m.collSar * 100 },
+        );
+      }
+    }
     await ins(s.dailyCloses, [
       ...closes,
       {
@@ -226,8 +276,19 @@ export async function seedDemo(db: Db, options: SeedOptions = { deployed: false 
   };
   const inviteToken = await issue("invite-ahmed", companyId, repId);
   const otherInviteToken = await issue("invite-other-rep", otherCompanyId, otherRepId);
+  const supervisorInviteToken = await issue("invite-sami", companyId, supervisorId);
 
-  const result: SeedResult = { companyId, repId, inviteToken, otherRepId, otherInviteToken, ownerId, adminId };
+  const result: SeedResult = {
+    companyId,
+    repId,
+    inviteToken,
+    otherRepId,
+    otherInviteToken,
+    supervisorId,
+    supervisorInviteToken,
+    ownerId,
+    adminId,
+  };
   if (deployed) {
     // Only while the account still has no password: a re-seed must not reopen an account that is set up.
     const needsInvite = async (userId: string) =>

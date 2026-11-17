@@ -63,11 +63,58 @@ describe("seedDemo", () => {
     expect(r.inviteToken).not.toBe(r.otherInviteToken);
   });
 
+  it("seeds the team: four reps and one supervisor in demo-co, with the shared totals (R5)", async () => {
+    const db = await createTestDb();
+    const r = await seedDemo(db);
+    const users = await db.select().from(s.users).where(eq(s.users.companyId, r.companyId));
+    expect(users.filter((u) => u.role === "rep").map((u) => u.id).sort()).toEqual(["ahmed", "khaled", "omar", "yousef"]);
+    expect(users.filter((u) => u.role === "supervisor").map((u) => u.id)).toEqual(["sami"]);
+    expect(r.supervisorId).toBe("sami");
+    const supervisorOf = Object.fromEntries(users.map((u) => [u.id, u.supervisorId]));
+    expect(supervisorOf).toMatchObject({ ahmed: "sami", khaled: "sami", omar: null, yousef: null });
+
+    const sumFor = async (userId: string, lineId: string) => {
+      const [row] = await db
+        .select({ n: sql<number>`coalesce(sum(${s.closeLines.amount}), 0)::bigint` })
+        .from(s.closeLines)
+        .innerJoin(s.dailyCloses, eq(s.closeLines.closeId, s.dailyCloses.id))
+        .where(and(eq(s.dailyCloses.userId, userId), eq(s.closeLines.lineId, lineId)));
+      return Number(row!.n);
+    };
+    expect(await sumFor("khaled", "bev")).toBe(1320);
+    expect(await sumFor("khaled", "food")).toBe(8_800_000);
+    expect(await sumFor("khaled", "coll")).toBe(22_000_000);
+    expect(await sumFor("omar", "bev")).toBe(770);
+    expect(await sumFor("omar", "food")).toBe(5_500_000);
+    expect(await sumFor("omar", "coll")).toBe(11_000_000);
+    expect(await sumFor("yousef", "bev")).toBe(0);
+    expect((await db.select().from(s.dailyCloses).where(eq(s.dailyCloses.userId, "yousef")))).toHaveLength(0);
+
+    const team = ["ahmed", "khaled", "omar", "yousef"];
+    for (const id of team) {
+      const t = await db.select().from(s.targets).where(eq(s.targets.userId, id));
+      expect(Object.fromEntries(t.map((x) => [x.lineId, x.amount]))).toEqual({ bev: 3000, food: 18_000_000, coll: 45_000_000 });
+    }
+    // Team totals from the shared sample data.
+    let bev = 0;
+    let food = 0;
+    let coll = 0;
+    for (const id of team) {
+      bev += await sumFor(id, "bev");
+      food += await sumFor(id, "food");
+      coll += await sumFor(id, "coll");
+    }
+    expect([bev, food, coll]).toEqual([3230, 22_580_000, 51_900_000]);
+
+    const { peekInvite } = await import("@/server/auth/invites");
+    expect(await peekInvite(db, r.supervisorInviteToken)).toMatchObject({ login: "sami" });
+  });
+
   it("is idempotent: a second run changes no row counts", async () => {
     const db = await createTestDb();
     await seedDemo(db);
     const before = await counts(db);
-    expect(before.invites).toBe(2);
+    expect(before.invites).toBe(3);
     await seedDemo(db);
     expect(await counts(db)).toEqual(before);
   });
