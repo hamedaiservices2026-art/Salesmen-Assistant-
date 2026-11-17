@@ -46,7 +46,7 @@ export default async function HistoryMonthPage({
     timeZone: "UTC",
   });
   const currency = tHome("unit.value");
-  const unitLabel = { cases: tHome("unit.cases"), value: currency };
+  const unitLabel = { cases: tHome("unit.cases"), value: currency, outlets: tHome("unit.outlets") };
 
   return (
     <>

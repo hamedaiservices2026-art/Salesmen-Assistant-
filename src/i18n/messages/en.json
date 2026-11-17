@@ -68,7 +68,8 @@
     "navLabel": "Main navigation",
     "unit": {
       "cases": "cases",
-      "value": "SAR"
+      "value": "SAR",
+      "outlets": "customers"
     },
     "missingLink": "Record the close for day {day}",
     "weekdaysShort": [

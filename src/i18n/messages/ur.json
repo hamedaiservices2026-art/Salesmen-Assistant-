@@ -68,7 +68,8 @@
     "navLabel": "مرکزی نیویگیشن",
     "unit": {
       "cases": "کارٹن",
-      "value": "ریال"
+      "value": "ریال",
+      "outlets": "گاہک"
     },
     "missingLink": "{day} تاریخ کا حساب درج کریں",
     "weekdaysShort": [

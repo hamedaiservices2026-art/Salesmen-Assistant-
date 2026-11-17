@@ -45,14 +45,16 @@ export async function seedDemo(db: Db): Promise<SeedResult> {
       { id: otherRepId, companyId: otherCompanyId, role: "rep", name: "Other Rep", login: "other-rep" },
     ]);
     await ins(s.targetLines, [
-      { id: "bev", companyId, nameAr: "مشروبات", nameEn: "Beverages", unit: "cases", kind: "sales", sort: 1 },
-      { id: "food", companyId, nameAr: "أغذية", nameEn: "Food", unit: "value", kind: "sales", sort: 2 },
-      { id: "coll", companyId, nameAr: "تحصيل", nameEn: "Collection", unit: "value", kind: "collection", sort: 3 },
+      { id: "bev", companyId, code: "bev", nameAr: "مشروبات", nameEn: "Beverages", nameUr: "مشروبات", unit: "cases", kind: "sales", sort: 1 },
+      { id: "food", companyId, code: "food", nameAr: "أغذية", nameEn: "Food", nameUr: "اشیائے خوردونوش", unit: "value", kind: "sales", sort: 2 },
+      { id: "coll", companyId, code: "coll", nameAr: "تحصيل", nameEn: "Collection", nameUr: "وصولی", unit: "value", kind: "collection", sort: 3 },
       {
         id: "other-line",
         companyId: otherCompanyId,
+        code: "other-line",
         nameAr: "مبيعات",
         nameEn: "Sales",
+        nameUr: "فروخت",
         unit: "cases",
         kind: "sales",
         sort: 1,

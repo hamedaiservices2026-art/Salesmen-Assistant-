@@ -68,7 +68,8 @@
     "navLabel": "التنقل الرئيسي",
     "unit": {
       "cases": "كرتونة",
-      "value": "ر.س"
+      "value": "ر.س",
+      "outlets": "عميل"
     },
     "missingLink": "سجّل قفلة يوم {day}",
     "weekdaysShort": [

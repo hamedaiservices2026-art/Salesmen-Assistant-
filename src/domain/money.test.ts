@@ -44,3 +44,11 @@ describe("parseAmount", () => {
     expect(parseAmount("-3", "cases")).toBeNull();
   });
 });
+
+describe("outlets unit", () => {
+  it("formats and parses like cases", () => {
+    expect(formatAmount(1234, "outlets")).toBe("1,234");
+    expect(parseAmount("١٢", "outlets")).toBe(12);
+    expect(parseAmount("1.5", "outlets")).toBeNull();
+  });
+});

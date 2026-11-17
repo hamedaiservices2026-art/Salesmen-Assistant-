@@ -109,7 +109,7 @@ export default async function CommissionPage() {
   const nearestName = (nearestId ? names[nearestId] : undefined) ?? nearest?.label ?? "";
   const nearestUnit: Unit = (nearestId ? units[nearestId] : undefined) ?? "cases";
 
-  const unitLabels = { cases: tHome("unit.cases"), value: currency };
+  const unitLabels = { cases: tHome("unit.cases"), value: currency, outlets: tHome("unit.outlets") };
   const whatIfLines = view.lines.map((l) => ({ lineId: l.lineId, name: lineName(l), unit: l.unit }));
 
   return (

@@ -1,4 +1,4 @@
-export type Unit = "cases" | "value";
+export type Unit = "cases" | "value" | "outlets";
 
 function group(n: number): string {
   return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
@@ -6,7 +6,7 @@ function group(n: number): string {
 
 /** Cases: grouped integer. Value: halalas shown as SAR; two decimals when the fraction is non-zero. */
 export function formatAmount(amount: number, unit: Unit): string {
-  if (unit === "cases") return group(amount);
+  if (unit !== "value") return group(amount);
   const sign = amount < 0 ? "-" : "";
   const abs = Math.abs(amount);
   const whole = Math.floor(abs / 100);
@@ -37,10 +37,10 @@ export function parseAmount(input: string, unit: Unit): number | null {
   const cleaned = toWesternDigits(input)
     .replace(/[,٬\s ]/g, "")
     .replace(/٫/g, ".");
-  const pattern = unit === "cases" ? /^\d+$/ : /^\d+(\.\d{1,2})?$/;
+  const pattern = unit !== "value" ? /^\d+$/ : /^\d+(\.\d{1,2})?$/;
   if (!pattern.test(cleaned)) return null;
   let result: number;
-  if (unit === "cases") {
+  if (unit !== "value") {
     result = Number(cleaned);
   } else {
     const [whole, frac = ""] = cleaned.split(".");

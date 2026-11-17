@@ -1,3 +1,4 @@
+import type { LineKind } from "@/domain/lines";
 import { and, eq, gte, lte } from "drizzle-orm";
 import { dayCounts, type ISODate } from "@/domain/calendar";
 import type { Unit } from "@/domain/money";
@@ -11,7 +12,7 @@ export type LineView = {
   nameAr: string;
   nameEn: string;
   unit: Unit;
-  kind: "sales" | "collection";
+  kind: LineKind;
   target: number;
   achieved: number;
   pace: ReturnType<typeof computePace>;

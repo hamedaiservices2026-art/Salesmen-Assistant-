@@ -3,7 +3,7 @@ import type { Unit } from "@/domain/money";
 
 type Counts = { total: number; elapsed: number; left: number };
 
-const STEP: Record<Unit, number> = { cases: 5, value: 50_000 };
+const STEP: Record<Unit, number> = { cases: 5, value: 50_000, outlets: 1 };
 
 export type WhatIfResult = {
   /** Displayed daily rate: the integer per-day figure that reaches the projection, moved by whole steps. */

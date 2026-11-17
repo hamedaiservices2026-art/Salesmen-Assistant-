@@ -1,3 +1,4 @@
+import type { LineKind } from "@/domain/lines";
 // Internal loaders shared by the rep repos. Every query is scoped to ctx.companyId and,
 // for per-rep rows, ctx.userId.
 import { and, asc, eq, gte, inArray, lte, sql } from "drizzle-orm";
@@ -15,7 +16,7 @@ export type MonthCalendar = {
   weekStartsOn: number;
 };
 
-export type LineInfo = { lineId: string; nameAr: string; nameEn: string; unit: Unit; kind: "sales" | "collection" };
+export type LineInfo = { lineId: string; nameAr: string; nameEn: string; unit: Unit; kind: LineKind };
 
 export type FocusTotal = {
   id: string;

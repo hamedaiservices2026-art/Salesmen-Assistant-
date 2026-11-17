@@ -33,6 +33,7 @@ export const companies = pgTable("companies", {
     .default("ar"),
   sellingWeekdays: integer("selling_weekdays").array().notNull(),
   weekStartsOn: integer("week_starts_on").notNull().default(0),
+  behindPct: integer("behind_pct").notNull().default(10),
   ...stamps(),
 });
 
@@ -83,17 +84,23 @@ export const sessions = pgTable("sessions", {
   ...stamps(),
 });
 
-export const targetLines = pgTable("target_lines", {
-  id: id(),
-  companyId: companyId(),
-  nameAr: text("name_ar").notNull(),
-  nameEn: text("name_en").notNull(),
-  unit: text("unit", { enum: ["cases", "value"] }).notNull(),
-  kind: text("kind", { enum: ["sales", "collection"] }).notNull(),
-  sort: integer("sort").notNull().default(0),
-  active: boolean("active").notNull().default(true),
-  ...stamps(),
-});
+export const targetLines = pgTable(
+  "target_lines",
+  {
+    id: id(),
+    companyId: companyId(),
+    code: text("code").notNull(),
+    nameAr: text("name_ar").notNull(),
+    nameEn: text("name_en").notNull(),
+    nameUr: text("name_ur").notNull(),
+    unit: text("unit", { enum: ["cases", "value", "outlets"] }).notNull(),
+    kind: text("kind", { enum: ["sales", "collection", "coverage"] }).notNull(),
+    sort: integer("sort").notNull().default(0),
+    active: boolean("active").notNull().default(true),
+    ...stamps(),
+  },
+  (t) => [uniqueIndex("target_lines_company_code").on(t.companyId, t.code)],
+);
 
 export const targets = pgTable(
   "targets",

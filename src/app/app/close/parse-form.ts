@@ -1,3 +1,4 @@
+import type { LineKind } from "@/domain/lines";
 import type { Unit } from "@/domain/money";
 import { parseAmount } from "@/domain/money";
 import type { CloseForm, ReturnReason } from "@/server/repos/closes";
@@ -34,7 +35,7 @@ export function returnIndexes(data: FormData): number[] {
  */
 export function parseCloseForm(
   data: FormData,
-  lines: { lineId: string; unit: Unit; kind?: "sales" | "collection" }[],
+  lines: { lineId: string; unit: Unit; kind?: LineKind }[],
   focus: { id: string; unit: Unit }[],
 ): ParseResult {
   const errors: Record<string, "required" | "invalid"> = {};
