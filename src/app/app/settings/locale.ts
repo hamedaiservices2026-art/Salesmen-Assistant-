@@ -3,10 +3,12 @@ import { cookies } from "next/headers";
 import * as s from "@/db/schema";
 import { LOCALE_COOKIE, isLocale } from "@/i18n/config";
 import { SESSION_TTL_MS } from "@/server/auth/sessions";
+import { assertOwnContext } from "@/server/auth/roles";
 import type { Ctx } from "@/server/ctx";
 
 /** Stores the language on the signed-in user's row. Values outside the supported set are refused. */
 export async function saveLocale(ctx: Ctx, locale: string): Promise<{ ok: boolean }> {
+  assertOwnContext(ctx);
   if (!isLocale(locale)) return { ok: false };
   const rows = await ctx.db
     .update(s.users)

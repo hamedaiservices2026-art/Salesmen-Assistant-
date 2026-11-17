@@ -2,7 +2,7 @@
 
 import { useActionState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { LOCALES, type Locale } from "@/i18n/config";
+import { LOCALES, LOCALE_ENDONYM, type Locale } from "@/i18n/config";
 import { INTL_TAG } from "@/ui/intl-tag";
 import { InviteLinkPanel } from "@/ui/admin/InviteLinkPanel";
 import {
@@ -14,7 +14,6 @@ import {
   type RowActionState,
 } from "./actions";
 
-const OWN_NAME = { ar: "العربية", en: "English", ur: "اردو" } as const;
 const ROLES = ["rep", "supervisor", "admin"] as const;
 
 export type UserRowView = {
@@ -122,7 +121,7 @@ export function CreateUserForm({ supervisors, defaultLocale }: { supervisors: Su
           <select name="locale" defaultValue={v.locale ?? defaultLocale} className={input}>
             {LOCALES.map((code) => (
               <option key={code} value={code} lang={code}>
-                {OWN_NAME[code]}
+                {LOCALE_ENDONYM[code]}
               </option>
             ))}
           </select>

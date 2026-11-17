@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { createTestDb } from "@/db/testing";
 import { seedDemo, type SeedResult } from "@/db/seed";
@@ -322,6 +322,56 @@ describe("setActive", () => {
     expect(await setActive(admin(), seed.ownerId, false)).toEqual({ ok: false, error: "not_found" });
     expect(await setActive(admin(), "nobody", true)).toEqual({ ok: false, error: "not_found" });
     expect(await snapshot()).toEqual(before);
+  });
+
+  it("keeps at least one active admin: the last one cannot be stopped (F3)", async () => {
+    const second = await createUser(admin(), { name: "مدير ثان", login: "second@demo.test", role: "admin" });
+    if (!second.ok) throw new Error("setup");
+    const third = await createUser(admin(), { name: "مدير ثالث", login: "third@demo.test", role: "admin" });
+    if (!third.ok) throw new Error("setup");
+    expect(await setActive(admin(), second.userId, false)).toEqual({ ok: true });
+    expect(await setActive(admin(), third.userId, false)).toEqual({ ok: true });
+    // Only the seeded admin is active now; a third context (the stopped second admin's) cannot stop him.
+    const ghost = ctxOf(second.userId, "admin");
+    expect(await setActive(ghost, seed.adminId, false)).toEqual({ ok: false, error: "last_admin" });
+    expect((await userRow(seed.adminId)).active).toBe(true);
+    // A rep or an already stopped admin is never "the last admin".
+    expect(await setActive(admin(), third.userId, false)).toEqual({ ok: true });
+    expect(await setActive(admin(), "omar", false)).toEqual({ ok: true });
+  });
+
+  it("two admins stopping each other at once leave one active (F3)", async () => {
+    const second = await createUser(admin(), { name: "مدير ثان", login: "second@demo.test", role: "admin" });
+    if (!second.ok) throw new Error("setup");
+    const results = await Promise.all([
+      setActive(admin(), second.userId, false),
+      setActive(ctxOf(second.userId, "admin"), seed.adminId, false),
+    ]);
+    expect(results.filter((r) => r.ok)).toHaveLength(1);
+    expect(results.filter((r) => !r.ok)).toEqual([{ ok: false, error: "last_admin" }]);
+    const active = (await db.select().from(s.users).where(eq(s.users.role, "admin"))).filter((u) => u.companyId === "demo-co" && u.active);
+    expect(active).toHaveLength(1);
+  });
+
+  it("takes a FOR UPDATE lock on the company's active admin rows (what serializes real Postgres)", async () => {
+    const second = await createUser(admin(), { name: "مدير ثان", login: "second@demo.test", role: "admin" });
+    if (!second.ok) throw new Error("setup");
+    const proto = Object.getPrototypeOf(db.select().from(s.users));
+    const original = proto.for;
+    const locked: { sql: string; params: unknown[] }[] = [];
+    const spy = vi.spyOn(proto, "for").mockImplementation(function (this: { toSQL(): { sql: string; params: unknown[] } }, ...args: unknown[]) {
+      const q = original.apply(this, args);
+      locked.push(q.toSQL());
+      return q;
+    });
+    try {
+      expect(await setActive(admin(), second.userId, false)).toEqual({ ok: true });
+    } finally {
+      spy.mockRestore();
+    }
+    const adminLock = locked.find((q) => /for update/i.test(q.sql) && q.sql.includes('"users"') && q.params.includes("admin"));
+    expect(adminLock).toBeDefined();
+    expect(adminLock!.params).toContain("demo-co");
   });
 
   it("is refused for a rep and a supervisor", async () => {

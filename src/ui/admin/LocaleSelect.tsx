@@ -2,9 +2,7 @@
 
 import { useRef } from "react";
 import type { Locale } from "@/i18n/config";
-import { LOCALES } from "@/i18n/config";
-
-const OWN_NAME = { ar: "العربية", en: "English", ur: "اردو" } as const;
+import { LOCALES, LOCALE_ENDONYM } from "@/i18n/config";
 
 /** Language select that saves on change; it sits on the blue sidebar, so it is white on a translucent fill. */
 export function LocaleSelect({
@@ -28,7 +26,7 @@ export function LocaleSelect({
       >
         {LOCALES.map((code) => (
           <option key={code} value={code} lang={code} className="text-ink">
-            {OWN_NAME[code]}
+            {LOCALE_ENDONYM[code]}
           </option>
         ))}
       </select>

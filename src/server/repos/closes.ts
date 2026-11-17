@@ -3,6 +3,7 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import type { ISODate } from "@/domain/calendar";
 import * as s from "@/db/schema";
 import type { Db } from "@/db/client";
+import { assertOwnContext } from "@/server/auth/roles";
 import type { Ctx } from "@/server/ctx";
 import { currentDay } from "@/server/today";
 import { isDailyLine } from "@/domain/lines";
@@ -125,6 +126,7 @@ async function validate(ctx: Ctx, form: CloseForm, today: ISODate): Promise<Reco
 
 /** Validates and upserts the rep's close for form.date, replacing its line, focus and return rows. */
 export async function saveClose(ctx: Ctx, form: CloseForm, opts?: { today?: ISODate }): Promise<SaveCloseResult> {
+  assertOwnContext(ctx);
   const today = opts?.today ?? currentDay(ctx.timeZone);
   const values = {
     source: "manual" as const,

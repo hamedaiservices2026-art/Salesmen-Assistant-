@@ -3,12 +3,11 @@
 import { useActionState } from "react";
 import { useTranslations } from "next-intl";
 import { CURRENCIES } from "@/domain/money";
-import { LOCALES } from "@/i18n/config";
+import { LOCALES, LOCALE_ENDONYM } from "@/i18n/config";
 import { InviteLinkPanel } from "@/ui/admin/InviteLinkPanel";
 import { createCompanyAction, type NewCompanyFormState } from "./actions";
 
 const TIME_ZONES = ["Asia/Riyadh", "Asia/Dubai", "Asia/Qatar", "Africa/Cairo", "Asia/Karachi"] as const;
-const OWN_NAME = { ar: "العربية", en: "English", ur: "اردو" } as const;
 
 const input =
   "block min-h-11 w-full rounded-lg border border-line bg-white px-3 text-[15px] text-ink focus:border-brand focus:outline-2 focus:outline-brand";
@@ -83,7 +82,7 @@ export function NewCompanyForm() {
           <select name="defaultLocale" defaultValue={v.defaultLocale ?? "ar"} className={input}>
             {LOCALES.map((code) => (
               <option key={code} value={code} lang={code}>
-                {OWN_NAME[code]}
+                {LOCALE_ENDONYM[code]}
               </option>
             ))}
           </select>

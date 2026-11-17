@@ -12,9 +12,11 @@ import type { Ctx } from "@/server/ctx";
  *
  * The result keeps the caller's company, language and time zone, with `userId` of the rep and
  * the role `rep`, so the plan-1 loaders (which filter by company and user) read that rep's rows.
+ * It is tagged `actingFor` (the caller's real role), and every rep write refuses a tagged context.
+ * An owner gets null rather than `Forbidden`.
  */
 export async function repCtx(ctx: Ctx, repId: string): Promise<Ctx | null> {
-  const forRep: Ctx = { ...ctx, userId: repId, role: "rep" };
+  const forRep: Ctx = { ...ctx, userId: repId, role: "rep", actingFor: ctx.role };
   switch (ctx.role) {
     case "rep":
       return repId === ctx.userId ? forRep : null;

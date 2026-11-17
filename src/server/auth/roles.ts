@@ -19,6 +19,11 @@ export function assertRole(ctx: Pick<Ctx, "role">, roles: readonly Role[]): void
   if (!roles.includes(ctx.role)) throw new Forbidden();
 }
 
+/** Refuses a context made by `repCtx`: a rep's own writes must come from his own session, never from someone reading his figures. */
+export function assertOwnContext(ctx: Pick<Ctx, "actingFor">): void {
+  if (ctx.actingFor !== undefined) throw new Forbidden();
+}
+
 export function homeFor(role: Role): "/app" | "/admin" {
   return (PIN_ROLES as readonly Role[]).includes(role) ? "/app" : "/admin";
 }

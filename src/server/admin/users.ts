@@ -9,6 +9,7 @@ import { createInvite } from "@/server/auth/invites";
 import { isEmail, normalizeEmail } from "@/server/auth/password";
 import { assertRole, type Role } from "@/server/auth/roles";
 import type { Ctx } from "@/server/ctx";
+import { isUniqueViolation } from "@/server/db-errors";
 
 /** The roles an admin can create and list; owners live in the platform company and are not managed here. */
 const MANAGED_ROLES = ["rep", "supervisor", "admin"] as const satisfies readonly Role[];
@@ -41,11 +42,6 @@ export type NewUser = {
 export type CreateUserResult =
   | { ok: true; userId: string; inviteToken: string }
   | { ok: false; errors: Record<string, string> };
-
-function isUniqueViolation(e: unknown): boolean {
-  const err = e as { code?: string; cause?: { code?: string } } | null;
-  return err?.code === "23505" || err?.cause?.code === "23505";
-}
 
 const ROLE_ORDER: Record<Role, number> = { admin: 0, supervisor: 1, rep: 2, owner: 3 };
 
@@ -180,7 +176,7 @@ export async function issueInvite(
     await tx
       .update(s.invites)
       .set({ usedAt: now, updatedAt: now })
-      .where(and(eq(s.invites.userId, user.id), isNull(s.invites.usedAt)));
+      .where(and(eq(s.invites.userId, user.id), eq(s.invites.companyId, ctx.companyId), isNull(s.invites.usedAt)));
     const token = await createInvite(tx as unknown as Db, user.id, now);
     return { ok: true as const, token, role: user.role };
   });
@@ -194,23 +190,39 @@ export async function setActive(
   ctx: Ctx,
   userId: string,
   active: boolean,
-): Promise<{ ok: true } | { ok: false; error: "not_found" | "self" }> {
+): Promise<{ ok: true } | { ok: false; error: "not_found" | "self" | "last_admin" }> {
   assertRole(ctx, ["admin"]);
   return ctx.db.transaction(async (tx) => {
     const [user] = await tx
-      .select({ id: s.users.id })
+      .select({ id: s.users.id, role: s.users.role, active: s.users.active })
       .from(s.users)
       .where(and(eq(s.users.id, userId), eq(s.users.companyId, ctx.companyId), inArray(s.users.role, [...MANAGED_ROLES])));
     if (!user) return { ok: false as const, error: "not_found" as const };
     if (user.id === ctx.userId) return { ok: false as const, error: "self" as const };
+    if (!active && user.role === "admin") {
+      // Lock the company's active admins so two admins stopping each other at once take turns:
+      // the second sees one admin left and is refused, and the company always keeps a way in.
+      const admins = await tx
+        .select({ id: s.users.id })
+        .from(s.users)
+        .where(and(eq(s.users.companyId, ctx.companyId), eq(s.users.role, "admin"), eq(s.users.active, true)))
+        .for("update");
+      const others = admins.filter((a) => a.id !== user.id);
+      if (admins.some((a) => a.id === user.id) && others.length === 0) {
+        return { ok: false as const, error: "last_admin" as const };
+      }
+    }
     const now = new Date();
-    await tx.update(s.users).set({ active, updatedAt: now }).where(eq(s.users.id, user.id));
+    await tx
+      .update(s.users)
+      .set({ active, updatedAt: now })
+      .where(and(eq(s.users.id, user.id), eq(s.users.companyId, ctx.companyId)));
     if (!active) {
-      await tx.delete(s.sessions).where(eq(s.sessions.userId, user.id));
+      await tx.delete(s.sessions).where(and(eq(s.sessions.userId, user.id), eq(s.sessions.companyId, ctx.companyId)));
       await tx
         .update(s.invites)
         .set({ usedAt: now, updatedAt: now })
-        .where(and(eq(s.invites.userId, user.id), isNull(s.invites.usedAt)));
+        .where(and(eq(s.invites.userId, user.id), eq(s.invites.companyId, ctx.companyId), isNull(s.invites.usedAt)));
     }
     return { ok: true as const };
   });

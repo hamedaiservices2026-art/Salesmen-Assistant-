@@ -10,3 +10,6 @@ export function isLocale(value: string | undefined | null): value is Locale {
 export function dirOf(locale: Locale): "rtl" | "ltr" {
   return locale === "en" ? "ltr" : "rtl";
 }
+
+/** Each language's name in its own language, for language pickers. */
+export const LOCALE_ENDONYM = { ar: "العربية", en: "English", ur: "اردو" } as const satisfies Record<Locale, string>;

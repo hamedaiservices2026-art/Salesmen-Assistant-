@@ -9,6 +9,7 @@ import { createInvite } from "@/server/auth/invites";
 import { isEmail, normalizeEmail } from "@/server/auth/password";
 import { assertRole } from "@/server/auth/roles";
 import type { Ctx } from "@/server/ctx";
+import { isUniqueViolation } from "@/server/db-errors";
 
 export type NewCompany = {
   name: string;
@@ -35,11 +36,6 @@ export type CreateCompanyResult =
 /** Selling days and week start of a new company: Saturday to Thursday, the week starting on Saturday. */
 const DEFAULT_SELLING_WEEKDAYS = [6, 0, 1, 2, 3, 4];
 const WEEK_STARTS_ON = 6;
-
-function isUniqueViolation(e: unknown): boolean {
-  const code = (e as { code?: string; cause?: { code?: string } } | null);
-  return code?.code === "23505" || code?.cause?.code === "23505";
-}
 
 /** The platform owner's list of customer companies (never his own `platform` company), newest last. */
 export async function listCompanies(ctx: Ctx): Promise<CompanyRow[]> {

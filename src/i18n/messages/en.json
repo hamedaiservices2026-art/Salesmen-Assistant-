@@ -348,7 +348,8 @@
         "invalid": "This value is not valid",
         "taken": "This login is already in use",
         "row_not_found": "This user was not found",
-        "row_self": "You cannot stop your own account"
+        "row_self": "You cannot stop your own account",
+        "row_last_admin": "The company must keep at least one active admin"
       },
       "invite": {
         "createdTitle": "{name} was added",

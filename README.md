@@ -53,7 +53,7 @@ The demo seed is not part of a deployment. To seed a deployed database anyway (a
 
 ## Local database warning
 
-The local PGlite database is single-process. Run only one thing against `.data/pglite` at a time: stop the dev server before seeding, and never seed while a server is running. `pnpm db:seed` does not reset the database by itself, so `rm -rf .data` first for a clean start.
+The local PGlite database is single-process. Run only one thing against `.data/pglite` at a time: stop the dev server before seeding, and never seed while a server is running. `pnpm db:seed` does not reset the database by itself, so `rm -rf .data` first for a clean start. It also leaves existing rows as they are (for example supervisor links added to the seed later), so an already-seeded database keeps its old values.
 
 ## Sample data
 

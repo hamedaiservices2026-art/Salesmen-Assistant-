@@ -15,7 +15,7 @@ export type CreateUserState = {
 
 /** The result of a row action. `link` is the new invite link for `userId` (shown once). */
 export type RowActionState = {
-  error?: "not_found" | "self";
+  error?: "not_found" | "self" | "last_admin";
   link?: { userId: string; invitePath: string };
 };
 

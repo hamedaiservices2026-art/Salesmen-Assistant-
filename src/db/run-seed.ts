@@ -9,6 +9,7 @@ async function main() {
     console.error(refusal);
     process.exit(1);
   }
+  console.log("Note: the seed does not update rows that already exist; for a clean demo run `rm -rf .data` first.");
   const deployed = Boolean(process.env.DATABASE_URL);
   const r = await seedDemo(await getDb(), { deployed });
   console.log(`Ahmed (rep):   /invite/${r.inviteToken}`);
