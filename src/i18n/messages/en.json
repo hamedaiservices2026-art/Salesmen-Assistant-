@@ -408,6 +408,70 @@
           "not_found": "This holiday was not found"
         }
       }
+    },
+    "lines": {
+      "title": "Target lines",
+      "subtitle": "{count, plural, =0 {No lines yet} one {# line} other {# lines}} · what reps are measured on, in the order they see it",
+      "listTitle": "All lines",
+      "empty": "No target lines yet. Add the first one above.",
+      "form": {
+        "newTitle": "New line",
+        "editTitle": "Edit line",
+        "saveNew": "Add line",
+        "saveEdit": "Save changes",
+        "cancel": "Cancel"
+      },
+      "fields": {
+        "nameAr": "Name in Arabic",
+        "nameEn": "Name in English",
+        "nameUr": "Name in Urdu",
+        "code": "Code",
+        "codeHint": "Lowercase letters, digits, hyphen or underscore. Used in uploads.",
+        "kind": "Type",
+        "unit": "Counted in",
+        "lockedHint": "This line already has targets or sales recorded, so its code, type and unit cannot change. You can still rename it, reorder it or turn it off."
+      },
+      "kinds": {
+        "sales": "Sales",
+        "collection": "Collection",
+        "coverage": "Coverage"
+      },
+      "units": {
+        "cases": "Cases",
+        "value": "Money",
+        "outlets": "Customers"
+      },
+      "cols": {
+        "name": "Name",
+        "code": "Code",
+        "kind": "Type",
+        "unit": "Counted in",
+        "status": "Status",
+        "actions": "Actions"
+      },
+      "status": {
+        "active": "Active",
+        "inactive": "Off"
+      },
+      "actions": {
+        "edit": "Edit",
+        "deactivate": "Turn off",
+        "activate": "Turn on",
+        "moveUp": "Move {name} up",
+        "moveDown": "Move {name} down"
+      },
+      "saved": "Line saved",
+      "errors": {
+        "required": "This field is required",
+        "invalid": "This value is not valid",
+        "taken": "This code is already used by another line",
+        "in_use": "This line already has targets or sales, so this cannot change",
+        "collection_needs_value": "A collection line is always counted in money",
+        "coverage_needs_outlets": "A coverage line is always counted in customers",
+        "outlets_only_for_coverage": "Customers can only be used for a coverage line",
+        "not_found": "This line was not found",
+        "row_not_found": "This line was not found"
+      }
     }
   }
 }
