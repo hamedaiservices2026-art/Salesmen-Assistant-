@@ -157,12 +157,17 @@ describe("validateComponents", () => {
   });
 
   it("window_order: starts after it ends", () => {
-    expectOnly([bonus({ startsOn: "2026-11-20", endsOn: "2026-11-10" })], "window_order", "components.0.endsOn");
+    // (a cola bonus not equal to cola's window also reports focus_window_mismatch)
+    expect(issuesOf([bonus({ startsOn: "2026-11-20", endsOn: "2026-11-10" })])).toContainEqual({ path: "components.0.endsOn", code: "window_order" });
   });
 
-  it("window_outside_period", () => {
-    expectOnly([bonus({ condition: { kind: "focus_at_least", focusItemId: "wide", min: 5 }, startsOn: "2026-10-31" })], "window_outside_period", "components.0.startsOn");
-    expectOnly([bonus({ condition: { kind: "focus_at_least", focusItemId: "wide", min: 5 }, endsOn: "2026-12-01" })], "window_outside_period", "components.0.endsOn");
+  it("window_outside_period (a focus bonus equal to the item's window also differs from it, so check by containment)", () => {
+    const wide = { kind: "focus_at_least", focusItemId: "wide", min: 5 };
+    expect(issuesOf([bonus({ condition: wide, startsOn: "2026-10-31" })])).toContainEqual({ path: "components.0.startsOn", code: "window_outside_period" });
+    expect(issuesOf([bonus({ condition: wide, endsOn: "2026-12-01" })])).toContainEqual({ path: "components.0.endsOn", code: "window_outside_period" });
+    // A line condition has no item window to equal: the outside-period rule is reported alone.
+    const line = { kind: "line_pct_at_least", lineId: "bev", minPct: 90 };
+    expectOnly([bonus({ condition: line, startsOn: "2026-10-31" })], "window_outside_period", "components.0.startsOn");
   });
 
   it("line_bonus_needs_full_period: a line_pct_at_least bonus from 15 Nov, alone or inside all", () => {
@@ -186,6 +191,13 @@ describe("validateComponents", () => {
     expect(
       issuesOf([bonus({ condition: { kind: "focus_at_least", focusItemId: "mango", min: 200 }, endsOn: "2026-11-20" })]),
     ).toEqual([]);
+  });
+
+  it("focus_window_mismatch: a window inside the item's window but not equal to it (the engine counts the whole window)", () => {
+    const mango = { kind: "focus_at_least", focusItemId: "mango", min: 200 };
+    expectOnly([bonus({ condition: mango, startsOn: "2026-11-01", endsOn: "2026-11-19" })], "focus_window_mismatch", "components.0.endsOn");
+    expectOnly([bonus({ condition: mango, startsOn: "2026-11-02", endsOn: "2026-11-20" })], "focus_window_mismatch", "components.0.startsOn");
+    expect(issuesOf([bonus({ condition: mango, startsOn: "2026-11-01", endsOn: "2026-11-20" })])).toEqual([]);
   });
 
   it("empty_all: an all needs 2 to 4 conditions", () => {
@@ -220,7 +232,78 @@ describe("validateComponents", () => {
   });
 });
 
+describe("pct_needs_value", () => {
+  // 500 bps on the cases line bev: 2 695 cartons would "pay" 135 (2695 × 500 ÷ 10 000, rounded down), a percentage of a count.
+  it("per_unit pct_of_value on a cases line is refused at rate.kind; on food (value) it is fine", () => {
+    expectOnly([perUnit({ lineId: "bev", rate: { kind: "pct_of_value", bps: 500 } })], "pct_needs_value", "components.0.rate.kind");
+    expect(issuesOf([perUnit({ lineId: "food", rate: { kind: "pct_of_value", bps: 500 } })])).toEqual([]);
+    // the outlets line is a count too
+    expectOnly([perUnit({ lineId: "cov", rate: { kind: "pct_of_value", bps: 500 } })], "pct_needs_value", "components.0.rate.kind");
+  });
+
+  it("a tier paying pct_of_achieved on a cases line is refused at the tier's pay.kind; on food it is fine", () => {
+    const tiers = [{ minPct: 90, pay: { kind: "pct_of_achieved", bps: 500 } }];
+    expectOnly([tiered({ lineId: "bev", tiers })], "pct_needs_value", "components.0.tiers.0.pay.kind");
+    expect(issuesOf([tiered({ lineId: "food", tiers })])).toEqual([]);
+    expect(issuesOf([tiered({ lineId: "coll", tiers })])).toEqual([]);
+  });
+
+  it("fixed pay and per_case are unaffected by the unit", () => {
+    expect(issuesOf([tiered({ lineId: "bev" }), perUnit({ id: "c2", lineId: "bev", rate: { kind: "per_case", amount: 100 } })])).toEqual([]);
+  });
+});
+
+describe("amount caps", () => {
+  it("fixed pay up to 100 000 000 000 is accepted, one more is bad_amount", () => {
+    expect(issuesOf([bonus({ amount: 100_000_000_000 })])).toEqual([]);
+    expectOnly([bonus({ amount: 100_000_000_001 })], "bad_amount", "components.0.amount");
+    expectOnly([tiered({ tiers: [{ minPct: 90, pay: { kind: "fixed", amount: 100_000_000_001 } }] })], "bad_amount", "components.0.tiers.0.pay.amount");
+  });
+  it("per_case up to 1 000 000 000 is accepted, one more is bad_amount", () => {
+    expect(issuesOf([perUnit({ lineId: "bev", rate: { kind: "per_case", amount: 1_000_000_000 } })])).toEqual([]);
+    expectOnly([perUnit({ lineId: "bev", rate: { kind: "per_case", amount: 1_000_000_001 } })], "bad_amount", "components.0.rate.amount");
+  });
+});
+
+describe("adversarial input", () => {
+  it("a 10 000-element bad array answers fast with at most 100 issues", () => {
+    const started = Date.now();
+    const r = validateComponents(Array.from({ length: 10_000 }, () => ({ bad: true })), refs);
+    expect(Date.now() - started).toBeLessThan(2000);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.issues.length).toBeLessThanOrEqual(100);
+  });
+
+  it("many bad components are cut at 100 issues with a final too_many_issues marker", () => {
+    const bad = Array.from({ length: 50 }, (_, i) => tiered({ id: `c${i}`, lineId: "zzz", label: "", tiers: [] }));
+    const r = validateComponents(bad, refs);
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.issues).toHaveLength(101);
+    expect(r.issues.at(-1)).toEqual({ path: "components", code: "too_many_issues" });
+  });
+
+  it("null elements, NaN, Infinity, __proto__ keys and deep nesting are shape issues, never a crash", () => {
+    expect(issuesOf([null])[0]!.code).toBe("shape");
+    expect(issuesOf([undefined, 5, "x", []]).every((i) => i.code === "shape")).toBe(true);
+    for (const n of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+      expect(issuesOf([bonus({ amount: n })])[0]!.code).toBe("shape");
+    }
+    const proto = JSON.parse('[{"id":"c1","type":"tiered","label":"x","lineId":"bev","tiers":[{"minPct":90,"pay":{"kind":"fixed","amount":1}}],"__proto__":{"polluted":true}}]');
+    const r = validateComponents(proto, refs);
+    expect(r.ok).toBe(true);
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+    let deep: unknown = { kind: "fixed", amount: 1 };
+    for (let i = 0; i < 5000; i++) deep = { kind: "all", conditions: [deep] };
+    expect(issuesOf([bonus({ condition: deep })])[0]!.code).toBe("shape");
+  });
+});
+
 describe("referencedLineIds", () => {
+  it("ignores ids longer than 64 characters", () => {
+    expect(referencedLineIds([{ lineId: "x".repeat(65) }, { lineId: "y".repeat(64) }])).toEqual(["y".repeat(64)]);
+  });
+
   it("collects every line a component or condition names, sorted and unique, from any input", () => {
     expect(referencedLineIds(sampleScheme.components)).toEqual(["bev", "coll", "food"]);
     expect(

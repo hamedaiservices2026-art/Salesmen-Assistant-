@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { createTestDb } from "@/db/testing";
 import { seedDemo, type SeedResult } from "@/db/seed";
@@ -12,8 +12,10 @@ import { sampleScheme } from "@/domain/commission/sample-fixture";
 import type { Ctx } from "@/server/ctx";
 import { Forbidden, type Role } from "@/server/auth/roles";
 import { getCommissionView } from "@/server/repos/commission";
-import { saveLine, setLineActive } from "./lines";
+import { getHistoryMonths } from "@/server/repos/history";
+import { moveLine, saveLine, setLineActive } from "./lines";
 import { repCtx } from "./rep-ctx";
+import { updateDraftRow } from "./schemes-internal";
 import { getSchemeEditor, previewScheme, publishComponents, publishScheme, saveDraft } from "./schemes";
 
 let db: Db;
@@ -54,6 +56,13 @@ async function snapshot() {
   };
 }
 
+/** `getSchemeEditor` for a valid period: the editor itself. */
+async function ed(ctx: Ctx, p: { year: number; month: number }) {
+  const e = await getSchemeEditor(ctx, p);
+  if (!e.ok) throw new Error("invalid period");
+  return e;
+}
+
 const schemeRow = async (companyId: string, p: { year: number; month: number }) =>
   (
     await db
@@ -89,7 +98,7 @@ describe("roles", () => {
 
 describe("getSchemeEditor", () => {
   it("shows the seeded November scheme as version 1 with its migrated history and the month's refs", async () => {
-    const e = await getSchemeEditor(admin(), NOV);
+    const e = await ed(admin(), NOV);
     expect(e).toMatchObject({ schemeId: "scheme-2026-11", version: 1, draftRev: 0, draft: null, issuesInPublished: [] });
     expect(e.published).toEqual(sampleScheme.components);
     expect(e.refs).toEqual({
@@ -109,7 +118,7 @@ describe("getSchemeEditor", () => {
   });
 
   it("a month with nothing yet: no scheme, version 0, refs without November's focus items", async () => {
-    const e = await getSchemeEditor(admin(), DEC);
+    const e = await ed(admin(), DEC);
     expect(e).toMatchObject({ schemeId: null, version: 0, draftRev: 0, published: null, draft: null, history: [], issuesInPublished: [] });
     expect(e.refs.focus).toEqual([]);
     expect(e.refs.period).toEqual({ start: "2026-12-01", end: "2026-12-31" });
@@ -142,7 +151,7 @@ describe("saveDraft and publishScheme", () => {
     expect(view.scheme).toEqual({ id: row.id, name: "ديسمبر 2026", components: decemberComponents() });
     expect(view.actual.results.map((r) => r.componentId)).toEqual(["c_bev", "c_food", "c_coll"]);
 
-    const e = await getSchemeEditor(admin(), DEC);
+    const e = await ed(admin(), DEC);
     expect(e).toMatchObject({ version: 1, draft: null, published: decemberComponents() });
     expect(e.history).toEqual([{ version: 1, at: expect.any(Date), byName: "مدير العرض" }]);
   });
@@ -178,7 +187,7 @@ describe("saveDraft and publishScheme", () => {
       error: "stale",
     });
     expect(await snapshot()).toEqual(before);
-    expect((await getSchemeEditor(second, NOV)).draft).toEqual(withBevTier80(111));
+    expect((await ed(second, NOV)).draft).toEqual(withBevTier80(111));
 
     // The first save of a month that has no row yet: the second admin's first save is stale too.
     expect((await saveDraft(admin(), { ...DEC, components: [], expectedVersion: 0, expectedDraftRev: 0 })).ok).toBe(true);
@@ -244,7 +253,7 @@ describe("saveDraft and publishScheme", () => {
       [2, seed.adminId],
     ]);
     expect(versions.find((v) => v.version === 2)!.components).toEqual(changed);
-    expect((await getSchemeEditor(admin(), NOV)).history.map((h) => [h.version, h.byName])).toEqual([
+    expect((await ed(admin(), NOV)).history.map((h) => [h.version, h.byName])).toEqual([
       [2, "مدير العرض"],
       [1, null],
     ]);
@@ -259,7 +268,7 @@ describe("a published scheme naming a line that is later deactivated (Review Foc
     expect(view.actual.results.find((r) => r.componentId === "c_coll")).toMatchObject({ amount: 0, reason: "no_target" });
     expect(view.actual.total).toBe(41_400);
 
-    const e = await getSchemeEditor(admin(), NOV);
+    const e = await ed(admin(), NOV);
     expect(e.issuesInPublished).toContainEqual({ path: "components.2.lineId", code: "unknown_line" });
     expect(e.issuesInPublished).toContainEqual({ path: "components.4.condition.lineId", code: "unknown_line" });
     expect(e.refs.lines.map((l) => l.id)).toEqual(["bev", "food"]);
@@ -360,7 +369,7 @@ describe("another company (Review Focus 1)", () => {
     const other = await otherAdmin();
     const before = await snapshot();
 
-    expect(await getSchemeEditor(other, NOV)).toMatchObject({ schemeId: null, version: 0, published: null, history: [] });
+    expect(await ed(other, NOV)).toMatchObject({ schemeId: null, version: 0, published: null, history: [] });
     // The demo scheme's version 1 is not his: publishing at version 1 finds nothing of his.
     expect(await publishScheme(other, { ...NOV, expectedVersion: 1, expectedDraftRev: 0 })).toEqual({ ok: false, error: "stale" });
     // Lines and focus items of the demo company are unknown to him.
@@ -388,7 +397,7 @@ describe("another company (Review Focus 1)", () => {
     const after = await snapshot();
     expect(after.schemes.filter((r) => r.companyId === "demo-co")).toEqual(before.schemes.filter((r) => r.companyId === "demo-co"));
     expect(after.versions.filter((r) => r.companyId === "demo-co")).toEqual(before.versions.filter((r) => r.companyId === "demo-co"));
-    expect((await getSchemeEditor(admin(), NOV)).history).toHaveLength(1);
+    expect((await ed(admin(), NOV)).history).toHaveLength(1);
   });
 });
 
@@ -410,5 +419,104 @@ describe("publishComponents", () => {
     expect(row).toMatchObject({ version: 2, draft: withBevTier80(111), draftRev: 1, components: withBevTier80(5), publishedBy: seed.adminId });
     // The open draft was made against version 1, so it can no longer be published.
     expect(await publishScheme(admin(), { ...NOV, expectedVersion: 1, expectedDraftRev: 1 })).toEqual({ ok: false, error: "stale" });
+  });
+});
+
+describe("the conditional writes themselves (what holds when another transaction commits after the pre-check)", () => {
+  const inTx = <T,>(f: (tx: Db) => Promise<T>) => db.transaction((tx) => f(tx as unknown as Db));
+
+  it("publishComponents with a wrong version is stale: no row, no version log, nothing changes", async () => {
+    await saveDraft(admin(), { ...NOV, components: withBevTier80(111), expectedVersion: 1, expectedDraftRev: 0 });
+    const before = await snapshot();
+    expect(await inTx((tx) => publishComponents(tx, admin(), "scheme-2026-11", withBevTier80(5), 0))).toEqual({ ok: false, error: "stale" });
+    expect(await inTx((tx) => publishComponents(tx, admin(), "scheme-2026-11", withBevTier80(5), 2))).toEqual({ ok: false, error: "stale" });
+    expect(await snapshot()).toEqual(before);
+  });
+
+  it("publishComponents that clears the draft with a wrong draft revision is stale and leaves the draft", async () => {
+    await saveDraft(admin(), { ...NOV, components: withBevTier80(111), expectedVersion: 1, expectedDraftRev: 0 });
+    const before = await snapshot();
+    const wrong = await inTx((tx) =>
+      publishComponents(tx, admin(), "scheme-2026-11", withBevTier80(111), 1, { clearDraft: true, expectedDraftRev: 0 }),
+    );
+    expect(wrong).toEqual({ ok: false, error: "stale" });
+    expect(await snapshot()).toEqual(before);
+    expect((await schemeRow("demo-co", NOV))!.draft).toEqual(withBevTier80(111));
+    // control: the right revision publishes and clears
+    const right = await inTx((tx) =>
+      publishComponents(tx, admin(), "scheme-2026-11", withBevTier80(111), 1, { clearDraft: true, expectedDraftRev: 1 }),
+    );
+    expect(right).toEqual({ ok: true, version: 2 });
+    expect((await schemeRow("demo-co", NOV))!.draft).toBeNull();
+  });
+
+  it("the draft write misses on a wrong version or a wrong draft revision, and hits on the right pair", async () => {
+    const before = await snapshot();
+    expect(await inTx((tx) => updateDraftRow(tx, admin(), "scheme-2026-11", withBevTier80(9), 0, 0))).toBeNull();
+    expect(await inTx((tx) => updateDraftRow(tx, admin(), "scheme-2026-11", withBevTier80(9), 1, 7))).toBeNull();
+    expect(await snapshot()).toEqual(before);
+    expect(await inTx((tx) => updateDraftRow(tx, admin(), "scheme-2026-11", withBevTier80(9), 1, 0))).toEqual({ draftRev: 1 });
+    expect((await schemeRow("demo-co", NOV))!.draft).toEqual(withBevTier80(9));
+    // and another company's admin cannot reach the row at all
+    const other = await otherAdmin();
+    expect(await inTx((tx) => updateDraftRow(tx, other, "scheme-2026-11", [], 1, 1))).toBeNull();
+  });
+});
+
+describe("lock order with moveLine", () => {
+  it("moveLine locks the company's lines in id order and the renumbering is unchanged", async () => {
+    const proto = Object.getPrototypeOf(db.select().from(s.targetLines));
+    const original = proto.for;
+    const locks: { sql: string; params: unknown[] }[] = [];
+    const spy = vi.spyOn(proto, "for").mockImplementation(function (this: { toSQL(): { sql: string; params: unknown[] } }, ...args: unknown[]) {
+      const q = original.apply(this, args);
+      locks.push(q.toSQL());
+      return q;
+    });
+    try {
+      expect(await moveLine(admin(), "coll", "up")).toEqual({ ok: true });
+    } finally {
+      spy.mockRestore();
+    }
+    const lock = locks.find((q) => /for update/i.test(q.sql) && q.sql.includes('"target_lines"'));
+    expect(lock).toBeDefined();
+    expect(lock!.sql).toMatch(/order by "target_lines"\."id"(\s+asc)?\s+for update/i);
+    expect(lock!.sql).not.toMatch(/"target_lines"\."sort"/);
+    const rows = await db.select().from(s.targetLines).where(eq(s.targetLines.companyId, "demo-co"));
+    expect(rows.sort((a, b) => a.sort - b.sort).map((r) => r.code)).toEqual(["bev", "coll", "food"]);
+  });
+});
+
+describe("minor rulings", () => {
+  it("getSchemeEditor with an invalid month answers invalid_period instead of throwing", async () => {
+    expect(await getSchemeEditor(admin(), { year: 2026, month: 13 })).toEqual({ ok: false, error: "invalid_period" });
+    expect(await getSchemeEditor(admin(), { year: 1999, month: 1 })).toEqual({ ok: false, error: "invalid_period" });
+  });
+
+  it("a focus item that is no longer in the month shows as unknown_focus in issuesInPublished", async () => {
+    await db.update(s.focusItems).set({ startsOn: "2027-01-01", endsOn: "2027-01-31" }).where(eq(s.focusItems.id, "mango"));
+    const e = await ed(admin(), NOV);
+    expect(e.issuesInPublished).toEqual([{ path: "components.3.condition.focusItemId", code: "unknown_focus" }]);
+    // the rep's screen still renders
+    expect((await getCommissionView(ahmed(), { ...NOV, today: TODAY })).actual.total).toBe(41_400);
+  });
+
+  it("republishing November leaves October's history commission unchanged and changes November's", async () => {
+    await db.insert(s.targets).values({ id: "t-oct", companyId: "demo-co", userId: "ahmed", year: 2026, month: 10, lineId: "bev", amount: 1000 });
+    await db.insert(s.dailyCloses).values({ id: "close-oct", companyId: "demo-co", userId: "ahmed", date: "2026-10-05", status: "confirmed", source: "manual", sold: 900, loaded: 900 });
+    await db.insert(s.closeLines).values({ id: "cl-oct", companyId: "demo-co", closeId: "close-oct", lineId: "bev", amount: 900 });
+    const octScheme: Component[] = [{ id: "o_bev", type: "tiered", label: "شرائح أكتوبر", lineId: "bev", tiers: [{ minPct: 80, pay: { kind: "fixed", amount: 4242 } }] }];
+    await db.insert(s.schemes).values({ id: "scheme-2026-10", companyId: "demo-co", name: "أكتوبر 2026", year: 2026, month: 10, components: octScheme, published: true, version: 1 });
+
+    const commissions = async () => Object.fromEntries((await getHistoryMonths(ahmed(), { today: TODAY })).map((m) => [m.month, m.commission]));
+    const before = await commissions();
+    expect(before).toEqual({ 10: 4242, 11: 41_400 });
+
+    await saveDraft(admin(), { ...NOV, components: withBevTier80(200_000), expectedVersion: 1, expectedDraftRev: 0 });
+    await publishScheme(admin(), { ...NOV, expectedVersion: 1, expectedDraftRev: 1 });
+    const after = await commissions();
+    expect(after[10]).toBe(4242);
+    expect(after[11]).toBe(41_400); // actual so far is below every bev tier, so the change only shows in the projection
+    expect((await getCommissionView(ahmed(), { ...NOV, today: TODAY })).projected.total).toBe(397_855);
   });
 });

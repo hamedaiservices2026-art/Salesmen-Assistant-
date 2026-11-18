@@ -19,10 +19,12 @@ import { isUniqueViolation } from "@/server/db-errors";
 import { commissionViewWith } from "@/server/repos/commission";
 import { monthBounds } from "@/server/repos/month-data";
 import { repCtx } from "./rep-ctx";
+import { updateDraftRow } from "./schemes-internal";
 
 export type Period = { year: number; month: number };
 
 export type SchemeEditor = {
+  ok: true;
   schemeId: string | null;
   /** The published version the editor works against; 0 while the month was never published. */
   version: number;
@@ -74,7 +76,7 @@ const isRev = (n: unknown): n is number => typeof n === "number" && Number.isSaf
  * With `lock`, the company's lines that those (unvalidated) components name are first locked
  * `FOR UPDATE` in id order, so a line cannot change shape or be deactivated between this read and
  * the end of the caller's transaction; `saveLine` locks the same row and then sees the scheme as in
- * use. Call it inside the transaction that writes the scheme.
+ * use. Lock order: always by line id (see `moveLine` in `lines.ts`), which keeps two transactions from deadlocking. Call it inside the transaction that writes the scheme.
  */
 export async function loadSchemeRefs(db: Db, ctx: Ctx, period: Period, opts: { lock?: unknown } = {}): Promise<SchemeRefs> {
   const { start, end } = monthBounds(period.year, period.month);
@@ -111,10 +113,10 @@ async function schemeRowOf(db: Db, ctx: Ctx, period: Period) {
 }
 
 /** Everything the scheme editor of one month shows. */
-export async function getSchemeEditor(ctx: Ctx, input: Period): Promise<SchemeEditor> {
+export async function getSchemeEditor(ctx: Ctx, input: Period): Promise<SchemeEditor | { ok: false; error: "invalid_period" }> {
   assertRole(ctx, ["admin"]);
   const period = periodOf(input);
-  if (!period) throw new Error("invalid period");
+  if (!period) return { ok: false, error: "invalid_period" };
   const row = await schemeRowOf(ctx.db, ctx, period);
   const [refs, reps, history] = await Promise.all([
     loadSchemeRefs(ctx.db, ctx, period),
@@ -135,6 +137,7 @@ export async function getSchemeEditor(ctx: Ctx, input: Period): Promise<SchemeEd
   const published = row?.published ? row.components : null;
   const check = published ? validateComponents(published, refs) : null;
   return {
+    ok: true,
     schemeId: row?.id ?? null,
     version: row?.version ?? 0,
     draftRev: row?.draftRev ?? 0,
@@ -190,18 +193,7 @@ export async function saveDraft(
         return { ok: true as const, draftRev: 1 };
       }
       // Conditional on both counters: a save or publish that committed since the read above makes it miss.
-      const [saved] = await tx
-        .update(s.schemes)
-        .set({ draft: checked.components, draftRev: sql`${s.schemes.draftRev} + 1`, updatedAt: new Date() })
-        .where(
-          and(
-            eq(s.schemes.id, row.id),
-            eq(s.schemes.companyId, ctx.companyId),
-            eq(s.schemes.version, expectedVersion),
-            eq(s.schemes.draftRev, expectedDraftRev),
-          ),
-        )
-        .returning({ draftRev: s.schemes.draftRev });
+      const saved = await updateDraftRow(tx, ctx, row.id, checked.components, expectedVersion, expectedDraftRev);
       return saved ? { ok: true as const, draftRev: saved.draftRev } : STALE;
     });
   } catch (e) {

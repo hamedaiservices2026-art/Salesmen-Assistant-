@@ -29,6 +29,8 @@ export const SCHEME_ISSUE_CODES = [
   "focus_window_mismatch",
   "empty_all",
   "gate_unknown_target",
+  "pct_needs_value",
+  "too_many_issues",
 ] as const;
 export type SchemeIssueCode = (typeof SCHEME_ISSUE_CODES)[number];
 
@@ -45,6 +47,11 @@ const MAX_ID = 64;
 const PCT_MIN = 1;
 const PCT_MAX = 1000;
 const BPS_MAX = 10_000;
+/** Sanity caps in minor units (halalas): a fixed pay up to 1e11, a per-carton rate up to 1e9. */
+const FIXED_MAX = 100_000_000_000;
+const PER_CASE_MAX = 1_000_000_000;
+/** At most this many issues are returned; a final `too_many_issues` marks a truncated list. */
+const MAX_ISSUES = 100;
 
 /**
  * A real calendar date written `YYYY-MM-DD` with zero padding. The engine compares dates as text,
@@ -114,7 +121,7 @@ const componentSchema = z.discriminatedUnion("type", [
 const componentsSchema = z.array(componentSchema).max(MAX_COMPONENTS);
 
 const pctOk = (n: number) => Number.isInteger(n) && n >= PCT_MIN && n <= PCT_MAX;
-const amountOk = (n: number) => Number.isSafeInteger(n) && n >= 0;
+const amountOk = (n: number, max = FIXED_MAX) => Number.isSafeInteger(n) && n >= 0 && n <= max;
 const bpsOk = (n: number) => Number.isInteger(n) && n >= 0 && n <= BPS_MAX;
 
 function leavesOf(c: Condition): LeafCondition[] {
@@ -129,10 +136,11 @@ function leavesOf(c: Condition): LeafCondition[] {
  * - ids unique; the Arabic `label` not blank;
  * - every line and focus item named exists in `refs` (a deactivated line is not there);
  * - tiers non-empty with unique whole `minPct` in 1–1000 (also `abovePct` and condition `minPct`);
- *   fixed amounts and focus minimums safe whole numbers (≥ 0; a focus minimum ≥ 1); bps 0–10 000;
+ *   fixed amounts and focus minimums safe whole numbers (≥ 0; a focus minimum ≥ 1; fixed pay ≤ 1e11,
+ *   a per-carton rate ≤ 1e9); bps 0–10 000; a percentage pay (`pct_of_value`, `pct_of_achieved`) only on a `value` line;
  * - `per_case` only on a `cases` or `outlets` line;
  * - a bonus window is ordered and inside the month; a bonus whose condition names a line (also
- *   inside `all`) spans the whole month, and one naming a focus item lies inside that item's window,
+ *   inside `all`) spans the whole month, and one naming a focus item has exactly that item's window,
  *   so the month's sums are the window's sums and a bonus met after its window cannot appear;
  * - `all` has 2–4 conditions; a gate applies only to existing non-gate components.
  *
@@ -141,8 +149,13 @@ function leavesOf(c: Condition): LeafCondition[] {
 export function validateComponents(raw: unknown, refs: SchemeRefs): ValidateResult {
   const issues: SchemeIssue[] = [];
   const flagged = new Set<string>();
+  let truncated = false;
   const add = (path: string, code: SchemeIssueCode) => {
     if (flagged.has(path)) return;
+    if (issues.length >= MAX_ISSUES) {
+      truncated = true;
+      return;
+    }
     flagged.add(path);
     issues.push({ path, code });
   };
@@ -164,10 +177,12 @@ export function validateComponents(raw: unknown, refs: SchemeRefs): ValidateResu
     if (!line) add(path, "unknown_line");
     return line;
   };
-  const checkPay = (p: Pay, path: string) => {
+  const checkPay = (p: Pay, path: string, line: { unit: Unit } | undefined) => {
     if (p.kind === "fixed") {
       if (!amountOk(p.amount)) add(`${path}.amount`, "bad_amount");
     } else if (!bpsOk(p.bps)) add(`${path}.bps`, "bad_bps");
+    // A percentage of achieved is a percentage of money; of a carton count it is meaningless.
+    else if (line && line.unit !== "value") add(`${path}.kind`, "pct_needs_value");
   };
   const checkCondition = (c: Condition, path: string) => {
     if (c.kind === "all" && (c.conditions.length < 2 || c.conditions.length > 4)) add(`${path}.conditions`, "empty_all");
@@ -192,23 +207,24 @@ export function validateComponents(raw: unknown, refs: SchemeRefs): ValidateResu
 
     switch (c.type) {
       case "tiered": {
-        checkLine(c.lineId, `${p}.lineId`);
+        const tierLine = checkLine(c.lineId, `${p}.lineId`);
         if (c.tiers.length === 0) add(`${p}.tiers`, "empty_tiers");
         const minPcts = new Set<number>();
         c.tiers.forEach((t, j) => {
           if (!pctOk(t.minPct)) add(`${p}.tiers.${j}.minPct`, "bad_pct");
           else if (minPcts.has(t.minPct)) add(`${p}.tiers.${j}.minPct`, "duplicate_tier");
           minPcts.add(t.minPct);
-          checkPay(t.pay, `${p}.tiers.${j}.pay`);
+          checkPay(t.pay, `${p}.tiers.${j}.pay`, tierLine);
         });
         break;
       }
       case "per_unit": {
         const line = checkLine(c.lineId, `${p}.lineId`);
         if (c.rate.kind === "per_case") {
-          if (!amountOk(c.rate.amount)) add(`${p}.rate.amount`, "bad_amount");
+          if (!amountOk(c.rate.amount, PER_CASE_MAX)) add(`${p}.rate.amount`, "bad_amount");
           if (line && line.unit !== "cases" && line.unit !== "outlets") add(`${p}.rate`, "per_case_needs_cases");
         } else if (!bpsOk(c.rate.bps)) add(`${p}.rate.bps`, "bad_bps");
+        else if (line && line.unit !== "value") add(`${p}.rate.kind`, "pct_needs_value");
         if (c.abovePct !== undefined && !pctOk(c.abovePct)) add(`${p}.abovePct`, "bad_pct");
         break;
       }
@@ -227,8 +243,9 @@ export function validateComponents(raw: unknown, refs: SchemeRefs): ValidateResu
           if (l.kind !== "focus_at_least") continue;
           const item = focus.get(l.focusItemId);
           if (!item) continue;
-          if (c.startsOn < item.startsOn) add(`${p}.startsOn`, "focus_window_mismatch");
-          if (c.endsOn > item.endsOn) add(`${p}.endsOn`, "focus_window_mismatch");
+          // The engine counts the item's whole-window total, so the bonus window must be the item's.
+          if (c.startsOn !== item.startsOn) add(`${p}.startsOn`, "focus_window_mismatch");
+          if (c.endsOn !== item.endsOn) add(`${p}.endsOn`, "focus_window_mismatch");
         }
         break;
       }
@@ -242,6 +259,7 @@ export function validateComponents(raw: unknown, refs: SchemeRefs): ValidateResu
     }
   });
 
+  if (truncated) issues.push({ path: "components", code: "too_many_issues" });
   return issues.length > 0 ? { ok: false, issues } : { ok: true, components };
 }
 
@@ -256,7 +274,8 @@ const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "obj
 export function referencedLineIds(raw: unknown): string[] {
   const ids = new Set<string>();
   const take = (v: unknown) => {
-    if (isObject(v) && typeof v.lineId === "string") ids.add(v.lineId);
+    // An id longer than the shape allows is `unknown_line` in the validator; it is not worth a lock.
+    if (isObject(v) && typeof v.lineId === "string" && v.lineId.length <= MAX_ID) ids.add(v.lineId);
   };
   if (!Array.isArray(raw)) return [];
   for (const c of raw.slice(0, MAX_COMPONENTS)) {

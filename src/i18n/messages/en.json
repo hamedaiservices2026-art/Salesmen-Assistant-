@@ -536,6 +536,9 @@
         "focus_window_mismatch": "The dates must fall inside the focus item's dates",
         "empty_all": "A combined condition needs 2 to 4 conditions",
         "gate_unknown_target": "This condition applies to a part that does not exist",
+        "pct_needs_value": "A percentage pay only works on a line counted in money",
+        "too_many_issues": "There are many problems; fix the ones shown and try again",
+        "invalid_period": "This month is not valid",
         "stale": "Someone else changed this month's commission. Reload to see the latest, then make your change again",
         "not_found": "This rep was not found",
         "no_draft": "There is no saved draft to publish"
