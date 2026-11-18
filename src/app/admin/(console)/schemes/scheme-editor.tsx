@@ -13,11 +13,13 @@ import { primaryButton, secondaryButton, type FieldState } from "@/ui/admin/form
 import { PreviewPanel, type PreviewView } from "@/ui/admin/PreviewPanel";
 import {
   PRESETS,
+  canConfirmPublish,
   fromComponents,
   issueCardIndex,
   issueFieldKey,
   moveCard,
   newCard,
+  newId,
   removeCard,
   toComponents,
   type EditorCard,
@@ -77,7 +79,10 @@ export function SchemeEditor(props: SchemeEditorProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [preview, setPreview] = useState<{ key: string; view: PreviewView } | null>(null);
   const [focusId, setFocusId] = useState<string | null>(null);
+  const [understood, setUnderstood] = useState(false);
   const dialog = useRef<HTMLDialogElement>(null);
+  // Set synchronously, so a second click before the next render cannot start a second request.
+  const inFlight = useRef(false);
 
   const built = useMemo(() => toComponents(cards), [cards]);
   const complete = Object.keys(built.fieldErrors).length === 0;
@@ -194,7 +199,8 @@ export function SchemeEditor(props: SchemeEditorProps) {
   };
   const changeCard = (i: number, card: EditorCard) => touch(cards.map((c, k) => (k === i ? card : c)));
   const add = (preset: Preset) => {
-    const card = newCard(preset, refs, refs.period);
+    let card = newCard(preset, refs, refs.period);
+    while (cards.some((c) => c.id === card.id)) card = { ...card, id: newId() };
     touch([...cards, card]);
     setMenuOpen(false);
     setFocusId(card.id);
@@ -202,6 +208,7 @@ export function SchemeEditor(props: SchemeEditorProps) {
 
   // ---- save and publish ----
   const save = async (): Promise<Tokens | null> => {
+    if (inFlight.current) return null;
     setShowErrors(true);
     if (!complete) {
       setNotice({ kind: "invalid" });
@@ -209,6 +216,7 @@ export function SchemeEditor(props: SchemeEditorProps) {
     }
     const key = componentsKey!;
     const sentCards = cards;
+    inFlight.current = true;
     setBusy("save");
     try {
       const r = await saveDraftAction(formFor(ym, built.components, tokens));
@@ -229,11 +237,24 @@ export function SchemeEditor(props: SchemeEditorProps) {
       }
       return null;
     } finally {
+      inFlight.current = false;
       setBusy(null);
     }
   };
 
+  const openPublish = () => {
+    if (inFlight.current) return;
+    if (!complete) {
+      setShowErrors(true);
+      setNotice({ kind: "invalid" });
+      return;
+    }
+    setUnderstood(false);
+    dialog.current?.showModal();
+  };
+
   const publish = async () => {
+    if (inFlight.current || !canConfirmPublish(cards.length, understood)) return;
     if (!complete) {
       dialog.current?.close();
       setShowErrors(true);
@@ -241,6 +262,7 @@ export function SchemeEditor(props: SchemeEditorProps) {
       return;
     }
     const key = componentsKey!;
+    inFlight.current = true;
     setBusy("publish");
     try {
       let current: Tokens | null = tokens;
@@ -271,6 +293,7 @@ export function SchemeEditor(props: SchemeEditorProps) {
         dialog.current?.close();
       }
     } finally {
+      inFlight.current = false;
       setBusy(null);
     }
   };
@@ -415,12 +438,12 @@ export function SchemeEditor(props: SchemeEditorProps) {
           )}
         </div>
 
-        <div className="sticky bottom-0 z-10 -mx-1 flex flex-wrap items-center gap-3 rounded-[14px] border border-line bg-white px-5 py-3 shadow-[0_-4px_14px_rgba(14,27,46,0.06)]">
+        <div className="sticky bottom-0 z-10 -mx-1 flex flex-wrap items-center gap-3 rounded-[14px] border border-line bg-white px-5 py-3 shadow-sm">
           <button type="button" onClick={() => void save()} disabled={busy !== null || stale} className={secondaryButton}>
             <Save size={18} strokeWidth={1.8} aria-hidden />
             {busy === "save" ? t("save.saving") : t("save.draft")}
           </button>
-          <button type="button" onClick={() => dialog.current?.showModal()} disabled={publishDisabled} className={primaryButton}>
+          <button type="button" onClick={openPublish} disabled={publishDisabled} className={primaryButton}>
             <Send size={18} strokeWidth={1.8} aria-hidden />
             {t("publish.button")}
           </button>
@@ -450,24 +473,35 @@ export function SchemeEditor(props: SchemeEditorProps) {
       <dialog
         ref={dialog}
         aria-labelledby="publish-title"
-        className="m-auto w-[min(460px,calc(100vw-32px))] rounded-[14px] border border-line bg-white p-6 text-ink backdrop:bg-black/40"
+        className="m-auto w-[min(460px,calc(100vw-32px))] rounded-[14px] border border-line bg-white p-6 text-ink backdrop:bg-ink/40"
       >
         <h2 id="publish-title" className="m-0 mb-2 text-[18px] font-bold">
           {t("confirm.title")}
         </h2>
         <p className="m-0 text-[15px]">{t("confirm.body")}</p>
         {cards.length === 0 && (
-          <p role="alert" className="m-0 mt-3 rounded-lg bg-alert-tint px-3 py-2.5 text-[14px] font-semibold text-alert">
-            {t("confirm.empty")}
-          </p>
+          <div className="mt-3 flex flex-col gap-3 rounded-lg bg-alert-tint px-3 py-3 text-alert">
+            <p role="alert" className="m-0 text-[14px] font-semibold">
+              {t("confirm.empty")}
+            </p>
+            <label className="flex cursor-pointer items-start gap-2 text-[14px] font-semibold">
+              <input type="checkbox" checked={understood} onChange={(e) => setUnderstood(e.target.checked)} className="mt-0.5 size-4 accent-alert" />
+              {t("confirm.emptyAck")}
+            </label>
+          </div>
         )}
         {(dirty || !hasDraft) && <p className="m-0 mt-3 text-[13.5px] text-ink-2">{t("confirm.saveFirst")}</p>}
         <div className="mt-5 flex flex-wrap justify-end gap-3">
           <button type="button" onClick={() => dialog.current?.close()} disabled={busy === "publish"} className={secondaryButton}>
             {t("confirm.cancel")}
           </button>
-          <button type="button" onClick={() => void publish()} disabled={busy === "publish"} className={primaryButton}>
-            {busy === "publish" ? t("publish.publishing") : t("confirm.confirm")}
+          <button
+            type="button"
+            onClick={() => void publish()}
+            disabled={busy === "publish" || !canConfirmPublish(cards.length, understood)}
+            className={primaryButton}
+          >
+            {busy === "publish" ? t("publish.publishing") : cards.length === 0 ? t("confirm.emptyConfirm") : t("confirm.confirm")}
           </button>
         </div>
       </dialog>

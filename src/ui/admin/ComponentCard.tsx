@@ -260,10 +260,11 @@ export function ComponentCard({
           <div className="min-w-48 flex-1">
             <span className={fieldLabel}>{t("card.window.title")}</span>
             <p className={`m-0 flex min-h-11 flex-wrap items-center gap-x-3 rounded-lg px-3 py-2 text-[14px] ${state("window").invalid ? "bg-alert-tint text-alert" : "bg-canvas text-ink"}`}>
+              <span>{t("card.window.from")}</span>
               <bdi dir="ltr" className="font-semibold tabular-nums">
                 {card.startsOn}
               </bdi>
-              <span aria-hidden>–</span>
+              <span>{t("card.window.to")}</span>
               <bdi dir="ltr" className="font-semibold tabular-nums">
                 {card.endsOn}
               </bdi>

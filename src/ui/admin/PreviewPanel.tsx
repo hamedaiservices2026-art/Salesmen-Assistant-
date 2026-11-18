@@ -82,7 +82,7 @@ export function PreviewPanel({
           <span data-testid="preview-projected" className="text-[34px] font-extrabold leading-none tracking-[-0.02em]">
             {total(view.projected.total)}
           </span>
-          <dl className="m-0 mt-2 grid grid-cols-2 gap-3 border-t border-white/20 pt-3">
+          <dl className="m-0 mt-2 grid grid-cols-2 gap-3 border-t border-on-brand-2/30 pt-3">
             <div className="flex flex-col gap-px">
               <dt className="text-[12.5px] text-on-brand-2">{tc("earnedLabel")}</dt>
               <dd data-testid="preview-actual" className="m-0 text-[16px] font-bold">

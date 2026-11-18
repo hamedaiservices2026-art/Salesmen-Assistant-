@@ -30,6 +30,25 @@ describe("formatPercent", () => {
   it("shows a dash when denominator is 0", () => expect(formatPercent(5, 0)).toBe("—"));
 });
 
+describe("parseAmount separators", () => {
+  const units = ["cases", "value", "outlets"] as const;
+  it("rejects a comma that is not a thousands separator, for every unit", () => {
+    for (const unit of units)
+      for (const bad of ["0,5", "2,5", "8250,50", "12,34", ",5", "1,14", "1,1400", "80,5", "1,٥", "1 14", "٠،٥".replace("،", ",")])
+        expect(parseAmount(bad, unit), `${bad} ${unit}`).toBeNull();
+  });
+  it("accepts grouped thousands, also with a decimal part for value", () => {
+    for (const unit of units) {
+      expect(parseAmount("1,140", unit)).toBe(unit === "value" ? 114000 : 1140);
+      expect(parseAmount("82٬800", unit)).toBe(unit === "value" ? 8280000 : 82800);
+      expect(parseAmount("1 140", unit)).toBe(unit === "value" ? 114000 : 1140);
+    }
+    expect(parseAmount("1,500.50", "value")).toBe(150050);
+    expect(parseAmount("٠٫٥", "value")).toBe(50);
+    expect(parseAmount("1,234,567", "cases")).toBe(1234567);
+  });
+});
+
 describe("parseAmount", () => {
   it("parses Arabic-Indic digits", () => expect(parseAmount("١٢٠", "cases")).toBe(120));
   it("parses grouping separators", () => {

@@ -40,19 +40,31 @@ function toWesternDigits(s: string): string {
     .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x06f0));
 }
 
-/** Parses typed input to an integer (minor units for value). Null when invalid. */
+const SEPARATORS = ",٬\\s\u00A0\u202F";
+const GROUPED = new RegExp(`^\\d{1,3}(?:[${SEPARATORS}]\\d{3})+$`);
+const HAS_SEPARATOR = new RegExp(`[${SEPARATORS}]`);
+
+/**
+ * Parses typed input to an integer (minor units for value). Null when invalid.
+ * A comma, `٬` or space is a thousands separator only: the first group has 1 to 3 digits and every
+ * later group exactly 3 (`1,140`, `82٬800`). Anything else with one (`0,5`, `8250,50`, `1,14`) is
+ * null, never silently read as a bigger number; `٫` is the Arabic decimal point.
+ */
 export function parseAmount(input: string, unit: Unit): number | null {
-  const cleaned = toWesternDigits(input)
-    .replace(/[,٬\s ]/g, "")
-    .replace(/٫/g, ".");
+  const typed = toWesternDigits(input).trim().replace(/٫/g, ".");
+  const dot = typed.indexOf(".");
+  const whole = dot < 0 ? typed : typed.slice(0, dot);
+  const rest = dot < 0 ? "" : typed.slice(dot);
+  if (HAS_SEPARATOR.test(whole) && !GROUPED.test(whole)) return null;
+  const cleaned = whole.replace(new RegExp(`[${SEPARATORS}]`, "g"), "") + rest;
   const pattern = unit !== "value" ? /^\d+$/ : /^\d+(\.\d{1,2})?$/;
   if (!pattern.test(cleaned)) return null;
   let result: number;
   if (unit !== "value") {
     result = Number(cleaned);
   } else {
-    const [whole, frac = ""] = cleaned.split(".");
-    result = Number(whole) * 100 + Number(frac.padEnd(2, "0"));
+    const [w, frac = ""] = cleaned.split(".");
+    result = Number(w) * 100 + Number(frac.padEnd(2, "0"));
   }
   return Number.isSafeInteger(result) ? result : null;
 }

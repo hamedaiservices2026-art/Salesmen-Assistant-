@@ -23,7 +23,14 @@ function readComponents(form: FormData): { ok: true; value: unknown } | { ok: fa
     return { ok: false };
   }
 }
-const token = (form: FormData, name: string): number => Number(form.get(name));
+/** A concurrency token from the form: a whole number, or null (then the request is `stale`, never guessed). */
+function token(form: FormData, name: string): number | null {
+  const raw = form.get(name);
+  if (typeof raw !== "string" || raw.trim() === "") return null;
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 0 ? n : null;
+}
+const STALE = { ok: false as const, error: "stale" as const };
 
 /** What one rep would see with these components as the month's plan (nothing is saved). */
 export async function previewSchemeAction(form: FormData): Promise<PreviewResult> {
@@ -44,12 +51,10 @@ export async function saveDraftAction(form: FormData): Promise<SaveDraftResult> 
   const ym = parseYm(String(form.get("ym") ?? ""));
   const components = readComponents(form);
   if (!ym || !components.ok) return shape("period");
-  const result = await saveDraft(ctx, {
-    ...ym,
-    components: components.value,
-    expectedVersion: token(form, "expectedVersion"),
-    expectedDraftRev: token(form, "expectedDraftRev"),
-  });
+  const expectedVersion = token(form, "expectedVersion");
+  const expectedDraftRev = token(form, "expectedDraftRev");
+  if (expectedVersion === null || expectedDraftRev === null) return STALE;
+  const result = await saveDraft(ctx, { ...ym, components: components.value, expectedVersion, expectedDraftRev });
   if (result.ok) revalidatePath("/admin/schemes");
   return result;
 }
@@ -63,8 +68,10 @@ export async function publishSchemeAction(form: FormData): Promise<PublishAction
   const ctx = await requireRole(["admin"]);
   const ym = parseYm(String(form.get("ym") ?? ""));
   if (!ym) return shape("period");
+  const expectedVersion = token(form, "expectedVersion");
   const expectedDraftRev = token(form, "expectedDraftRev");
-  const result = await publishScheme(ctx, { ...ym, expectedVersion: token(form, "expectedVersion"), expectedDraftRev });
+  if (expectedVersion === null || expectedDraftRev === null) return STALE;
+  const result = await publishScheme(ctx, { ...ym, expectedVersion, expectedDraftRev });
   if (!result.ok) return result;
   revalidatePath("/admin/schemes");
   revalidatePath("/app/commission");

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { sampleScheme } from "@/domain/commission/sample-fixture";
 import {
   addLeaf,
+  canConfirmPublish,
   fromComponents,
   issueFieldKey,
   newCard,
@@ -141,5 +142,69 @@ describe("scheme form", () => {
     expect(issueFieldKey(cards, { path: "components.0.lineId", code: "unknown_line" })).toBe(`${id}.lineId`);
     expect(issueFieldKey(cards, { path: "components.3.condition.min", code: "bad_amount" })).toBe(`${cards[3]!.id}.leaves.0.min`);
     expect(issueFieldKey(cards, { path: "period", code: "shape" })).toBeNull();
+  });
+
+  it("round-trips a coverage tiered card, a gate with an all condition and a bonus with two line leaves", () => {
+    const components = [
+      { id: "cv", type: "tiered" as const, label: "تغطية", lineId: "cov", tiers: [{ minPct: 85, pay: { kind: "fixed" as const, amount: 100_000 } }] },
+      {
+        id: "gt",
+        type: "gate" as const,
+        label: "شرط",
+        condition: {
+          kind: "all" as const,
+          conditions: [
+            { kind: "line_pct_at_least" as const, lineId: "bev", minPct: 80 },
+            { kind: "line_pct_at_least" as const, lineId: "coll", minPct: 60 },
+          ],
+        },
+        appliesTo: ["cv"],
+      },
+      {
+        id: "bn",
+        type: "bonus" as const,
+        label: "حافز",
+        condition: {
+          kind: "all" as const,
+          conditions: [
+            { kind: "line_pct_at_least" as const, lineId: "bev", minPct: 100 },
+            { kind: "line_pct_at_least" as const, lineId: "food", minPct: 100 },
+          ],
+        },
+        amount: 25_000,
+        startsOn: "2026-11-01",
+        endsOn: "2026-11-30",
+      },
+    ];
+    const cards = fromComponents(components, refs);
+    expect(cards[0]!.preset).toBe("coverage");
+    expect(cards[1]!.preset).toBe("gate");
+    expect(cards[2]!.preset).toBe("combined");
+    const out = toComponents(cards);
+    expect(out.fieldErrors).toEqual({});
+    expect(out.components).toEqual(components);
+  });
+
+  it("reads typed numbers strictly", () => {
+    const card = newCard("tiers", refs, period);
+    card.label.ar = "ش";
+    const payOf = (pay: string) => {
+      card.tiers = [{ minPct: "90", payKind: "fixed", pay }];
+      const r = toComponents([card]);
+      return r.fieldErrors[`${card.id}.tiers.0.pay`] ?? (r.components[0] as { tiers: { pay: { amount: number } }[] }).tiers[0]!.pay.amount;
+    };
+    expect(payOf("1e2")).toBe("invalid");
+    expect(payOf("-1")).toBe("invalid");
+    expect(payOf("0.05")).toBe(5);
+    expect(payOf("0.005")).toBe("invalid");
+    expect(payOf("300.555")).toBe("invalid");
+    expect(payOf("1,500")).toBe(150_000);
+    expect(payOf("0,5")).toBe("invalid");
+  });
+
+  it("an empty plan needs the explicit tick to publish", () => {
+    expect(canConfirmPublish(0, false)).toBe(false);
+    expect(canConfirmPublish(0, true)).toBe(true);
+    expect(canConfirmPublish(3, false)).toBe(true);
   });
 });

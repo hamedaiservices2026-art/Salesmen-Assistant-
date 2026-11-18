@@ -411,3 +411,12 @@ export function issueCardIndex(issue: SchemeIssue): number | null {
   const m = /^components\.(\d+)/.exec(issue.path);
   return m ? Number(m[1]) : null;
 }
+
+/**
+ * Whether the publish confirmation may be confirmed. A plan with parts needs only the dialog's
+ * confirm button; a plan with none zeroes every rep's commission, so it also needs the explicit
+ * "I understand" tick.
+ */
+export function canConfirmPublish(cardCount: number, understood: boolean): boolean {
+  return cardCount > 0 || understood;
+}

@@ -61,6 +61,12 @@ describe("saveTargetsAction", () => {
     expect(await amountOf("ahmed", "food")).toBe(18_000_000);
   });
 
+  it("a decimal comma in a cell is refused, not read as 100 times the money", async () => {
+    const r = await saveTargetsAction({}, form({ ym: "2026-11", "c:khaled|food": "8250,50" }));
+    expect(r.errors).toEqual({ "khaled|food": "invalid" });
+    expect(await db.select().from(s.targetChanges)).toHaveLength(0);
+  });
+
   it("an unparsable cell refuses the whole save and keeps what was typed", async () => {
     const r = await saveTargetsAction({}, form({ ym: "2026-11", "c:ahmed|bev": "3200", "c:khaled|food": "12x" }));
     expect(r.errors).toEqual({ "khaled|food": "invalid" });

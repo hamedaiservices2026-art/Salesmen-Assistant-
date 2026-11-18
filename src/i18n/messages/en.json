@@ -636,7 +636,9 @@
         "window": {
           "title": "Incentive period",
           "whole": "The whole month",
-          "focus": "Same dates as the focus item; they cannot be changed here"
+          "focus": "Same dates as the focus item; they cannot be changed here",
+          "from": "From",
+          "to": "to"
         },
         "gate": {
           "appliesTo": "This condition holds back",
@@ -665,10 +667,12 @@
       "confirm": {
         "title": "Publish the commission plan",
         "body": "Publishing recalculates every rep's commission from today",
-        "empty": "Warning: this plan has no parts. If you publish it, every rep's commission becomes zero.",
+        "empty": "Warning: this plan has no parts. If you publish it, every rep's commission becomes zero from today.",
         "saveFirst": "The draft is saved first, then published.",
         "cancel": "Cancel",
-        "confirm": "Publish"
+        "confirm": "Publish",
+        "emptyConfirm": "Publish an empty plan",
+        "emptyAck": "I understand every rep's commission will become zero"
       },
       "preview": {
         "title": "Preview",

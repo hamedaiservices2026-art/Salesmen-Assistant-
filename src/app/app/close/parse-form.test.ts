@@ -24,6 +24,11 @@ describe("parseCloseForm", () => {
     if (r.ok) expect(r.form.lines).toEqual({ bev: 130, food: 825050, coll: 1900000 });
   });
 
+  it("a decimal comma is invalid, never read as a bigger number", () => {
+    const r = parseCloseForm(data({ ...good, "line.food": "8250,50" }), lines, focus);
+    expect(r).toEqual({ ok: false, errors: { "line.food": "invalid" } });
+  });
+
   it("an empty line field is required", () => {
     const r = parseCloseForm(data({ ...good, "line.bev": "" }), lines, focus);
     expect(r).toEqual({ ok: false, errors: { "line.bev": "required" } });

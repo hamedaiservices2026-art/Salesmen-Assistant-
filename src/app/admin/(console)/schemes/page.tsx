@@ -1,11 +1,10 @@
 import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
-import { and, eq, inArray } from "drizzle-orm";
 import { ChevronLeft, ChevronRight, CircleAlert } from "lucide-react";
-import * as s from "@/db/schema";
 import { lineName } from "@/domain/lines";
 import type { Unit } from "@/domain/money";
 import type { Locale } from "@/i18n/config";
+import { listFocusInfo } from "@/server/admin/focus-lookup";
 import { listAllLines } from "@/server/admin/lines";
 import { getSchemeEditor } from "@/server/admin/schemes";
 import { requireRole } from "@/server/auth/guard";
@@ -36,23 +35,17 @@ export default async function SchemesPage({ searchParams }: { searchParams: Prom
   const today = currentDay(prefs.timeZone);
   const current: Ym = { year: Number(today.slice(0, 4)), month: Number(today.slice(5, 7)) };
   // A malformed month falls back to the company's current one.
-  const period = parseYm(ymParam) ?? current;
-  const editor = await getSchemeEditor(ctx, period);
-  if (!editor.ok) throw new Error("invalid period after parseYm");
+  let period = parseYm(ymParam) ?? current;
+  let editor = await getSchemeEditor(ctx, period);
+  if (!editor.ok) {
+    period = current;
+    editor = await getSchemeEditor(ctx, current);
+    if (!editor.ok) throw new Error("the company's current month is not a valid period");
+  }
 
   const [allLines, focusRows] = await Promise.all([
     listAllLines(ctx),
-    editor.refs.focus.length === 0
-      ? Promise.resolve([])
-      : ctx.db
-          .select({ id: s.focusItems.id, name: s.focusItems.name, unit: s.focusItems.unit })
-          .from(s.focusItems)
-          .where(
-            and(
-              eq(s.focusItems.companyId, ctx.companyId),
-              inArray(s.focusItems.id, editor.refs.focus.map((f) => f.id)),
-            ),
-          ),
+    listFocusInfo(ctx, editor.refs.focus.map((f) => f.id)),
   ]);
   const active = new Set(editor.refs.lines.map((l) => l.id));
   const lines = allLines.filter((l) => active.has(l.lineId)).map((l) => ({ id: l.lineId, name: lineName(l, locale), unit: l.unit }));
