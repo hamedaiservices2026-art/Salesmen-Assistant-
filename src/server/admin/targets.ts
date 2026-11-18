@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { Db } from "@/db/client";
 import * as s from "@/db/schema";
@@ -43,6 +43,8 @@ export const targetKey = (userId: string, lineId: string) => `${userId}|${lineId
 
 const TARGET_ROLES = ["rep", "supervisor"] as const;
 const LOG_LIMIT_MAX = 200;
+/** Sanity cap in the stored unit (cases, or halalas for value lines). */
+export const AMOUNT_MAX = 100_000_000_000;
 
 /** The reps (and supervisors, who also carry targets) and sales and collection lines of one month, with the amounts set. */
 export async function getTargetGrid(ctx: Ctx, period: { year: number; month: number }): Promise<TargetGrid> {
@@ -88,8 +90,19 @@ export async function applyTargets(ctx: Ctx, input: ApplyTargetsInput, tx?: Db):
 async function applyIn(db: Db, ctx: Ctx, input: ApplyTargetsInput): Promise<ApplyTargetsResult> {
   const { year, month } = input;
   const wanted = new Map<string, TargetEntry>();
-  for (const e of input.entries) wanted.set(targetKey(String(e.userId), String(e.lineId)), { ...e, userId: String(e.userId), lineId: String(e.lineId) });
+  // A target of 0 means nothing to the rep screens (no_target), so it is stored as no target at all.
+  for (const e of input.entries) {
+    wanted.set(targetKey(String(e.userId), String(e.lineId)), {
+      userId: String(e.userId),
+      lineId: String(e.lineId),
+      amount: e.amount === 0 ? null : e.amount,
+    });
+  }
   if (wanted.size === 0) return { ok: true, changed: 0 };
+
+  // One writer at a time per company and month. A row lock cannot cover a target that does not exist
+  // yet, so two saves creating the same one would both insert; this lock also fixes the lock order.
+  await db.execute(sql`select pg_advisory_xact_lock(hashtext(${`targets|${ctx.companyId}|${year}|${month}`}))`);
 
   const userIds = [...new Set([...wanted.values()].map((e) => e.userId))];
   const lineIds = [...new Set([...wanted.values()].map((e) => e.lineId))];
@@ -117,7 +130,7 @@ async function applyIn(db: Db, ctx: Ctx, input: ApplyTargetsInput): Promise<Appl
   for (const [key, e] of wanted) {
     if (!userOk.has(e.userId) || !kindOf.has(e.lineId)) errors[key] = "not_found";
     else if (kindOf.get(e.lineId) === "coverage") errors[key] = "coverage_line";
-    else if (e.amount !== null && (typeof e.amount !== "number" || !Number.isSafeInteger(e.amount) || e.amount < 0)) errors[key] = "invalid";
+    else if (e.amount !== null && (typeof e.amount !== "number" || !Number.isSafeInteger(e.amount) || e.amount < 0 || e.amount > AMOUNT_MAX)) errors[key] = "invalid";
   }
   if (Object.keys(errors).length > 0) return { ok: false, errors };
 
@@ -134,31 +147,45 @@ async function applyIn(db: Db, ctx: Ctx, input: ApplyTargetsInput): Promise<Appl
         inArray(s.targets.lineId, lineIds),
       ),
     )
+    .orderBy(asc(s.targets.userId), asc(s.targets.lineId))
     .for("update");
   const current = new Map(existing.map((r) => [targetKey(r.userId, r.lineId), r]));
 
   let changed = 0;
   for (const [key, e] of wanted) {
     const old = current.get(key);
-    const oldAmount = old?.amount ?? null;
+    let oldAmount = old?.amount ?? null;
     if (oldAmount === e.amount) continue;
     if (e.amount === null) {
       await db.delete(s.targets).where(and(eq(s.targets.id, old!.id), eq(s.targets.companyId, ctx.companyId)));
     } else if (old) {
-      await db
-        .update(s.targets)
-        .set({ amount: e.amount, updatedAt: new Date() })
-        .where(and(eq(s.targets.id, old.id), eq(s.targets.companyId, ctx.companyId)));
+      await updateAmount(db, ctx, old.id, e.amount);
     } else {
-      await db.insert(s.targets).values({
-        id: randomUUID(),
-        companyId: ctx.companyId,
-        userId: e.userId,
-        lineId: e.lineId,
-        year,
-        month,
-        amount: e.amount,
-      });
+      const inserted = await db
+        .insert(s.targets)
+        .values({ id: randomUUID(), companyId: ctx.companyId, userId: e.userId, lineId: e.lineId, year, month, amount: e.amount })
+        .onConflictDoNothing({ target: [s.targets.userId, s.targets.year, s.targets.month, s.targets.lineId] })
+        .returning({ id: s.targets.id });
+      if (inserted.length === 0) {
+        // Someone else created it first (not expected under the lock): update that row instead.
+        const [row] = await db
+          .select({ id: s.targets.id, amount: s.targets.amount })
+          .from(s.targets)
+          .where(
+            and(
+              eq(s.targets.companyId, ctx.companyId),
+              eq(s.targets.userId, e.userId),
+              eq(s.targets.lineId, e.lineId),
+              eq(s.targets.year, year),
+              eq(s.targets.month, month),
+            ),
+          )
+          .for("update");
+        if (!row) throw new Error("target insert conflicted but the row is gone");
+        oldAmount = row.amount;
+        if (oldAmount === e.amount) continue;
+        await updateAmount(db, ctx, row.id, e.amount);
+      }
     }
     await db.insert(s.targetChanges).values({
       id: randomUUID(),
@@ -176,6 +203,13 @@ async function applyIn(db: Db, ctx: Ctx, input: ApplyTargetsInput): Promise<Appl
     changed += 1;
   }
   return { ok: true, changed };
+}
+
+async function updateAmount(db: Db, ctx: Ctx, id: string, amount: number): Promise<void> {
+  await db
+    .update(s.targets)
+    .set({ amount, updatedAt: new Date() })
+    .where(and(eq(s.targets.id, id), eq(s.targets.companyId, ctx.companyId)));
 }
 
 /** The newest target changes of the caller's company, newest first. */

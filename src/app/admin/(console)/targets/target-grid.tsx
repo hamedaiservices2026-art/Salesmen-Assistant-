@@ -30,6 +30,8 @@ export function TargetGrid({
   const [state, action, pending] = useActionState<TargetFormState, FormData>(saveTargetsAction, {});
   const errors = state.errors ?? {};
   const hasErrors = Object.keys(errors).length > 0;
+  // What was typed is kept only for a refused save; after a successful one the grid shows stored amounts.
+  const kept = hasErrors ? state.values : undefined;
   // Stored amounts changed (a save, or another admin's): start the inputs again from them.
   const version = Object.entries(cells)
     .map(([k, v]) => `${k}=${v}`)
@@ -76,7 +78,7 @@ export function TargetGrid({
                     <td key={c.lineId} className="border-b border-line px-3 py-2 align-top">
                       <input
                         name={`c:${key}`}
-                        defaultValue={state.values?.[key] ?? cells[key] ?? ""}
+                        defaultValue={kept?.[key] ?? cells[key] ?? ""}
                         inputMode="decimal"
                         autoComplete="off"
                         dir="ltr"

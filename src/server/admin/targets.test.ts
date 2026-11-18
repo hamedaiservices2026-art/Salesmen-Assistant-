@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { PgDatabase } from "drizzle-orm/pg-core";
 import { and, eq } from "drizzle-orm";
 import { createTestDb } from "@/db/testing";
 import { seedDemo, type SeedResult } from "@/db/seed";
@@ -7,7 +8,7 @@ import * as s from "@/db/schema";
 import type { Ctx } from "@/server/ctx";
 import { Forbidden, type Role } from "@/server/auth/roles";
 import { getMonthView } from "@/server/repos/month-view";
-import { applyTargets, getTargetGrid, listTargetChanges } from "./targets";
+import { AMOUNT_MAX, applyTargets, getTargetGrid, listTargetChanges } from "./targets";
 
 let db: Db;
 let seed: SeedResult;
@@ -199,6 +200,84 @@ describe("applyTargets", () => {
     ).rejects.toThrow("abort");
     expect((await bevOfAhmed())!.amount).toBe(3000);
     expect(await db.select().from(s.targetChanges)).toHaveLength(0);
+  });
+});
+
+describe("applyTargets: zero, cap, transactions, concurrency", () => {
+  it("treats 0 as removal and logs new null", async () => {
+    expect(await apply([{ userId: "ahmed", lineId: "bev", amount: 0 }])).toEqual({ ok: true, changed: 1 });
+    expect(await bevOfAhmed()).toBeUndefined();
+    const [c] = await db.select().from(s.targetChanges);
+    expect(c).toMatchObject({ oldAmount: 3000, newAmount: null });
+    // and 0 where nothing is stored is no change
+    expect(await apply([{ userId: "ahmed", lineId: "bev", amount: 0 }])).toEqual({ ok: true, changed: 0 });
+  });
+
+  it("caps an amount at 100,000,000,000", async () => {
+    expect(await apply([{ userId: "ahmed", lineId: "bev", amount: AMOUNT_MAX }])).toEqual({ ok: true, changed: 1 });
+    expect(await apply([{ userId: "ahmed", lineId: "bev", amount: AMOUNT_MAX + 1 }])).toEqual({
+      ok: false,
+      errors: { "ahmed|bev": "invalid" },
+    });
+  });
+
+  it("a bad entry with a passed tx writes and logs nothing and leaves the tx usable", async () => {
+    const before = await snapshot();
+    await db.transaction(async (tx) => {
+      const r = await applyTargets(
+        admin(),
+        { ...NOV, entries: [{ userId: "ahmed", lineId: "bev", amount: 3200 }, { userId: "khaled", lineId: "bev", amount: -5 }], source: "form" },
+        tx as unknown as Db,
+      );
+      expect(r).toEqual({ ok: false, errors: { "khaled|bev": "invalid" } });
+      const r2 = await applyTargets(admin(), { ...NOV, entries: [{ userId: "omar", lineId: "bev", amount: 71 }], source: "form" }, tx as unknown as Db);
+      expect(r2).toEqual({ ok: true, changed: 1 });
+    });
+    const after = await snapshot();
+    expect(after.targets.find((x) => x.userId === "ahmed" && x.lineId === "bev")).toEqual(before.targets.find((x) => x.userId === "ahmed" && x.lineId === "bev"));
+    expect(after.changes).toHaveLength(1);
+  });
+
+  it("two saves creating the same new target at once end with one row and a true old amount in each log row", async () => {
+    await db.delete(s.targets).where(and(eq(s.targets.userId, "yousef"), eq(s.targets.lineId, "bev")));
+    const [a, b] = await Promise.all([
+      apply([{ userId: "yousef", lineId: "bev", amount: 100 }]),
+      apply([{ userId: "yousef", lineId: "bev", amount: 200 }]),
+    ]);
+    expect([a, b]).toEqual([{ ok: true, changed: 1 }, { ok: true, changed: 1 }]);
+    const rows = await db.select().from(s.targets).where(and(eq(s.targets.userId, "yousef"), eq(s.targets.lineId, "bev")));
+    expect(rows).toHaveLength(1);
+    const changes = await db.select().from(s.targetChanges).where(eq(s.targetChanges.userId, "yousef"));
+    expect(changes).toHaveLength(2);
+    const first = changes.find((c) => c.oldAmount === null)!;
+    const second = changes.find((c) => c.oldAmount !== null)!;
+    expect(first).toBeDefined();
+    expect(second.oldAmount).toBe(first.newAmount);
+    expect(rows[0]!.amount).toBe(second.newAmount);
+  });
+
+  it("takes the company-month advisory lock before it reads anything (what serializes real Postgres)", async () => {
+    const calls: string[] = [];
+    const originalExecute = PgDatabase.prototype.execute;
+    const execSpy = vi.spyOn(PgDatabase.prototype, "execute").mockImplementation(function (this: PgDatabase<never>, query: Parameters<typeof PgDatabase.prototype.execute>[0]) {
+      calls.push(`execute:${JSON.stringify(query)}`);
+      return originalExecute.call(this, query);
+    });
+    const selectProto = Object.getPrototypeOf(db.select().from(s.targets));
+    const originalFor = selectProto.for;
+    const forSpy = vi.spyOn(selectProto, "for").mockImplementation(function (this: unknown, ...args: unknown[]) {
+      calls.push("select-for-update");
+      return originalFor.apply(this, args);
+    });
+    try {
+      expect(await apply([{ userId: "ahmed", lineId: "bev", amount: 3200 }])).toEqual({ ok: true, changed: 1 });
+    } finally {
+      execSpy.mockRestore();
+      forSpy.mockRestore();
+    }
+    expect(calls[0]).toMatch(/pg_advisory_xact_lock/);
+    expect(calls[0]).toContain("targets|demo-co|2026|11");
+    expect(calls.indexOf("select-for-update")).toBeGreaterThan(0);
   });
 });
 

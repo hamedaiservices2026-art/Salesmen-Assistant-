@@ -13,7 +13,7 @@ import { PageHeader } from "@/ui/admin/PageHeader";
 import { INTL_TAG } from "@/ui/intl-tag";
 import { unitLabel } from "@/ui/unit-label";
 import { TargetGrid } from "./target-grid";
-import { formatYm, parseYm, shiftMonth, type Ym } from "./ym";
+import { formatYm, inRange, parseYm, shiftMonth, type Ym } from "./ym";
 
 const LOG_LIMIT = 50;
 
@@ -54,7 +54,8 @@ export default async function TargetsPage({ searchParams }: { searchParams: Prom
   }));
   const unitOf = new Map(grid.lines.map((l) => [l.lineId, l.unit]));
   const cells = Object.fromEntries(
-    Object.entries(grid.amounts).map(([key, amount]) => {
+    // A stored 0 (from before zero meant "no target") shows as an empty cell, never "0".
+    Object.entries(grid.amounts).filter(([, amount]) => amount > 0).map(([key, amount]) => {
       const lineId = key.slice(key.indexOf("|") + 1);
       return [key, formatAmount(amount, unitOf.get(lineId) ?? "cases")];
     }),
@@ -70,13 +71,21 @@ export default async function TargetsPage({ searchParams }: { searchParams: Prom
         subtitle={t("subtitle")}
         actions={
           <nav aria-label={t("monthNav")} className="flex items-center gap-2.5">
-            <Link href={`/admin/targets?ym=${formatYm(prev)}`} className={navLink} aria-label={t("prevMonth")}>
-              <ChevronLeft size={18} strokeWidth={1.8} aria-hidden className={flip} />
-            </Link>
+            {inRange(prev) ? (
+              <Link href={`/admin/targets?ym=${formatYm(prev)}`} className={navLink} aria-label={t("prevMonth")}>
+                <ChevronLeft size={18} strokeWidth={1.8} aria-hidden className={flip} />
+              </Link>
+            ) : (
+              <span className="inline-block min-h-11 min-w-11" aria-hidden />
+            )}
             <span className="min-w-36 text-center text-[15px] font-bold text-ink">{monthName(period)}</span>
-            <Link href={`/admin/targets?ym=${formatYm(next)}`} className={navLink} aria-label={t("nextMonth")}>
-              <ChevronRight size={18} strokeWidth={1.8} aria-hidden className={flip} />
-            </Link>
+            {inRange(next) ? (
+              <Link href={`/admin/targets?ym=${formatYm(next)}`} className={navLink} aria-label={t("nextMonth")}>
+                <ChevronRight size={18} strokeWidth={1.8} aria-hidden className={flip} />
+              </Link>
+            ) : (
+              <span className="inline-block min-h-11 min-w-11" aria-hidden />
+            )}
           </nav>
         }
       />
