@@ -518,6 +518,169 @@
       }
     },
     "schemes": {
+      "title": "Commission plan",
+      "subtitle": "Enter the month's commission rules one part at a time, and see the result on a real rep before you publish.",
+      "tabs": {
+        "label": "Incentive sections",
+        "commission": "Commission",
+        "incentives": "Incentives",
+        "focus": "Focus items"
+      },
+      "monthNav": "Month",
+      "prevMonth": "Previous month",
+      "nextMonth": "Next month",
+      "status": {
+        "none": "No plan is published for this month yet",
+        "draftOnly": "Draft saved · not published yet",
+        "draft": "Draft saved · last published version {version}",
+        "published": "Published · version {version}",
+        "publishedBy": "Published · version {version} · by {name}, {date}",
+        "publishedAt": "Published · version {version} · {date}",
+        "unsaved": "There are changes that are not saved yet"
+      },
+      "publishedIssues": {
+        "title": "The published plan has problems today",
+        "body": "A line may have been turned off or a focus item removed. Fix the marked parts and publish again."
+      },
+      "summary": "{count, plural, one {# problem in the plan} other {# problems in the plan}}",
+      "draftInvalid": "The draft has errors and will not be saved until they are fixed",
+      "empty": {
+        "title": "No parts yet",
+        "body": "Press “Add a part” and choose its type. If you publish a plan with no parts, every rep's commission becomes zero."
+      },
+      "add": {
+        "button": "Add a part",
+        "menuLabel": "Part types"
+      },
+      "presets": {
+        "tiers": {
+          "name": "Line tiers",
+          "hint": "A fixed amount or a percent of sales, by target achievement"
+        },
+        "rate": {
+          "name": "Rate or amount per unit",
+          "hint": "An amount per carton or a percent of sales value"
+        },
+        "bonus": {
+          "name": "Incentive",
+          "hint": "A fixed amount when a line reaches a percentage"
+        },
+        "coverage": {
+          "name": "Coverage",
+          "hint": "Tiers on customer coverage"
+        },
+        "volume": {
+          "name": "Focus item incentive",
+          "hint": "An amount when the rep sells a set quantity of a focus item"
+        },
+        "extra100": {
+          "name": "Extra at 100%",
+          "hint": "An extra amount when a line reaches 100% of target"
+        },
+        "combined": {
+          "name": "Combined incentive",
+          "hint": "An amount when several conditions are met together"
+        },
+        "gate": {
+          "name": "Condition",
+          "hint": "Holds parts back unless this condition is met"
+        }
+      },
+      "card": {
+        "moveUp": "Move this part up",
+        "moveDown": "Move this part down",
+        "remove": "Remove this part",
+        "labelsTitle": "The name the rep sees",
+        "labelAr": "Arabic (required)",
+        "labelEn": "English",
+        "labelUr": "Urdu",
+        "line": "Line",
+        "chooseLine": "Choose a line",
+        "unknownLine": "Line not found or turned off",
+        "chooseFocus": "Choose an item",
+        "unknownFocus": "Item not found this month",
+        "noFocus": "There are no focus items this month. Add one on the focus items page first.",
+        "tiers": {
+          "title": "Tiers",
+          "hint": "The rep gets the highest tier he has reached.",
+          "from": "From achievement %",
+          "payKind": "Pay as",
+          "fixed": "Fixed amount",
+          "pct": "Percent of sales",
+          "amount": "Amount ({currency})",
+          "percent": "Percent of sales %",
+          "add": "Add a tier",
+          "remove": "Remove this tier"
+        },
+        "rate": {
+          "perCase": "Amount per unit ({currency})",
+          "pct": "Percent of sales value %",
+          "perCaseNote": "This line is counted in cartons or customers, so the commission is an amount per unit.",
+          "pctNote": "This line is counted in money, so the commission is a percent of sales.",
+          "above": "Only above achievement % (optional)",
+          "aboveHint": "Leave empty if it counts from the first unit."
+        },
+        "conditions": {
+          "title": "Conditions",
+          "and": "and",
+          "add": "Add a condition",
+          "kindLine": "Line achievement",
+          "kindFocus": "Focus item quantity",
+          "minPct": "Minimum achievement %",
+          "focusItem": "Item",
+          "focusMin": "Minimum quantity ({unit})",
+          "remove": "Remove this condition",
+          "kind": "Condition type"
+        },
+        "amount": "Incentive amount ({currency})",
+        "window": {
+          "title": "Incentive period",
+          "whole": "The whole month",
+          "focus": "Same dates as the focus item; they cannot be changed here"
+        },
+        "gate": {
+          "appliesTo": "This condition holds back",
+          "none": "Add other parts first, then choose from them."
+        },
+        "issuesTitle": "In this part"
+      },
+      "fieldErrors": {
+        "required": "Required",
+        "invalid": "Enter a valid number"
+      },
+      "save": {
+        "draft": "Save draft",
+        "saving": "Saving…",
+        "saved": "Draft saved"
+      },
+      "publish": {
+        "button": "Publish",
+        "publishing": "Publishing…",
+        "done": "Version {version} is published. Every rep's commission was recalculated."
+      },
+      "stale": {
+        "message": "Someone else changed the plan. Reload the page",
+        "reload": "Reload the page"
+      },
+      "confirm": {
+        "title": "Publish the commission plan",
+        "body": "Publishing recalculates every rep's commission from today",
+        "empty": "Warning: this plan has no parts. If you publish it, every rep's commission becomes zero.",
+        "saveFirst": "The draft is saved first, then published.",
+        "cancel": "Cancel",
+        "confirm": "Publish"
+      },
+      "preview": {
+        "title": "Preview",
+        "repLabel": "Rep",
+        "noReps": "The company has no reps yet.",
+        "loading": "Calculating…",
+        "incomplete": "Fill in the missing fields to see the numbers.",
+        "issues": "The plan has errors, so there are no numbers until they are fixed.",
+        "failed": "The calculation failed. Try again.",
+        "same": "This is exactly what the rep sees on his commission screen.",
+        "emptyScheme": "The plan has no parts, so the commission is zero."
+      },
       "errors": {
         "shape": "This part is incomplete or not in the expected form",
         "duplicate_id": "Two parts have the same id",
