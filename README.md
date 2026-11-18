@@ -26,9 +26,10 @@ pnpm typecheck
 pnpm lint
 pnpm build
 pnpm e2e         # builds, seeds a temporary database, and drives the whole rep flow in a browser
+pnpm e2e:admin   # the owner's path: company, admin, rep, lines, targets, published scheme, the rep's commission screen
 ```
 
-`pnpm e2e` needs Playwright installed globally; it is not a project dependency. It uses a temporary database directory (through `PGLITE_DIR`) that it removes at the end, so your `.data` is left alone, and it starts its own server on a free port.
+`pnpm e2e` and `pnpm e2e:admin` need Playwright installed globally; it is not a project dependency. It uses a temporary database directory (through `PGLITE_DIR`) that it removes at the end, so your `.data` is left alone, and it starts its own server on a free port.
 
 ## Environment variables
 
@@ -62,6 +63,8 @@ All seeded names, targets and figures are synthetic. They are not real customers
 ## What is built and what comes next
 
 Built (plan 1, rep core): invite and PIN sign-in, month-calendar home with standing on each target line, typed day close with reconciliation, traceable commission with a what-if, history, and Arabic, English and Urdu.
+
+Pilot setup on a real database (no demo data): `pnpm admin:create-owner`, then `pnpm db:pilot <company>` for the six pilot lines and a draft November scheme; see [docs/DEPLOY.md](docs/DEPLOY.md).
 
 Next: admin dashboard and Excel upload; photo and voice day close, assistant and policy documents; notifications, install guide, offline and supervisor view.
 

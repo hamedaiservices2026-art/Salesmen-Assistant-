@@ -12,7 +12,9 @@
     "db:generate": "drizzle-kit generate",
     "db:seed": "tsx src/db/run-seed.ts",
     "admin:create-owner": "tsx src/db/run-create-owner.ts",
-    "e2e": "node scripts/e2e-smoke.mjs"
+    "e2e": "node scripts/e2e-smoke.mjs",
+    "db:pilot": "tsx src/db/run-pilot.ts",
+    "e2e:admin": "node scripts/e2e-admin.mjs"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.16",

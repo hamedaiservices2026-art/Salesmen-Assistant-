@@ -1,6 +1,6 @@
-# Deploying the pilot (plan 1)
+# Deploying the pilot
 
-Goal: a private URL the pilot rep opens on his iPhone, running the sample data. About 20 minutes, free tiers only.
+Goal: a private URL where the owner creates the pilot company and the rep opens his link on an iPhone. No demo data is loaded in production. About 30 minutes, free tiers only.
 Everything here is checked against the code at this commit except the parts that happen inside the Supabase and Vercel dashboards.
 
 ## 1. Database (Supabase, free)
@@ -13,41 +13,47 @@ Everything here is checked against the code at this commit except the parts that
 
 1. Import the GitHub repository `Salesmen-Assistant-` (branch `claude/sales-rep-support-system-oxd6dn`, or merge it into the default branch first). Framework: Next.js (detected). Package manager: pnpm (detected from `pnpm-lock.yaml`). Node: 22 (`engines` and `.nvmrc`).
 2. Under **Settings → Functions**, set the function region to the one nearest the database.
-3. Environment variables (Production):
+3. Environment variable (Production): `DATABASE_URL`, the direct connection string from step 1. Nothing else.
 
-| Name | Value |
-|---|---|
-| `DATABASE_URL` | the direct connection string from step 1 |
-| `APP_TODAY` | `2026-11-14` |
-| `ALLOW_APP_TODAY` | `1` |
-
-`APP_TODAY` and `ALLOW_APP_TODAY` pin "today" to a day inside the sample November 2026 data so the screens keep showing it. Remove both as soon as you load real data. Never set `ALLOW_DEMO_SEED` or `ALLOW_LOCAL_DB` on Vercel.
+Do not set `APP_TODAY`, `ALLOW_APP_TODAY`, `ALLOW_DEMO_SEED` or `ALLOW_LOCAL_DB` on Vercel: the first two pin "today" for demos and tests, the others exist for local runs.
 
 4. Deploy. The first request creates the tables (migrations run once, under a lock).
 
-## 3. Load the sample data and get the invite link
+## 3. The owner's path (no demo data)
 
-> **Do not seed a database that is reachable from the internet until plan 2 task 6 is merged.** Since the admin sign-in exists, the demo seed also creates a demo owner and a demo admin whose passwords are written in the source code. On a deployed database anyone could sign in as them. The rep-only pilot above is safe only if you skip this step and wait for the owner-first path (`pnpm admin:create-owner`) described in plan 2, or delete the demo `platform` and `demo-co` admin users right after seeding.
+Production never loads the demo: it has accounts whose passwords would be public in the source. Run these on any computer or cloud session that has the repo and Node 22 with pnpm (`pnpm install` first). `DATABASE_URL` is the string from step 1.
 
+1. **Create the platform owner.**
 
-The sample data is a demo company with one rep (login `ahmed`) and one second company used to prove isolation. Run this once, on any computer or cloud session that has the repo and Node 22 with pnpm:
+   ```bash
+   DATABASE_URL='<direct connection string>' pnpm admin:create-owner you@example.com "Your Name"
+   ```
 
-```bash
-pnpm install
-DATABASE_URL='<direct connection string>' ALLOW_DEMO_SEED=1 pnpm db:seed
-```
+   It prints `/admin/invite/<token>`. Open `https://<your-vercel-domain>` + that path, choose a password of at least 10 characters. You are signed in at `/admin/companies`. Later sign-ins are at `/admin/signin` with the email and password. The link expires after 7 days; run the command again for a new one.
 
-It prints two paths of the form `/invite/<token>`. Open `https://<your-vercel-domain>` + the **first** path on the iPhone, choose a 6-digit PIN, and note the username shown (`ahmed`). The links expire after 7 days; running the seed again issues new ones and resets the demo rep's PIN and sessions.
-Do not share the second path: it belongs to the isolation-test company.
+2. **Create the company.** In `/admin/companies` fill the company name, currency, time zone, default language and the first admin's name and email. The page shows that admin's invite link once; send it to him. He opens it and sets his own password.
+
+3. **Optional: load the pilot structure.** Run
+
+   ```bash
+   DATABASE_URL='<direct connection string>' pnpm db:pilot "<company name or id>"
+   ```
+
+   It adds the six pilot lines (185, 250 and 320 ml cans, Kinza, Food, Coverage) and a draft, unpublished November 2026 scheme holding only what is fixed: the three can amounts at 100% and the Kinza and Food bonus. Running it again changes nothing. If the company has no use for it, skip it and create the lines in `/admin/lines`.
+
+4. **The admin completes and publishes the scheme.** In `/admin/schemes` he adds the 90% to 99% and 110% tiers, any extra incentive at 100%, and the month's variable component (coverage or a volume item), checks the preview against a rep, and publishes.
+
+5. **The admin creates the rep and sends him the link.** In `/admin/users` he adds the rep, copies the invite link shown once and sends it. The rep opens it on his iPhone and chooses a 6-digit PIN. Targets for the month are set in `/admin/targets` (a form, or an Excel upload when plan 2 reaches it).
+
+`pnpm e2e:admin` runs this whole path on a temporary local database in a browser, with synthetic test amounts.
 
 ## 4. What to expect on the phone
 
 - It is a website, not yet an installable app: open it in Safari. Home Screen install, push notifications, and offline use arrive in plan 4.
 - Arabic is the default; Settings switches to English or Urdu.
-- All names and figures are synthetic. Do not enter real customer data until plan 2 (admin, Excel upload) and a review of the free-tier terms of any AI service added in plan 3.
+- Review the free-tier terms of the database and hosting services before entering real customer data.
 
 ## 5. Known limits of this deployment
 
-- No admin screen: creating another rep, changing targets, or reissuing an invite is done by code until plan 2.
-- A forgotten PIN needs a new invite until PIN reset is added.
+- A forgotten PIN or password needs a new invite from the admin (`New link` in `/admin/users`), or `pnpm admin:create-owner` again for the owner.
 - Migrations use the connection in `DATABASE_URL`; behind a transaction pooler they can hang. A separate migration URL is planned.
