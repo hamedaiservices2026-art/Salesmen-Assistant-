@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { createTestDb } from "./testing";
 import { seedDemo } from "./seed";
-import { seedPilotStructure } from "./pilot";
+import { findCompany, seedPilotStructure } from "./pilot";
 import * as s from "./schema";
 import { createCompany } from "@/server/admin/companies";
 import { validateComponents } from "@/domain/commission";
@@ -87,5 +87,39 @@ describe("seedPilotStructure", () => {
   it("refuses an unknown company", async () => {
     const db = await createTestDb();
     await expect(seedPilotStructure(db, "nope")).rejects.toThrow(/unknown company/i);
+  });
+
+  it("leaves a published scheme alone, even when a line was deactivated since", async () => {
+    const { db, companyId } = await newCompany();
+    await seedPilotStructure(db, companyId);
+    const [row] = await db.select().from(s.schemes).where(eq(s.schemes.companyId, companyId));
+    await db
+      .update(s.schemes)
+      .set({ published: true, version: 2, components: row!.draft!, draft: null, draftRev: 5 })
+      .where(eq(s.schemes.id, row!.id));
+    await db.update(s.targetLines).set({ active: false }).where(eq(s.targetLines.id, `${companyId}-kinza`));
+    await seedPilotStructure(db, companyId);
+    const [after] = await db.select().from(s.schemes).where(eq(s.schemes.companyId, companyId));
+    expect(after).toMatchObject({ published: true, version: 2, draft: null, draftRev: 5 });
+    expect(after!.components).toEqual(row!.draft);
+  });
+});
+
+describe("findCompany", () => {
+  it("finds by id or by exact name, and never the platform company", async () => {
+    const { db, companyId } = await newCompany();
+    expect(await findCompany(db, companyId)).toMatchObject({ ok: true, id: companyId, name: "Pilot Test Co." });
+    expect(await findCompany(db, "Pilot Test Co.")).toMatchObject({ ok: true, id: companyId });
+    expect(await findCompany(db, "platform")).toMatchObject({ ok: false, reason: "none" });
+    expect(await findCompany(db, "Platform")).toMatchObject({ ok: false, reason: "none" });
+  });
+
+  it("refuses a name two companies share, and lists the customers", async () => {
+    const { db, companyId } = await newCompany();
+    await db.update(s.companies).set({ name: "Same Name" }).where(eq(s.companies.id, "other-co"));
+    await db.update(s.companies).set({ name: "Same Name" }).where(eq(s.companies.id, companyId));
+    const r = await findCompany(db, "Same Name");
+    expect(r).toMatchObject({ ok: false, reason: "ambiguous" });
+    if (!r.ok) expect(r.known.map((c) => c.id)).not.toContain("platform");
   });
 });

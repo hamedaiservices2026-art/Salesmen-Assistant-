@@ -29,7 +29,7 @@ Production never loads the demo: it has accounts whose passwords would be public
    DATABASE_URL='<direct connection string>' pnpm admin:create-owner you@example.com "Your Name"
    ```
 
-   It prints `/admin/invite/<token>`. Open `https://<your-vercel-domain>` + that path, choose a password of at least 10 characters. You are signed in at `/admin/companies`. Later sign-ins are at `/admin/signin` with the email and password. The link expires after 7 days; run the command again for a new one.
+   It prints `/admin/invite/<token>`. Open `https://<your-vercel-domain>` + that path, choose a password of at least 10 characters with at least 5 different characters. You are signed in at `/admin/companies`. Later sign-ins are at `/admin/signin` with the email and password. The link expires after 7 days; run the command again for a new one.
 
 2. **Create the company.** In `/admin/companies` fill the company name, currency, time zone, default language and the first admin's name and email. The page shows that admin's invite link once; send it to him. He opens it and sets his own password.
 

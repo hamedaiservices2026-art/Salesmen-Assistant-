@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import type { Db } from "./client";
 import * as s from "./schema";
 import { validateComponents, type Component } from "@/domain/commission";
@@ -75,6 +75,13 @@ export async function seedPilotStructure(db: Db, companyId: string): Promise<voi
       .values(PILOT_LINES.map((l, i) => ({ ...l, id: `${companyId}-${l.code}`, companyId, sort: i + 1, active: true })))
       .onConflictDoNothing();
 
+    // A month that already has a scheme row is the admin's now: nothing below may run or fail on it.
+    const [existing] = await tx
+      .select({ id: s.schemes.id })
+      .from(s.schemes)
+      .where(and(eq(s.schemes.companyId, companyId), eq(s.schemes.year, PERIOD.year), eq(s.schemes.month, PERIOD.month)));
+    if (existing) return;
+
     const lines = await tx.select({ id: s.targetLines.id, code: s.targetLines.code }).from(s.targetLines).where(eq(s.targetLines.companyId, companyId));
     const idOf = (code: string) => lines.find((l) => l.code === code)?.id ?? `${companyId}-${code}`;
 
@@ -97,4 +104,20 @@ export async function seedPilotStructure(db: Db, companyId: string): Promise<voi
       })
       .onConflictDoNothing();
   });
+}
+
+export type CompanyMatch =
+  | { ok: true; id: string; name: string }
+  | { ok: false; reason: "none" | "ambiguous"; known: { id: string; name: string }[] };
+
+/**
+ * Finds the customer company a pilot setup is for: by id, else by exact name. The `platform`
+ * pseudo-company (the owner's) is never a match, and a name shared by two companies is refused.
+ */
+export async function findCompany(db: Db, wanted: string): Promise<CompanyMatch> {
+  const customers = await db.select({ id: s.companies.id, name: s.companies.name }).from(s.companies).where(ne(s.companies.id, "platform"));
+  const byId = customers.filter((c) => c.id === wanted);
+  const matches = byId.length > 0 ? byId : customers.filter((c) => c.name === wanted);
+  if (matches.length === 1) return { ok: true, ...matches[0]! };
+  return { ok: false, reason: matches.length === 0 ? "none" : "ambiguous", known: customers };
 }

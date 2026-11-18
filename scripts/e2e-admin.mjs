@@ -105,7 +105,9 @@ async function main() {
     env: { ...process.env, ...env, NODE_ENV: "production" },
   });
   server.once("error", (e) => {
+    // A failed spawn never emits "exit": mark the server gone so cleanup does not wait for it.
     serverError = e;
+    serverExited = true;
   });
   server.once("exit", () => {
     serverExited = true;
@@ -209,7 +211,8 @@ async function main() {
   await admin.locator('[role="status"]', { hasText: published.trim() }).first().waitFor({ timeout: 20000 });
   await goto(admin, "/admin/schemes?ym=2026-11");
   const status = await admin.locator('[data-testid="scheme-status"]').innerText();
-  check("the scheme shows as published", /1/.test(status) && !status.includes(copy("admin.schemes.status.none")), "a published version", status);
+  const publishedPrefix = copy("admin.schemes.status.published").replace("{version}", "1");
+check("the scheme shows as published, version 1", status.startsWith(publishedPrefix), `text starting "${publishedPrefix}"`, status);
 
   // 7. The rep opens his invite in a second context, sets a PIN and reads the commission screen.
   const rep = await newPage({ width: 390, height: 844 });
@@ -222,7 +225,12 @@ async function main() {
   const text = await body(rep);
   has("the commission screen names the card", text, "علب اختبار");
   for (const figure of ["111", "222"]) hasToken(`the tier table shows ${figure}`, text, figure);
-  for (const pct of ["90", "100"]) check(`the tier table has a ${pct}% step`, text.includes(`${pct}%`), `"${pct}%"`, squash(text));
+  // Each step pays its own amount: the pair sits in one cell of the tier table.
+  const cells = await rep.locator("section[aria-label] li").allInnerTexts();
+  for (const [pct, pay] of [["90", "111"], ["100", "222"]]) {
+    const cell = cells.find((c) => c.startsWith(copy("commission.tierFrom").replace("{pct}", pct)));
+    check(`the ${pct}% step pays ${pay}`, cell !== undefined && containsToken(cell, pay), `a cell with "${pct}%" and ${pay}`, JSON.stringify(cells));
+  }
 }
 
 async function cleanup() {
@@ -244,8 +252,11 @@ async function cleanup() {
 }
 
 // A signal stops the run with the conventional 128 + signal number (SIGINT 130, SIGTERM 143).
+let stopping = false;
 for (const [sig, code] of [["SIGINT", 130], ["SIGTERM", 143]]) {
-  process.once(sig, () => {
+  process.on(sig, () => {
+    if (stopping) return; // a second signal while cleaning up must not start a second cleanup
+    stopping = true;
     console.error(`\n${sig}: cleaning up`);
     cleanup().finally(() => process.exit(code));
   });
