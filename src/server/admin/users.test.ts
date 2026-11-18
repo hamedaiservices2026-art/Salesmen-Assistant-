@@ -305,6 +305,23 @@ describe("setActive", () => {
     expect(await signIn(db, "ahmed", "482915")).toMatchObject({ ok: true });
   });
 
+  it("deactivating a supervisor clears the supervisor of his reps, who stay active", async () => {
+    expect((await userRow("ahmed")).supervisorId).toBe("sami");
+    expect(await setActive(admin(), "sami", false)).toEqual({ ok: true });
+    for (const id of ["ahmed", "khaled"]) expect(await userRow(id)).toMatchObject({ supervisorId: null, active: true });
+    expect(await repCtx(sami(), "ahmed")).toBeNull();
+    // reactivating him does not bring the team back; the admin assigns it again
+    expect(await setActive(admin(), "sami", true)).toEqual({ ok: true });
+    expect((await userRow("ahmed")).supervisorId).toBeNull();
+  });
+
+  it("deactivating a supervisor leaves reps of other supervisors and of other companies alone", async () => {
+    await db.insert(s.users).values({ id: "sup2", companyId: "demo-co", role: "supervisor", name: "S2", login: "sup2" });
+    await db.update(s.users).set({ supervisorId: "sup2" }).where(eq(s.users.id, "omar"));
+    await setActive(admin(), "sami", false);
+    expect((await userRow("omar")).supervisorId).toBe("sup2");
+  });
+
   it("refuses the caller himself", async () => {
     expect(await setActive(admin(), seed.adminId, false)).toEqual({ ok: false, error: "self" });
     expect((await userRow(seed.adminId)).active).toBe(true);

@@ -1,4 +1,4 @@
-import { isDailyLine, type LineKind } from "@/domain/lines";
+import type { LineKind } from "@/domain/lines";
 import { and, eq, gte, lte } from "drizzle-orm";
 import { dayCounts, type ISODate } from "@/domain/calendar";
 import type { Unit } from "@/domain/money";
@@ -6,6 +6,7 @@ import { computePace, markDay, nextDayRequired, type DayMark } from "@/domain/pa
 import * as s from "@/db/schema";
 import type { Ctx } from "@/server/ctx";
 import { getCompanyPrefs } from "./company";
+import type { CoverageInfo } from "./coverage";
 import { loadCalendar, loadMonthTotals, type FocusTotal } from "./month-data";
 
 export type LineView = {
@@ -21,7 +22,10 @@ export type LineView = {
   pace: ReturnType<typeof computePace>;
   /** Needed per selling day after today (null when none remain). */
   nextDayRequired: number | null;
-  days: { date: ISODate; mark: DayMark; amount: number | null }[]; // every day of the month
+  /** Every day of the month; empty for a coverage line, which has no daily figures. */
+  days: { date: ISODate; mark: DayMark; amount: number | null }[];
+  /** A coverage line's latest update of the month (null before the first one, and on every other line). */
+  coverage: CoverageInfo | null;
 };
 
 export type FocusView = {
@@ -94,9 +98,21 @@ export async function getMonthView(
   const counts = dayCounts(cal.selling, today);
   const selling = new Set(cal.selling);
 
-  const lines: LineView[] = totals.lines.filter(isDailyLine).map((l) => {
+  const lines: LineView[] = totals.lines.map((l) => {
     const target = totals.targets.get(l.lineId) ?? 0;
     const achieved = totals.achieved.get(l.lineId) ?? 0;
+    if (l.kind === "coverage") {
+      // No pace: coverage is a count as of a date. The status stays `no_target` so nothing ranks it as behind or ahead.
+      const pace: LineView["pace"] = {
+        expected: 0,
+        gap: 0,
+        remaining: Math.max(0, target - achieved),
+        requiredDaily: null,
+        status: "no_target",
+        pct: target > 0 ? Math.floor((achieved * 100) / target) : null,
+      };
+      return { ...l, target, achieved, pace, nextDayRequired: null, days: [], coverage: totals.coverage.get(l.lineId) ?? null };
+    }
     return {
       ...l,
       target,
@@ -108,6 +124,7 @@ export async function getMonthView(
         const mark = markDay({ date, today, isSellingDay: selling.has(date), amount, target, total: counts.total });
         return { date, mark, amount };
       }),
+      coverage: null,
     };
   });
 

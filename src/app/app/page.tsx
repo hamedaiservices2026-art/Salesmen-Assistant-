@@ -8,8 +8,11 @@ import { getMonthView } from "@/server/repos/month-view";
 import { getDisplayName } from "@/server/repos/profile";
 import { currentDay } from "@/server/today";
 import { formatAmount, formatPercent, type Unit } from "@/domain/money";
+import { coverageNeed, coveragePct, coverageTiers } from "@/domain/coverage";
 import { todayNeed } from "@/domain/pace";
+import { loadScheme } from "@/server/repos/month-data";
 import { AppHeader } from "@/ui/components/AppHeader";
+import { CoveragePanel } from "@/ui/components/CoveragePanel";
 import { FocusList } from "@/ui/components/FocusList";
 import { LineTabs } from "@/ui/components/LineTabs";
 import { MonthCalendar } from "@/ui/components/MonthCalendar";
@@ -17,6 +20,7 @@ import { PrimaryLink } from "@/ui/components/PrimaryLink";
 import { StatusChip } from "@/ui/components/StatusChip";
 import { TodayPanel } from "@/ui/components/TodayPanel";
 import { calendarCells } from "@/ui/components/calendar-cells";
+import { coverageNeedText, coverageSummary } from "@/ui/coverage-copy";
 import { INTL_TAG } from "@/ui/intl-tag";
 
 export default async function HomePage({ searchParams }: { searchParams: Promise<{ line?: string | string[] }> }) {
@@ -59,12 +63,60 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
     pct: l.pace.pct === null ? "—" : formatPercent(l.achieved, l.target),
   }));
 
+  const focusRows = view.focus.map((f) => {
+    const remaining = Math.max(0, f.target - f.achieved);
+    const rem = formatAmount(remaining, f.unit);
+    const detail =
+      remaining === 0
+        ? t("focusDone")
+        : f.perDay === null
+          ? t("focusRemaining", { remaining: rem })
+          : t.rich("focusRow", {
+              perDay: formatAmount(f.perDay, f.unit),
+              remaining: rem,
+              b: (chunks) => <strong className="font-extrabold text-ink">{chunks}</strong>,
+            });
+    return { id: f.id, name: f.name, detail };
+  });
+
+
   if (!line) {
     return (
       <>
         <AppHeader greeting={greeting} dateLine={dateLine} notificationsLabel={t("notifications")} settingsLabel={tSettings("open")} />
         <main className="flex flex-1 flex-col gap-4 px-5 pb-4 pt-[18px]">
           <p className="m-0 text-base text-ink-2">{t("noLines")}</p>
+          <PrimaryLink href="/app/close">{t("close")}</PrimaryLink>
+        </main>
+      </>
+    );
+  }
+
+  if (line.kind === "coverage") {
+    const tiers = coverageTiers(await loadScheme(ctx, year, month), line.lineId);
+    const info = line.coverage;
+    const tc = await getTranslations("coverage");
+    const need = info ? coverageNeed(info, tiers) : null;
+    const summary = info
+      ? coverageSummary(tc, info, fmt({ day: "numeric", month: "long" }).format(new Date(`${info.asOf}T00:00:00Z`)))
+      : null;
+    return (
+      <>
+        <AppHeader greeting={greeting} dateLine={dateLine} notificationsLabel={t("notifications")} settingsLabel={tSettings("open")}>
+          <LineTabs lines={tabs} selectedId={line.lineId} label={t("tabsLabel")} />
+        </AppHeader>
+        <main className="flex flex-1 flex-col gap-4 px-5 pb-4 pt-[18px]">
+          <CoveragePanel
+            label={t("lineLabel", { line: lineName(line) })}
+            figures={summary?.figures ?? null}
+            pct={info ? (coveragePct(info) ?? 0) : 0}
+            lastUpdate={summary?.lastUpdate ?? null}
+            need={info ? (need ? coverageNeedText(tc, need) : tiers.length > 0 ? tc("tiersDone") : null) : null}
+            empty={tc("none")}
+            updateHref="/app/coverage"
+            updateLabel={tc("update")}
+          />
+          <FocusList title={t("focusTitle")} rows={focusRows} />
           <PrimaryLink href="/app/close">{t("close")}</PrimaryLink>
         </main>
       </>
@@ -136,22 +188,6 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
       />
     );
   }
-
-  const focusRows = view.focus.map((f) => {
-    const remaining = Math.max(0, f.target - f.achieved);
-    const rem = formatAmount(remaining, f.unit);
-    const detail =
-      remaining === 0
-        ? t("focusDone")
-        : f.perDay === null
-          ? t("focusRemaining", { remaining: rem })
-          : t.rich("focusRow", {
-              perDay: formatAmount(f.perDay, f.unit),
-              remaining: rem,
-              b: (chunks) => <strong className="font-extrabold text-ink">{chunks}</strong>,
-            });
-    return { id: f.id, name: f.name, detail };
-  });
 
   return (
     <>

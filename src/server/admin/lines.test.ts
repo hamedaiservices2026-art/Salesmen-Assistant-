@@ -183,6 +183,19 @@ describe("saveLine: edit", () => {
     expect(await lineRow("bev")).toMatchObject({ code: "bev", unit: "cases", kind: "sales" });
   });
 
+  it("a coverage line with a coverage update is in use: its unit and kind are fixed", async () => {
+    const created = await saveLine(admin(), input({ code: "cov", kind: "coverage", unit: "outlets" }));
+    if (!created.ok) throw new Error("setup");
+    expect((await listAllLines(admin())).find((l) => l.lineId === created.id)!.inUse).toBe(false);
+    await db.insert(s.coverageUpdates).values({
+      id: "cu1", companyId: "demo-co", userId: "ahmed", lineId: created.id, covered: 5, total: 10, asOf: "2026-11-10", enteredBy: "ahmed", enteredRole: "rep",
+    });
+    expect((await listAllLines(admin())).find((l) => l.lineId === created.id)!.inUse).toBe(true);
+    const r = await saveLine(admin(), { ...input({ code: "cov", kind: "sales", unit: "cases" }), id: created.id });
+    expect(r.ok).toBe(false);
+    expect(await lineRow(created.id)).toMatchObject({ unit: "outlets", kind: "coverage" });
+  });
+
   it("a line in use can still change its order and be deactivated", async () => {
     const r = await saveLine(admin(), {
       id: "food", code: "food", nameAr: "أغذية", nameEn: "Food", nameUr: "غذا", unit: "value", kind: "sales", sort: 7, active: false,

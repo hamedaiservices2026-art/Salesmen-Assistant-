@@ -3,7 +3,7 @@ import { getLocale, getTranslations } from "next-intl/server";
 import { inputValue, type Unit } from "@/domain/money";
 import { requireCtx } from "@/server/auth/guard";
 import { getCompanyPrefs } from "@/server/repos/company";
-import { lineName as localLineName } from "@/domain/lines";
+import { isDailyLine, lineName as localLineName } from "@/domain/lines";
 import type { Locale } from "@/i18n/config";
 import { unitLabel as labelFor } from "@/ui/unit-label";
 import { getClose } from "@/server/repos/closes";
@@ -88,7 +88,8 @@ export default async function ClosePage({ searchParams }: { searchParams: Promis
   const [view, saved] = await Promise.all([getMonthView(ctx, { year, month, today }), getClose(ctx, date)]);
   const lineName = (l: { nameAr: string; nameEn: string; nameUr: string }) => localLineName(l, locale as Locale);
 
-  const lineItems: FormItem[] = view.lines.map((l) => ({
+  const dailyLines = view.lines.filter(isDailyLine);
+  const lineItems: FormItem[] = dailyLines.map((l) => ({
     name: `line.${l.lineId}`,
     label: lineName(l),
     unitLabel: label(l.unit),
@@ -104,7 +105,7 @@ export default async function ClosePage({ searchParams }: { searchParams: Promis
 
   const initial: Record<string, string> = {};
   if (saved) {
-    for (const l of view.lines) {
+    for (const l of dailyLines) {
       const n = saved.lines[l.lineId];
       if (n !== undefined) initial[`line.${l.lineId}`] = inputValue(n, l.unit);
     }

@@ -46,6 +46,11 @@ const LINE_REFERENCES: ReadonlyArray<(db: Db, companyId: string) => Promise<{ li
     db.selectDistinct({ lineId: s.targets.lineId }).from(s.targets).where(eq(s.targets.companyId, companyId)),
   (db, companyId) =>
     db.selectDistinct({ lineId: s.closeLines.lineId }).from(s.closeLines).where(eq(s.closeLines.companyId, companyId)),
+  (db, companyId) =>
+    db
+      .selectDistinct({ lineId: s.coverageUpdates.lineId })
+      .from(s.coverageUpdates)
+      .where(eq(s.coverageUpdates.companyId, companyId)),
   async (db, companyId) => {
     const rows = await db
       .select({ components: s.schemes.components, draft: s.schemes.draft })

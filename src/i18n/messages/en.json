@@ -7,7 +7,8 @@
     "close": "Close",
     "commission": "Commission",
     "assistant": "Assistant",
-    "history": "History"
+    "history": "History",
+    "team": "Team"
   },
   "auth": {
     "invite": {
@@ -710,6 +711,46 @@
         "not_found": "This rep was not found",
         "no_draft": "There is no saved draft to publish"
       }
+    },
+    "coverage": {
+      "title": "Coverage",
+      "subtitle": "Customers covered per rep in {month}. The update with the latest date counts.",
+      "empty": "There are no active reps.",
+      "noLines": "No coverage line is active. Add a line of kind \"coverage\" on the target lines page.",
+      "rep": "Rep"
     }
+  },
+  "coverage": {
+    "title": "Update coverage",
+    "panelLabel": "Coverage",
+    "figures": "{covered} of {total} customers · {pct}",
+    "lastUpdate": "Last updated {date} · {name}",
+    "need": "{more} more customers to reach {nextPct}",
+    "tiersDone": "You have reached the last commission tier",
+    "none": "No coverage update yet this month",
+    "update": "Update coverage",
+    "noLines": "No coverage line is active for you.",
+    "form": {
+      "covered": "Customers covered",
+      "total": "Total customers",
+      "asOf": "As of",
+      "customers": "customers",
+      "save": "Save update",
+      "saved": "Update saved"
+    },
+    "errors": {
+      "invalid": "That number is not clear",
+      "covered_above_total": "Covered is more than the total",
+      "future": "That date has not come yet",
+      "not_coverage": "That line is not a coverage line",
+      "not_found": "That rep was not found"
+    }
+  },
+  "team": {
+    "title": "Team",
+    "subtitle": "{count, plural, one {# rep} other {# reps}}",
+    "empty": "No reps are assigned to you right now.",
+    "noLines": "No coverage line is active. The admin adds one on the target lines page.",
+    "month": "Coverage for {month}"
   }
 }

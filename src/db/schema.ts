@@ -1,7 +1,9 @@
 import {
   bigint,
   boolean,
+  check,
   date,
+  index,
   integer,
   jsonb,
   pgTable,
@@ -10,6 +12,7 @@ import {
   uniqueIndex,
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import type { Component } from "@/domain/commission";
 
 const id = () => text("id").primaryKey();
@@ -292,4 +295,37 @@ export const schemeVersions = pgTable(
     publishedAt: timestamp("published_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("scheme_versions_scheme_version").on(t.schemeId, t.version)],
+);
+
+/**
+ * A count of customers covered out of the customers in a rep's territory, as of a date, entered by
+ * the rep, his supervisor or an admin. The latest `as_of` in a month (then the latest `created_at`)
+ * is that month's coverage; older rows stay as the history.
+ */
+export const coverageUpdates = pgTable(
+  "coverage_updates",
+  {
+    id: id(),
+    companyId: companyId(),
+    /** The rep the count is about. */
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id),
+    lineId: text("line_id")
+      .notNull()
+      .references(() => targetLines.id),
+    covered: integer("covered").notNull(),
+    total: integer("total").notNull(),
+    asOf: date("as_of", { mode: "string" }).notNull(),
+    /** Who typed it, and in which role. */
+    enteredBy: text("entered_by")
+      .notNull()
+      .references(() => users.id),
+    enteredRole: text("entered_role", { enum: ["rep", "supervisor", "admin", "owner"] }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("coverage_updates_user_line_as_of").on(t.userId, t.lineId, t.asOf),
+    check("coverage_updates_counts", sql`${t.total} >= 1 AND ${t.covered} >= 0 AND ${t.covered} <= ${t.total}`),
+  ],
 );

@@ -5,6 +5,7 @@ import { seedDemo, type SeedResult } from "@/db/seed";
 import type { Db } from "@/db/client";
 import * as s from "@/db/schema";
 import type { Ctx } from "@/server/ctx";
+import { isDailyLine } from "@/domain/lines";
 import { getMonthView } from "./month-view";
 import { getClose, saveClose, type CloseForm } from "./closes";
 import { getCommissionView } from "./commission";
@@ -336,13 +337,14 @@ describe("company preferences on the rep screens", () => {
     expect((await bevOf(ahmed())).bev.pace.status).toBe("behind");
   });
 
-  it("leaves coverage lines out of the month view and refuses a close amount for one", async () => {
+  it("keeps coverage lines in the month view (not in the daily set) and refuses a close amount for one", async () => {
     await db.insert(s.targetLines).values({
       id: "cov", companyId: seed.companyId, code: "cov", nameAr: "تغطية", nameEn: "Coverage", nameUr: "کوریج",
       unit: "outlets", kind: "coverage", sort: 4,
     });
     const view = await getMonthView(ahmed(), NOV);
-    expect(view.lines.map((l) => l.lineId)).toEqual(["bev", "food", "coll"]);
+    expect(view.lines.map((l) => l.lineId)).toEqual(["bev", "food", "coll", "cov"]);
+    expect(view.lines.filter(isDailyLine).map((l) => l.lineId)).toEqual(["bev", "food", "coll"]);
     const r = await saveClose(ahmed(), form(TODAY, { bev: 5, cov: 5 }), { today: TODAY });
     expect(r).toEqual({ ok: false, errors: { "lines.cov": "unknown" } });
   });

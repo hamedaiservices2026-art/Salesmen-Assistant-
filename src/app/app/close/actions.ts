@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { isDailyLine } from "@/domain/lines";
 import { requireCtx } from "@/server/auth/guard";
 import { saveClose } from "@/server/repos/closes";
 import { getMonthView } from "@/server/repos/month-view";
@@ -31,7 +32,7 @@ export async function saveCloseAction(_prev: CloseState, data: FormData): Promis
 
   const parsed = parseCloseForm(
     data,
-    view.lines.map((l) => ({ lineId: l.lineId, unit: l.unit, kind: l.kind })),
+    view.lines.filter(isDailyLine).map((l) => ({ lineId: l.lineId, unit: l.unit, kind: l.kind })),
     focusOn(view.focus, date).map((f) => ({ id: f.id, unit: f.unit })),
   );
   if (!parsed.ok) return { errors: parsed.errors };

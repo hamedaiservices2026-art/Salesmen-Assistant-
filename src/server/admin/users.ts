@@ -184,7 +184,9 @@ export async function issueInvite(
 
 /**
  * Turns a user of the caller's company off or on. Turning off deletes his sessions and voids his
- * unused links, so a reactivation does not bring an old link back. An admin cannot turn himself off.
+ * unused links, so a reactivation does not bring an old link back. Turning a supervisor off also clears
+ * the supervisor of his reps (they stay active, with no supervisor), so nobody keeps a team that is
+ * not led. An admin cannot turn himself off.
  */
 export async function setActive(
   ctx: Ctx,
@@ -223,6 +225,12 @@ export async function setActive(
         .update(s.invites)
         .set({ usedAt: now, updatedAt: now })
         .where(and(eq(s.invites.userId, user.id), eq(s.invites.companyId, ctx.companyId), isNull(s.invites.usedAt)));
+      if (user.role === "supervisor") {
+        await tx
+          .update(s.users)
+          .set({ supervisorId: null, updatedAt: now })
+          .where(and(eq(s.users.supervisorId, user.id), eq(s.users.companyId, ctx.companyId)));
+      }
     }
     return { ok: true as const };
   });

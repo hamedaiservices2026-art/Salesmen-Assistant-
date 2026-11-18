@@ -7,6 +7,7 @@ import type { Scheme, SchemeInput } from "@/domain/commission";
 import type { Unit } from "@/domain/money";
 import * as s from "@/db/schema";
 import type { Ctx } from "@/server/ctx";
+import { latestCoverage, type CoverageInfo } from "./coverage";
 
 export type MonthCalendar = {
   start: ISODate;
@@ -41,6 +42,8 @@ export type MonthTotals = {
   targets: Map<string, number>;
   achieved: Map<string, number>;
   focus: FocusTotal[];
+  /** The rep's latest coverage per coverage line; those lines' target and achieved come from it. */
+  coverage: Map<string, CoverageInfo>;
 };
 
 export function monthBounds(year: number, month: number): { start: ISODate; end: ISODate; dates: ISODate[] } {
@@ -169,22 +172,41 @@ async function loadFocus(ctx: Ctx, start: ISODate, end: ISODate): Promise<FocusT
   return items.map((i) => ({ ...i, achieved: byId.get(i.id) ?? 0 }));
 }
 
-/** Lines, the rep's targets, his per-line sums for the month, and his focus items. */
+/**
+ * Lines, the rep's targets, his per-line sums for the month, and his focus items. A coverage line has
+ * no target row and no close amounts: its target is the customers in his territory (`total`) and its
+ * achieved the customers covered, from his latest coverage update of the month (0 and 0 without one).
+ */
 export async function loadMonthTotals(ctx: Ctx, year: number, month: number): Promise<MonthTotals> {
   const { start, end } = monthBounds(year, month);
-  const [lines, targets, achieved, focus] = await Promise.all([
+  const [lines, targets, achieved, focus, coverage] = await Promise.all([
     loadLines(ctx),
     loadTargets(ctx, year, month),
     loadLineSums(ctx, start, end),
     loadFocus(ctx, start, end),
+    latestCoverage(ctx, year, month),
   ]);
-  return { lines, targets, achieved, focus };
+  for (const l of lines) {
+    if (l.kind !== "coverage") continue;
+    const c = coverage.get(l.lineId);
+    targets.set(l.lineId, c?.total ?? 0);
+    achieved.set(l.lineId, c?.covered ?? 0);
+  }
+  return { lines, targets, achieved, focus, coverage };
 }
 
 export function schemeInput(t: MonthTotals): SchemeInput {
   return {
     lines: Object.fromEntries(
-      t.lines.map((l) => [l.lineId, { target: t.targets.get(l.lineId) ?? 0, achieved: t.achieved.get(l.lineId) ?? 0 }]),
+      t.lines.map((l) => [
+        l.lineId,
+        {
+          target: t.targets.get(l.lineId) ?? 0,
+          achieved: t.achieved.get(l.lineId) ?? 0,
+          // Coverage is a count as of a date, not a running total: the projection keeps it as entered.
+          ...(l.kind === "coverage" ? { hold: true } : {}),
+        },
+      ]),
     ),
     focus: Object.fromEntries(t.focus.map((f) => [f.id, { achieved: f.achieved }])),
   };

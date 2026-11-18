@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ClipboardCheck, Clock, CreditCard, House, MessageSquare } from "lucide-react";
+import { ClipboardCheck, Clock, CreditCard, House, MessageSquare, Users } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 const items = [
@@ -13,12 +13,15 @@ const items = [
   { href: "/app/history", key: "history", Icon: Clock },
 ] as const;
 
-export function BottomNav() {
+/** Supervisors only: his reps and their coverage. */
+const teamItem = { href: "/app/team", key: "team", Icon: Users } as const;
+
+export function BottomNav({ showTeam = false }: { showTeam?: boolean }) {
   const t = useTranslations();
   const pathname = usePathname();
   return (
     <nav aria-label={t("home.navLabel")} className="sticky bottom-0 flex border-t border-line bg-white px-2 pb-3 pt-1.5">
-      {items.map(({ href, key, Icon }) => {
+      {(showTeam ? [...items, teamItem] : items).map(({ href, key, Icon }) => {
         const current = href === "/app" ? pathname === "/app" : pathname.startsWith(href);
         return (
           <Link
