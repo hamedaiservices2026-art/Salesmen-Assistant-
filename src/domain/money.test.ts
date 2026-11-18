@@ -34,7 +34,7 @@ describe("parseAmount separators", () => {
   const units = ["cases", "value", "outlets"] as const;
   it("rejects a comma that is not a thousands separator, for every unit", () => {
     for (const unit of units)
-      for (const bad of ["0,5", "2,5", "8250,50", "12,34", ",5", "1,14", "1,1400", "80,5", "1,٥", "1 14", "٠،٥".replace("،", ",")])
+      for (const bad of ["0,5", "0,500", "0,050", "00,500", "2,5", "8250,50", "12,34", ",5", "1,14", "1,1400", "80,5", "1,٥", "1 14", "٠،٥".replace("،", ",")])
         expect(parseAmount(bad, unit), `${bad} ${unit}`).toBeNull();
   });
   it("accepts grouped thousands, also with a decimal part for value", () => {

@@ -41,7 +41,7 @@ function toWesternDigits(s: string): string {
 }
 
 const SEPARATORS = ",٬\\s\u00A0\u202F";
-const GROUPED = new RegExp(`^\\d{1,3}(?:[${SEPARATORS}]\\d{3})+$`);
+const GROUPED = new RegExp(`^[1-9]\\d{0,2}(?:[${SEPARATORS}]\\d{3})+$`);
 const HAS_SEPARATOR = new RegExp(`[${SEPARATORS}]`);
 
 /**
