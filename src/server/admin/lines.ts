@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { and, asc, eq, max } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import * as s from "@/db/schema";
+import { referencedLineIds } from "@/domain/commission";
 import { isLineCode, lineShapeError, type LineKind } from "@/domain/lines";
 import type { Unit } from "@/domain/money";
 import { assertRole } from "@/server/auth/roles";
@@ -33,15 +34,27 @@ const KINDS = ["sales", "collection", "coverage"] as const satisfies readonly Li
 const SORT_MAX = 100_000;
 
 /**
- * Every table that points at `target_lines.id`. A line named here is "in use": its code, unit and
- * kind are fixed, because changing them would change what the stored figures mean. To make another
- * table count (scheme references, coverage updates), add one entry; nothing else needs to change.
+ * Everything that refers to a `target_lines.id`: the tables that point at it, and the line ids that
+ * scheme components name in their JSON (published components and saved drafts; not a foreign key).
+ * A line named here is "in use": its code, unit and kind are fixed, because changing them would
+ * change what the stored figures or a scheme mean. To make another table count (coverage updates),
+ * add one entry; nothing else needs to change. Saving or publishing a scheme locks the lines it
+ * names before validating, and `saveLine` locks the line before this check, so the two take turns.
  */
 const LINE_REFERENCES: ReadonlyArray<(db: Db, companyId: string) => Promise<{ lineId: string }[]>> = [
   (db, companyId) =>
     db.selectDistinct({ lineId: s.targets.lineId }).from(s.targets).where(eq(s.targets.companyId, companyId)),
   (db, companyId) =>
     db.selectDistinct({ lineId: s.closeLines.lineId }).from(s.closeLines).where(eq(s.closeLines.companyId, companyId)),
+  async (db, companyId) => {
+    const rows = await db
+      .select({ components: s.schemes.components, draft: s.schemes.draft })
+      .from(s.schemes)
+      .where(eq(s.schemes.companyId, companyId));
+    return rows
+      .flatMap((r) => [...referencedLineIds(r.components), ...referencedLineIds(r.draft)])
+      .map((lineId) => ({ lineId }));
+  },
 ];
 
 /** The ids of the company's lines that something refers to. */

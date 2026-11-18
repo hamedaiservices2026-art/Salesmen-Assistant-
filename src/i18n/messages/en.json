@@ -429,7 +429,7 @@
         "codeHint": "Lowercase letters, digits, hyphen or underscore. Used in uploads.",
         "kind": "Type",
         "unit": "Counted in",
-        "lockedHint": "This line already has targets or sales recorded, so its code, type and unit cannot change. You can still rename it, reorder it or turn it off."
+        "lockedHint": "This line already has targets, sales or a commission scheme that names it, so its code, type and unit cannot change. You can still rename it, reorder it or turn it off."
       },
       "kinds": {
         "sales": "Sales",
@@ -465,7 +465,7 @@
         "required": "This field is required",
         "invalid": "This value is not valid",
         "taken": "This code is already used by another line",
-        "in_use": "This line already has targets or sales, so this cannot change",
+        "in_use": "This line already has targets, sales or a commission scheme, so this cannot change",
         "collection_needs_value": "A collection line is always counted in money",
         "coverage_needs_outlets": "A coverage line is always counted in customers",
         "outlets_only_for_coverage": "Customers can only be used for a coverage line",
@@ -515,6 +515,30 @@
           "form": "Admin form",
           "excel": "Excel upload"
         }
+      }
+    },
+    "schemes": {
+      "errors": {
+        "shape": "This part is incomplete or not in the expected form",
+        "duplicate_id": "Two parts have the same id",
+        "label_missing": "Write the Arabic name",
+        "unknown_line": "This target line does not exist or is turned off",
+        "unknown_focus": "This focus item does not exist in this month",
+        "empty_tiers": "Add at least one tier",
+        "duplicate_tier": "Two tiers start at the same percentage",
+        "bad_pct": "Write a whole percentage from 1 to 1000",
+        "bad_amount": "Write a whole amount, zero or more",
+        "bad_bps": "Write a rate from 0 to 100%",
+        "per_case_needs_cases": "A per-carton rate needs a line counted in cartons or customers",
+        "window_order": "The end date is before the start date",
+        "window_outside_period": "The dates must fall inside this month",
+        "line_bonus_needs_full_period": "An incentive on a target line must run the whole month",
+        "focus_window_mismatch": "The dates must fall inside the focus item's dates",
+        "empty_all": "A combined condition needs 2 to 4 conditions",
+        "gate_unknown_target": "This condition applies to a part that does not exist",
+        "stale": "Someone else changed this month's commission. Reload to see the latest, then make your change again",
+        "not_found": "This rep was not found",
+        "no_draft": "There is no saved draft to publish"
       }
     }
   }

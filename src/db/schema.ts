@@ -261,9 +261,35 @@ export const schemes = pgTable(
     name: text("name").notNull(),
     year: integer("year").notNull(),
     month: integer("month").notNull(),
+    /** The published components; an empty list while the month has only a draft. */
     components: jsonb("components").$type<Component[]>().notNull(),
     published: boolean("published").notNull().default(false),
+    /** The admin's saved, valid, unpublished components; null when there is none. */
+    draft: jsonb("draft").$type<Component[]>(),
+    /** Bumped on every draft save and on publish; a save or publish naming an older value is stale. */
+    draftRev: integer("draft_rev").notNull().default(0),
+    /** Bumped on every publish; 0 while never published. */
+    version: integer("version").notNull().default(0),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+    publishedBy: text("published_by").references(() => users.id),
     ...stamps(),
   },
   (t) => [uniqueIndex("schemes_company_period").on(t.companyId, t.year, t.month)],
+);
+
+/** Every published version of a month's scheme, as published; `published_by` null for versions from before this log. */
+export const schemeVersions = pgTable(
+  "scheme_versions",
+  {
+    id: id(),
+    companyId: companyId(),
+    schemeId: text("scheme_id")
+      .notNull()
+      .references(() => schemes.id),
+    version: integer("version").notNull(),
+    components: jsonb("components").$type<Component[]>().notNull(),
+    publishedBy: text("published_by").references(() => users.id),
+    publishedAt: timestamp("published_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("scheme_versions_scheme_version").on(t.schemeId, t.version)],
 );

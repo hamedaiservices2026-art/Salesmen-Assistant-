@@ -256,8 +256,22 @@ export async function seedDemo(db: Db, options: SeedOptions = { deployed: false 
         month: 11,
         components: sampleScheme.components,
         published: true,
+        version: 1,
+        publishedAt: new Date("2026-11-01T00:00:00Z"),
       })
       .onConflictDoNothing();
+    // The same shape migration 0005 gives a scheme published before versions were logged.
+    await ins(s.schemeVersions, [
+      {
+        id: "scheme-2026-11-v1",
+        companyId,
+        schemeId: "scheme-2026-11",
+        version: 1,
+        components: sampleScheme.components,
+        publishedBy: null,
+        publishedAt: new Date("2026-11-01T00:00:00Z"),
+      },
+    ]);
   });
 
   const issue = async (id: string, cid: string, userId: string) => {

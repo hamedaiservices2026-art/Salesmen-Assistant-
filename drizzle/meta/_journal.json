@@ -36,6 +36,13 @@
       "when": 1794937091270,
       "tag": "0004_target_changes",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1794938044021,
+      "tag": "0005_scheme_versions",
+      "breakpoints": true
     }
   ]
 }

@@ -57,6 +57,10 @@ describe("seedDemo", () => {
     expect(schemes).toHaveLength(1);
     expect(schemes[0]!.published).toBe(true);
     expect(schemes[0]!.components).toHaveLength(5);
+    expect(schemes[0]!).toMatchObject({ version: 1, draft: null, draftRev: 0, publishedBy: null });
+    const versions = await db.select().from(s.schemeVersions).where(eq(s.schemeVersions.companyId, r.companyId));
+    expect(versions).toEqual([expect.objectContaining({ schemeId: schemes[0]!.id, version: 1, publishedBy: null })]);
+    expect(versions[0]!.components).toEqual(schemes[0]!.components);
 
     const other = await db.select().from(s.users).where(eq(s.users.id, r.otherRepId));
     expect(other[0]!.id).toBe("other-rep");

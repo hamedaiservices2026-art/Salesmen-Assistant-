@@ -31,11 +31,23 @@ export async function getCommissionView(
   ctx: Ctx,
   opts: { year: number; month: number; today: ISODate },
 ): Promise<CommissionView> {
+  return commissionViewWith(ctx, opts, loadScheme(ctx, opts.year, opts.month));
+}
+
+/**
+ * The commission view of the rep in `ctx` for `schemeOf` instead of the month's published scheme.
+ * The admin's preview goes through here, so a preview is computed exactly as the rep's screen is.
+ */
+export async function commissionViewWith(
+  ctx: Ctx,
+  opts: { year: number; month: number; today: ISODate },
+  schemeOf: Scheme | null | Promise<Scheme | null>,
+): Promise<CommissionView> {
   const { year, month, today } = opts;
   const [cal, totals, scheme] = await Promise.all([
     loadCalendar(ctx, year, month),
     loadMonthTotals(ctx, year, month),
-    loadScheme(ctx, year, month),
+    schemeOf,
   ]);
   const counts = dayCounts(cal.selling, today);
   const input = schemeInput(totals);
