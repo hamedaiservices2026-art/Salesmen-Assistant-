@@ -271,7 +271,18 @@ describe("adversarial input", () => {
     const r = validateComponents(Array.from({ length: 10_000 }, () => ({ bad: true })), refs);
     expect(Date.now() - started).toBeLessThan(2000);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.issues.length).toBeLessThanOrEqual(100);
+    // Over the 50-component bound the array is refused as a whole, whatever its elements are.
+    expect(r).toEqual({ ok: false, issues: [{ path: "components", code: "shape" }] });
+  });
+
+  it("50 junk components give more than 100 shape problems: cut at 100 with the final too_many_issues marker", () => {
+    const junk = Array.from({ length: 50 }, () => ({ id: 1, type: "tiered", label: 2, lineId: 3, tiers: "x" }));
+    const r = validateComponents(junk, refs);
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.issues).toHaveLength(101);
+    expect(r.issues.slice(0, 100).every((i) => i.code === "shape")).toBe(true);
+    expect(r.issues.at(-1)).toEqual({ path: "components", code: "too_many_issues" });
   });
 
   it("many bad components are cut at 100 issues with a final too_many_issues marker", () => {

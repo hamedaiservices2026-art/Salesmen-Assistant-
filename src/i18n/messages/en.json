@@ -696,7 +696,7 @@
         "window_order": "The end date is before the start date",
         "window_outside_period": "The dates must fall inside this month",
         "line_bonus_needs_full_period": "An incentive on a target line must run the whole month",
-        "focus_window_mismatch": "The dates must fall inside the focus item's dates",
+        "focus_window_mismatch": "The incentive's dates must match the focus item's dates exactly. A focus item whose dates run beyond the month cannot take an incentive",
         "empty_all": "A combined condition needs 2 to 4 conditions",
         "gate_unknown_target": "This condition applies to a part that does not exist",
         "pct_needs_value": "A percentage pay only works on a line counted in money",

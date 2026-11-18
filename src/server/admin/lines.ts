@@ -206,14 +206,19 @@ export async function moveLine(ctx: Ctx, id: string, direction: "up" | "down"): 
     // Lock the company's lines so two moves at once take turns instead of overwriting each other.
     // LOCK ORDER: target_lines rows are always locked in id order (here, and in the scheme code that
     // locks the lines a scheme names), so two transactions cannot wait on each other. The display
-    // order (sort, id) is computed in memory from this locked read.
-    const locked = await tx
+    // order (sort, id) is read afterwards, inside the same transaction.
+    await tx
       .select({ id: s.targetLines.id, sort: s.targetLines.sort })
       .from(s.targetLines)
       .where(eq(s.targetLines.companyId, ctx.companyId))
       .orderBy(asc(s.targetLines.id))
       .for("update");
-    const rows = [...locked].sort((a, b) => a.sort - b.sort || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    // The display order, as the database orders it (collation included), derived after the locked read.
+    const rows = await tx
+      .select({ id: s.targetLines.id, sort: s.targetLines.sort })
+      .from(s.targetLines)
+      .where(eq(s.targetLines.companyId, ctx.companyId))
+      .orderBy(asc(s.targetLines.sort), asc(s.targetLines.id));
     const index = rows.findIndex((r) => r.id === String(id));
     if (index < 0) return { ok: false as const, error: "not_found" as const };
     const order = rows.map((r) => r.id);

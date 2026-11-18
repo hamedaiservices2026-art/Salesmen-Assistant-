@@ -240,6 +240,24 @@ describe("setLineActive and moveLine", () => {
     expect(await order()).toEqual(["coll", "bev", "food"]);
   });
 
+  it("renumbers equal and gappy sort values 1..n in the order the list displays (mixed-case, hyphenated ids)", async () => {
+    for (const [i, id] of ["Zed-line", "a-line", "A_line", "b-Line"].entries()) {
+      await db.insert(s.targetLines).values({ id, companyId: "demo-co", code: `code${i}`, nameAr: id, nameEn: "", nameUr: "", unit: "cases", kind: "sales", sort: 5 });
+    }
+    await db.update(s.targetLines).set({ sort: 5 }).where(eq(s.targetLines.companyId, "demo-co")); // all equal
+    await db.update(s.targetLines).set({ sort: 40 }).where(eq(s.targetLines.id, "coll")); // and one gap
+    const displayed = async () => (await listAllLines(admin())).map((r) => r.lineId);
+    const before = await displayed();
+    expect(before).toHaveLength(7);
+    const mover = before[3]!;
+    expect(await moveLine(admin(), mover, "up")).toEqual({ ok: true });
+    const expected = [...before];
+    [expected[2], expected[3]] = [expected[3]!, expected[2]!];
+    expect(await displayed()).toEqual(expected);
+    const rows = await db.select().from(s.targetLines).where(eq(s.targetLines.companyId, "demo-co"));
+    expect(rows.map((r) => r.sort).sort((x, y) => x - y)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+  });
+
   it("forged ids of another company are not_found and nothing changes in either company (Review Focus 1)", async () => {
     const other = await otherAdmin();
     const before = await snapshot();

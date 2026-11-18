@@ -405,7 +405,7 @@ describe("error copy", () => {
   it("every issue code and error the editor can get has a message in ar, en and ur", () => {
     for (const catalog of [ar, en, ur]) {
       const errors = (catalog.admin as unknown as { schemes: { errors: Record<string, string> } }).schemes.errors;
-      for (const code of [...SCHEME_ISSUE_CODES, "stale", "not_found", "no_draft"]) expect(errors[code]?.trim()).toBeTruthy();
+      for (const code of [...SCHEME_ISSUE_CODES, "stale", "not_found", "no_draft", "invalid_period"]) expect(errors[code]?.trim()).toBeTruthy();
     }
   });
 });

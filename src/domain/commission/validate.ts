@@ -163,6 +163,7 @@ export function validateComponents(raw: unknown, refs: SchemeRefs): ValidateResu
   const parsed = componentsSchema.safeParse(raw);
   if (!parsed.success) {
     for (const issue of parsed.error.issues) add(["components", ...issue.path.map(String)].join("."), "shape");
+    if (truncated) issues.push({ path: "components", code: "too_many_issues" });
     return { ok: false, issues };
   }
   const components = parsed.data as Component[];

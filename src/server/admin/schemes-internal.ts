@@ -1,3 +1,4 @@
+// Internal writes without role checks: callers check the role first; never import this from a "use server" file.
 import { and, eq, sql } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import * as s from "@/db/schema";
