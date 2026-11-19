@@ -1,6 +1,7 @@
 import { getLocale, getTranslations } from "next-intl/server";
 import { requireCtx } from "@/server/auth/guard";
 import { getCompanyPrefs } from "@/server/repos/company";
+import { focusName } from "@/domain/focus";
 import { isDailyLine, lineName as localLineName } from "@/domain/lines";
 import { unitLabel as labelFor } from "@/ui/unit-label";
 import { getCommissionView } from "@/server/repos/commission";
@@ -77,7 +78,7 @@ export default async function CommissionPage() {
   }
   for (const f of monthView.focus) {
     units[f.id] = f.unit;
-    names[f.id] = f.name;
+    names[f.id] = focusName(f, locale as Locale);
   }
   const labels: Record<string, string> = {};
   for (const c of scheme.components) {

@@ -1,4 +1,4 @@
-import { Building2, Gift, LayoutGrid, Target, Settings, Upload, Users, BookOpen, MapPinned, ListTree, type LucideIcon } from "lucide-react";
+import { Building2, Gift, LayoutGrid, Target, Settings, Upload, Users, BookOpen, MapPinned, ListTree, Star, type LucideIcon } from "lucide-react";
 import type { Role } from "@/server/auth/roles";
 
 export type NavItem = { href: string; key: string; Icon: LucideIcon };
@@ -9,6 +9,7 @@ const ADMIN_NAV: NavItem[] = [
   { href: "/admin/lines", key: "lines", Icon: ListTree },
   { href: "/admin/targets", key: "targets", Icon: Target },
   { href: "/admin/coverage", key: "coverage", Icon: MapPinned },
+  { href: "/admin/focus", key: "focus", Icon: Star },
   { href: "/admin/schemes", key: "schemes", Icon: Gift },
   { href: "/admin/policies", key: "policies", Icon: BookOpen },
   { href: "/admin/uploads", key: "uploads", Icon: Upload },

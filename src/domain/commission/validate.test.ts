@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { sampleScheme } from "./sample-fixture";
-import { referencedLineIds, validateComponents, type SchemeIssueCode, type SchemeRefs } from "./validate";
+import { referencedFocusIds, referencedLineIds, validateComponents, type SchemeIssueCode, type SchemeRefs } from "./validate";
 
 /** The demo company's November 2026: lines bev, food, coll; focus items cola (1–30 Nov) and mango (1–20 Nov). */
 const refs: SchemeRefs = {
@@ -327,5 +327,21 @@ describe("referencedLineIds", () => {
     ).toEqual(["a", "z"]);
     expect(referencedLineIds({ lineId: "a" })).toEqual([]);
     expect(referencedLineIds(null)).toEqual([]);
+  });
+});
+
+describe("referencedFocusIds", () => {
+  it("reads focus items from bonus and gate conditions, also inside all, sorted and unique", () => {
+    expect(referencedFocusIds(sampleScheme.components)).toEqual(["mango"]);
+    const nested = [
+      { id: "a", type: "bonus", condition: { kind: "all", conditions: [{ kind: "focus_at_least", focusItemId: "z", min: 1 }, { kind: "line_pct_at_least", lineId: "bev", minPct: 5 }] } },
+      { id: "b", type: "gate", condition: { kind: "focus_at_least", focusItemId: "a", min: 1 } },
+      { id: "c", type: "bonus", condition: { kind: "focus_at_least", focusItemId: "z", min: 1 } },
+    ];
+    expect(referencedFocusIds(nested)).toEqual(["a", "z"]);
+  });
+  it("tolerates garbage and ignores ids longer than the shape allows", () => {
+    expect(referencedFocusIds(null)).toEqual([]);
+    expect(referencedFocusIds([null, 5, { condition: 3 }, { condition: { focusItemId: "x".repeat(65) } }])).toEqual([]);
   });
 });

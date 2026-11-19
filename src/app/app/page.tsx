@@ -1,6 +1,7 @@
 import { getLocale, getTranslations } from "next-intl/server";
 import { requireCtx } from "@/server/auth/guard";
 import { getCompanyPrefs } from "@/server/repos/company";
+import { focusName } from "@/domain/focus";
 import { lineName as localLineName } from "@/domain/lines";
 import type { Locale } from "@/i18n/config";
 import { unitLabel as labelFor } from "@/ui/unit-label";
@@ -76,7 +77,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
               remaining: rem,
               b: (chunks) => <strong className="font-extrabold text-ink">{chunks}</strong>,
             });
-    return { id: f.id, name: f.name, detail };
+    return { id: f.id, name: focusName(f, locale as Locale), detail };
   });
 
   if (!line) {

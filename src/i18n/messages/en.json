@@ -251,6 +251,7 @@
       "lines": "Target lines",
       "targets": "Targets",
       "coverage": "Coverage",
+      "focus": "Focus items",
       "schemes": "Incentives and commissions",
       "policies": "Company policies",
       "uploads": "Upload data",
@@ -472,6 +473,62 @@
         "outlets_only_for_coverage": "Customers can only be used for a coverage line",
         "not_found": "This line was not found",
         "row_not_found": "This line was not found"
+      }
+    },
+    "focus": {
+      "title": "Focus items",
+      "subtitle": "Products to push for a period, with a target and the reps who carry them. Names in three languages; reps see their own language.",
+      "monthNav": "Month",
+      "prevMonth": "Previous month",
+      "nextMonth": "Next month",
+      "listTitle": "Focus items in {month}",
+      "listAside": "{count, plural, =0 {None} one {# item} other {# items}}",
+      "empty": "No focus items in this month. Add the first one above.",
+      "form": {
+        "newTitle": "New focus item",
+        "editTitle": "Edit focus item",
+        "saveNew": "Add focus item",
+        "saveEdit": "Save changes",
+        "cancel": "Cancel"
+      },
+      "fields": {
+        "name": "Name in Arabic",
+        "nameEn": "Name in English",
+        "nameUr": "Name in Urdu",
+        "sku": "Product code (optional)",
+        "unit": "Counted in",
+        "target": "Target ({unit})",
+        "startsOn": "From",
+        "endsOn": "To",
+        "reps": "Reps who carry it"
+      },
+      "units": {
+        "cases": "Cases",
+        "value": "Money"
+      },
+      "noReps": "No active reps yet. Add reps first.",
+      "lockedHint": "A published incentive names this item, so its dates and unit cannot change. You can still rename it, change the target or the reps.",
+      "inScheme": "In an incentive",
+      "noneAssigned": "No reps",
+      "listSeparator": ",",
+      "inactiveRep": "Turned-off rep",
+      "edit": "Edit",
+      "cols": {
+        "name": "Name",
+        "sku": "Code",
+        "target": "Target",
+        "window": "Dates",
+        "reps": "Reps",
+        "actions": "Actions"
+      },
+      "saved": "Focus item saved",
+      "errors": {
+        "required": "This field is required",
+        "invalid": "This value is not valid",
+        "window_order": "The end date must not be before the start date",
+        "not_found": "One of the chosen reps or this item was not found",
+        "in_scheme": "A published incentive names this item, so this cannot change",
+        "in_use": "Sales were already recorded for this item, so its unit cannot change"
       }
     },
     "targets": {

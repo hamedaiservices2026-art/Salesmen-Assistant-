@@ -287,3 +287,23 @@ export function referencedLineIds(raw: unknown): string[] {
   }
   return [...ids].sort();
 }
+
+/**
+ * Every focus item id that components name in a condition (a bonus's or gate's, or one inside
+ * `all`), sorted and unique. The focus-item twin of `referencedLineIds`: reads any input without
+ * trusting its shape, with the same size limits. This and `referencedLineIds` are where the engine's
+ * references to the company's data are read; a new kind of reference is added in these two places.
+ */
+export function referencedFocusIds(raw: unknown): string[] {
+  const ids = new Set<string>();
+  const take = (v: unknown) => {
+    if (isObject(v) && typeof v.focusItemId === "string" && v.focusItemId.length <= MAX_ID) ids.add(v.focusItemId);
+  };
+  if (!Array.isArray(raw)) return [];
+  for (const c of raw.slice(0, MAX_COMPONENTS)) {
+    if (!isObject(c)) continue;
+    take(c.condition);
+    if (isObject(c.condition) && Array.isArray(c.condition.conditions)) c.condition.conditions.slice(0, MAX_LEAVES).forEach(take);
+  }
+  return [...ids].sort();
+}

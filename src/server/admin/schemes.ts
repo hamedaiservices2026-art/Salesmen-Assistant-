@@ -5,6 +5,7 @@ import * as s from "@/db/schema";
 import type { ISODate } from "@/domain/calendar";
 import {
   isISODate,
+  referencedFocusIds,
   referencedLineIds,
   validateComponents,
   type Component,
@@ -87,6 +88,17 @@ export async function loadSchemeRefs(db: Db, ctx: Ctx, period: Period, opts: { l
       .from(s.targetLines)
       .where(and(eq(s.targetLines.companyId, ctx.companyId), inArray(s.targetLines.id, named)))
       .orderBy(asc(s.targetLines.id))
+      .for("update");
+  }
+  // The focus items they name are locked too (id order, after the lines), so `saveFocusItem`, which
+  // locks its row and then reads the published schemes, and a publish take turns.
+  const namedFocus = opts.lock === undefined ? [] : referencedFocusIds(opts.lock);
+  if (namedFocus.length > 0) {
+    await db
+      .select({ id: s.focusItems.id })
+      .from(s.focusItems)
+      .where(and(eq(s.focusItems.companyId, ctx.companyId), inArray(s.focusItems.id, namedFocus)))
+      .orderBy(asc(s.focusItems.id))
       .for("update");
   }
   const [lines, focus] = await Promise.all([

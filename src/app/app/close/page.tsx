@@ -3,6 +3,7 @@ import { getLocale, getTranslations } from "next-intl/server";
 import { inputValue, type Unit } from "@/domain/money";
 import { requireCtx } from "@/server/auth/guard";
 import { getCompanyPrefs } from "@/server/repos/company";
+import { focusName } from "@/domain/focus";
 import { isDailyLine, lineName as localLineName } from "@/domain/lines";
 import type { Locale } from "@/i18n/config";
 import { unitLabel as labelFor } from "@/ui/unit-label";
@@ -98,7 +99,7 @@ export default async function ClosePage({ searchParams }: { searchParams: Promis
   }));
   const focusItems: FormItem[] = focusOn(view.focus, date).map((f) => ({
     name: `focus.${f.id}`,
-    label: f.name,
+    label: focusName(f, locale as Locale),
     unitLabel: label(f.unit),
     mode: f.unit === "cases" ? "numeric" : "decimal",
   }));

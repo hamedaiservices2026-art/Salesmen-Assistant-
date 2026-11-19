@@ -30,6 +30,8 @@ export type LineInfo = {
 export type FocusTotal = {
   id: string;
   name: string;
+  nameEn: string | null;
+  nameUr: string | null;
   unit: Unit;
   target: number;
   startsOn: ISODate;
@@ -130,6 +132,8 @@ async function loadFocus(ctx: Ctx, start: ISODate, end: ISODate): Promise<FocusT
     .select({
       id: s.focusItems.id,
       name: s.focusItems.name,
+      nameEn: s.focusItems.nameEn,
+      nameUr: s.focusItems.nameUr,
       unit: s.focusItems.unit,
       target: s.focusItems.target,
       startsOn: s.focusItems.startsOn,

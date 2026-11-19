@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
 import { ChevronLeft, ChevronRight, CircleAlert } from "lucide-react";
+import { focusName } from "@/domain/focus";
 import { lineName } from "@/domain/lines";
 import type { Unit } from "@/domain/money";
 import type { Locale } from "@/i18n/config";
@@ -50,7 +51,7 @@ export default async function SchemesPage({ searchParams }: { searchParams: Prom
   const active = new Set(editor.refs.lines.map((l) => l.id));
   const lines = allLines.filter((l) => active.has(l.lineId)).map((l) => ({ id: l.lineId, name: lineName(l, locale), unit: l.unit }));
   const focusUnit = new Map(focusRows.map((f) => [f.id, f.unit as Unit]));
-  const focus = focusRows.map((f) => ({ id: f.id, name: f.name, unit: f.unit as Unit }));
+  const focus = focusRows.map((f) => ({ id: f.id, name: focusName(f, locale), unit: f.unit as Unit }));
   const refs: FormRefs = {
     lines: editor.refs.lines,
     focus: editor.refs.focus.map((f) => ({ ...f, unit: focusUnit.get(f.id) })),

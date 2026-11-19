@@ -31,6 +31,8 @@ export type LineView = {
 export type FocusView = {
   id: string;
   name: string;
+  nameEn: string | null;
+  nameUr: string | null;
   unit: Unit;
   target: number;
   startsOn: ISODate;
@@ -131,6 +133,8 @@ export async function getMonthView(
   const focus: FocusView[] = totals.focus.map((f) => ({
     id: f.id,
     name: f.name,
+    nameEn: f.nameEn,
+    nameUr: f.nameUr,
     unit: f.unit,
     target: f.target,
     startsOn: f.startsOn,

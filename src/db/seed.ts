@@ -155,8 +155,8 @@ export async function seedDemo(db: Db, options: SeedOptions = { deployed: false 
     ]);
 
     await ins(s.focusItems, [
-      { id: "cola", companyId, name: "كولا 330 مل علب", unit: "cases", target: 400, startsOn: "2026-11-01", endsOn: "2026-11-30" },
-      { id: "mango", companyId, name: "عصير مانجو 1 لتر", unit: "cases", target: 200, startsOn: "2026-11-01", endsOn: "2026-11-20" },
+      { id: "cola", companyId, name: "كولا 330 مل علب", nameEn: "Cola 330 ml cans", nameUr: "کولا 330 ملی لیٹر کین", unit: "cases", target: 400, startsOn: "2026-11-01", endsOn: "2026-11-30" },
+      { id: "mango", companyId, name: "عصير مانجو 1 لتر", nameEn: "Mango juice 1 L", unit: "cases", target: 200, startsOn: "2026-11-01", endsOn: "2026-11-20" },
     ]);
     await ins(s.focusAssignments, [
       { id: "assign-cola-ahmed", companyId, focusItemId: "cola", userId: repId },
