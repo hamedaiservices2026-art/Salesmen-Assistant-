@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Scheme } from "./commission";
-import { coverageErrors, coverageNeed, coveragePct, coverageTiers, recentDays } from "./coverage";
+import { coverageErrors, coverageNeed, coveragePct, coverageDays, coverageTiers, recentDays } from "./coverage";
 
 describe("coverageNeed", () => {
   it("names the next tier above the current percent and the customers still needed", () => {
@@ -70,5 +70,22 @@ describe("recentDays", () => {
   it("lists today first, then the days before it", () => {
     expect(recentDays("2026-11-02", 4)).toEqual(["2026-11-02", "2026-11-01", "2026-10-31", "2026-10-30"]);
     expect(recentDays("2026-01-01", 2)).toEqual(["2026-01-01", "2025-12-31"]);
+  });
+});
+
+describe("coverageDays", () => {
+  it("stays inside today's month: on day 1 only today, mid-month at most the count", () => {
+    expect(coverageDays("2026-11-01", 14)).toEqual(["2026-11-01"]);
+    expect(coverageDays("2026-11-03", 14)).toEqual(["2026-11-03", "2026-11-02", "2026-11-01"]);
+    expect(coverageDays("2026-11-20", 3)).toEqual(["2026-11-20", "2026-11-19", "2026-11-18"]);
+  });
+});
+
+describe("coverageErrors int4 cap", () => {
+  const ok = { covered: 50, total: 120, asOf: "2026-11-10", today: "2026-11-14" };
+  it("accepts 2147483647 and refuses 2147483648 as invalid", () => {
+    expect(coverageErrors({ ...ok, covered: 2147483647, total: 2147483647 })).toEqual({});
+    expect(coverageErrors({ ...ok, total: 2147483648 })).toEqual({ total: "invalid" });
+    expect(coverageErrors({ ...ok, covered: 2147483648, total: 2147483648 })).toEqual({ total: "invalid", covered: "invalid" });
   });
 });

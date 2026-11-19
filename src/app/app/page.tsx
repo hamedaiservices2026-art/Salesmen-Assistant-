@@ -79,7 +79,6 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
     return { id: f.id, name: f.name, detail };
   });
 
-
   if (!line) {
     return (
       <>

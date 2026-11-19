@@ -29,11 +29,14 @@ export function coverageTiers(scheme: Scheme | null, lineId: string): number[] {
   return [...new Set(pcts)].sort((a, b) => a - b);
 }
 
+/** The largest count a column can hold (int4). */
+export const COUNT_MAX = 2_147_483_647;
+
 /** Field problems of one coverage update: `{ field: code }`, empty when it is valid. */
 export function coverageErrors(i: { covered: number; total: number; asOf: string; today: ISODate }): Record<string, string> {
   const errors: Record<string, string> = {};
-  if (!Number.isSafeInteger(i.total) || i.total < 1) errors.total = "invalid";
-  if (!Number.isSafeInteger(i.covered) || i.covered < 0) errors.covered = "invalid";
+  if (!Number.isSafeInteger(i.total) || i.total < 1 || i.total > COUNT_MAX) errors.total = "invalid";
+  if (!Number.isSafeInteger(i.covered) || i.covered < 0 || i.covered > COUNT_MAX) errors.covered = "invalid";
   else if (errors.total === undefined && i.covered > i.total) errors.covered = "covered_above_total";
   if (!isISODate(i.asOf)) errors.asOf = "invalid";
   else if (i.asOf > i.today) errors.asOf = "future";
@@ -44,4 +47,10 @@ export function coverageErrors(i: { covered: number; total: number; asOf: string
 export function recentDays(today: ISODate, count: number): ISODate[] {
   const [y, m, d] = today.split("-").map(Number) as [number, number, number];
   return Array.from({ length: count }, (_, i) => new Date(Date.UTC(y, m - 1, d - i)).toISOString().slice(0, 10));
+}
+
+/** Dates a coverage update can be as of: today and up to `count - 1` earlier days, never before the 1st of today's month (an older date would fall outside the month's figures). */
+export function coverageDays(today: ISODate, count: number): ISODate[] {
+  const dayOfMonth = Number(today.slice(8, 10));
+  return recentDays(today, Math.max(1, Math.min(count, dayOfMonth)));
 }

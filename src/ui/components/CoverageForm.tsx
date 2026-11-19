@@ -39,6 +39,12 @@ export function CoverageForm({
   const base = useId();
   // Controlled, so a refused save keeps what was typed (a form action resets uncontrolled fields).
   const [values, setValues] = useState({ covered: initialCovered, total: initialTotal, asOf: days[0] ?? "" });
+  // The "saved" note describes the last submit; any edit afterwards clears it.
+  const [editedAfter, setEditedAfter] = useState<CoverageState | null>(null);
+  const edit = (next: Partial<typeof values>) => {
+    setValues((v) => ({ ...v, ...next }));
+    setEditedAfter(state);
+  };
   const dateFmt = new Intl.DateTimeFormat(`${INTL_TAG[locale] ?? "ar-EG"}-u-nu-latn`, {
     weekday: "short",
     day: "numeric",
@@ -63,7 +69,7 @@ export function CoverageForm({
           dir="ltr"
           autoComplete="off"
           value={values[name]}
-          onChange={(e) => setValues((v) => ({ ...v, [name]: e.target.value }))}
+          onChange={(e) => edit({ [name]: e.target.value })}
           aria-invalid={e ? true : undefined}
           aria-describedby={e ? `${base}-${name}-error` : undefined}
           className={`${fieldClass} text-start ${e ? "border-alert" : "border-line"}`}
@@ -95,7 +101,7 @@ export function CoverageForm({
             id={`${base}-asOf`}
             name="asOf"
             value={values.asOf}
-            onChange={(e) => setValues((v) => ({ ...v, asOf: e.target.value }))}
+            onChange={(e) => edit({ asOf: e.target.value })}
             aria-invalid={dateError ? true : undefined}
             aria-describedby={dateError ? `${base}-asOf-error` : undefined}
             className={`${fieldClass} text-[15px] font-medium ${dateError ? "border-alert" : "border-line"}`}
@@ -126,7 +132,7 @@ export function CoverageForm({
           {general}
         </p>
       )}
-      {state.saved === lineId && Object.keys(state.errors).length === 0 && (
+      {state.saved === lineId && state !== editedAfter && Object.keys(state.errors).length === 0 && (
         <p role="status" className="m-0 text-[13px] font-semibold text-brand">
           {t("form.saved")}
         </p>

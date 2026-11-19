@@ -1,5 +1,5 @@
 import { getLocale, getTranslations } from "next-intl/server";
-import { recentDays } from "@/domain/coverage";
+import { coverageDays } from "@/domain/coverage";
 import { lineName as localLineName } from "@/domain/lines";
 import type { Locale } from "@/i18n/config";
 import { requireRole } from "@/server/auth/guard";
@@ -23,7 +23,7 @@ export default async function AdminCoveragePage() {
   const [year, month] = today.split("-").map(Number) as [number, number];
   const [reps, lines] = await Promise.all([listCoverageReps(ctx, year, month), loadLines(ctx)]);
   const coverageLines = lines.filter((l) => l.kind === "coverage");
-  const days = recentDays(today, DAYS_BACK);
+  const days = coverageDays(today, DAYS_BACK);
   const tag = INTL_TAG[locale as keyof typeof INTL_TAG] ?? "ar-EG";
   const dateFmt = new Intl.DateTimeFormat(tag, { day: "numeric", month: "long", numberingSystem: "latn", timeZone: "UTC" });
   const monthName = new Intl.DateTimeFormat(tag, { month: "long", numberingSystem: "latn", timeZone: "UTC" }).format(
