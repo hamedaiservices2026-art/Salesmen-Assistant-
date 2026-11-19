@@ -82,7 +82,8 @@
       "Fri",
       "Sat"
     ],
-    "noLines": "No targets have been uploaded for you yet. You can still record your day as usual."
+    "noLines": "No targets have been uploaded for you yet. You can still record your day as usual.",
+    "notificationsUnread": "Notifications, {count, plural, one {# new} other {# new}}"
   },
   "assistant": {
     "title": "Assistant",
@@ -256,7 +257,8 @@
       "policies": "Company policies",
       "uploads": "Upload data",
       "settings": "Settings",
-      "companies": "Companies"
+      "companies": "Companies",
+      "incentives": "Mid-month incentives"
     },
     "shell": {
       "navLabel": "Console sections",
@@ -775,6 +777,68 @@
       "empty": "There are no active reps.",
       "noLines": "No coverage line is active. Add a line of kind \"coverage\" on the target lines page.",
       "rep": "Rep"
+    },
+    "incentives": {
+      "title": "Mid-month incentives",
+      "subtitle": "Add an incentive to the month's published scheme. The reps it concerns get a notification in the app.",
+      "monthNav": "Month",
+      "prevMonth": "Previous month",
+      "nextMonth": "Next month",
+      "form": {
+        "title": "New incentive"
+      },
+      "noScheme": "This month has no published commission scheme. Publish the scheme first, then add the incentive.",
+      "openSchemes": "Open the commission scheme",
+      "fields": {
+        "label": "Incentive name in Arabic",
+        "labelEn": "Incentive name in English",
+        "labelUr": "Incentive name in Urdu",
+        "explanation": "Explanation in Arabic (what the rep reads)",
+        "explanationEn": "Explanation in English",
+        "explanationUr": "Explanation in Urdu",
+        "amount": "Incentive amount ({currency})",
+        "condition": "Condition",
+        "focusItem": "Focus item",
+        "focusMin": "Minimum ({unit})",
+        "line": "Target line",
+        "minPct": "Required share of the target (%)"
+      },
+      "modes": {
+        "focus": "Sell a focus item",
+        "line": "Share of a line's target",
+        "both": "Both together"
+      },
+      "units": {
+        "cases": "cases",
+        "value": "amount"
+      },
+      "noFocus": "No focus items this month",
+      "windowFocus": "The incentive runs for the same dates as the focus item.",
+      "windowMonth": "The incentive runs for the whole month.",
+      "submit": "Publish the incentive and notify reps",
+      "saved": "{count, plural, =0 {Incentive published; no rep needed a notification} one {Incentive published and one rep notified} other {Incentive published and # reps notified}}",
+      "pageErrors": {
+        "stale": "Someone else changed this month's commission. Reload the page and try again.",
+        "no_published_scheme": "This month has no published commission scheme.",
+        "period": "The month is not valid."
+      },
+      "errors": {
+        "required": "This field is required",
+        "too_long": "The text is longer than allowed",
+        "invalid": "This value is not valid",
+        "window_order": "The end date is before the start date",
+        "not_found": "This item is not in this month"
+      },
+      "listTitle": "Incentives in {month}",
+      "listAside": "{count, plural, =0 {None} one {1 incentive} other {# incentives}}",
+      "empty": "No incentives have been added this month yet.",
+      "cols": {
+        "label": "Incentive",
+        "amount": "Amount",
+        "window": "Dates",
+        "seen": "Seen"
+      },
+      "seen": "{seen} of {notified} have seen it"
     }
   },
   "coverage": {
@@ -809,5 +873,15 @@
     "empty": "No reps are assigned to you right now.",
     "noLines": "No coverage line is active. The admin adds one on the target lines page.",
     "month": "Coverage for {month}"
+  },
+  "notifications": {
+    "title": "Notifications",
+    "emptyTitle": "No notifications yet",
+    "emptyBody": "Any new incentive from your company will show up here.",
+    "kind": {
+      "incentive": "New incentive"
+    },
+    "new": "New",
+    "learnMore": "See how much you could earn"
   }
 }

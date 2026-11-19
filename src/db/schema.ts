@@ -332,3 +332,25 @@ export const coverageUpdates = pgTable(
     check("coverage_updates_counts", sql`${t.total} >= 1 AND ${t.covered} >= 0 AND ${t.covered} <= ${t.total}`),
   ],
 );
+
+/** Text in the three languages; `ar` is required and the fallback. */
+export type LocalText = { ar: string; en?: string; ur?: string };
+
+/** A message to one user, shown in the app. `ref` is what it is about (an incentive's component id). */
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: id(),
+    companyId: companyId(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id),
+    kind: text("kind", { enum: ["incentive"] }).notNull(),
+    title: jsonb("title").$type<LocalText>().notNull(),
+    body: jsonb("body").$type<LocalText>().notNull(),
+    ref: text("ref"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    readAt: timestamp("read_at", { withTimezone: true }),
+  },
+  (t) => [index("notifications_user_created").on(t.userId, t.createdAt), index("notifications_company_ref").on(t.companyId, t.ref)],
+);

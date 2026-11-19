@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { Bell, Settings } from "lucide-react";
+import { Settings } from "lucide-react";
+import { NotificationBell } from "./NotificationBell";
 
-/** Brand-blue band: greeting, date line, static notifications button, then the line tabs. */
+/** Brand-blue band: greeting, date line, notifications bell, then the line tabs. */
 export function AppHeader({
   greeting,
   dateLine,
@@ -33,13 +34,7 @@ export function AppHeader({
               <Settings aria-hidden="true" size={22} strokeWidth={1.8} />
             </Link>
           )}
-          <button
-            type="button"
-            aria-label={notificationsLabel}
-            className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-white/14 text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-          >
-            <Bell aria-hidden="true" size={22} strokeWidth={1.8} />
-          </button>
+          <NotificationBell label={notificationsLabel} />
         </div>
       </div>
       {children}
