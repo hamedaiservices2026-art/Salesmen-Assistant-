@@ -273,7 +273,67 @@
     },
     "overview": {
       "title": "Overview",
-      "placeholder": "The team overview will appear here soon."
+      "subtitle": "{month} · selling day {day} of {total} · {reps, plural, =0 {no reps} =1 {1 rep} other {# reps}}",
+      "uploadExcel": "Upload Excel file",
+      "newIncentive": "New incentive",
+      "indicators": "Team indicators",
+      "figures": "{achieved} of {target} {unit} · expected {expected}%",
+      "heldFigures": "{achieved} of {target} {unit} · latest coverage update",
+      "pctLabel": "Achieved {pct}%",
+      "bar": "Achieved {achieved} of {target} {unit}, expected {expected}%",
+      "barHeld": "Covered {achieved} of {target} {unit}",
+      "barNoTarget": "No target",
+      "onPace": {
+        "label": "Reps on pace",
+        "of": "of {total}",
+        "detail": "{slightly} slightly behind · {behind} need follow-up"
+      },
+      "closed": {
+        "label": "Closes today",
+        "of": "of {total}",
+        "detail": "{open} not recorded yet"
+      },
+      "status": {
+        "ahead": "On pace",
+        "slightly": "Slightly behind",
+        "behind": "Needs follow-up",
+        "none": "No target"
+      },
+      "reps": {
+        "title": "Rep performance",
+        "aside": "Farthest from pace first · dark mark = expected today",
+        "empty": "No reps yet. Add one on the Reps page.",
+        "cols": {
+          "rep": "Rep",
+          "supervisor": "Supervisor",
+          "status": "Status",
+          "lastClose": "Last close"
+        },
+        "noSupervisor": "—"
+      },
+      "lastClose": {
+        "today": "Today",
+        "yesterday": "Yesterday",
+        "never": "No close yet"
+      },
+      "incentives": {
+        "title": "Active incentives",
+        "empty": "No incentives running right now.",
+        "until": "{amount} {currency} · until {date}",
+        "seen": "Saw the notice",
+        "seenOf": "{seen} of {notified}",
+        "closest": "Closest",
+        "closestValue": "{achieved} of {needed}",
+        "none": "—"
+      },
+      "upload": {
+        "title": "Last data upload",
+        "none": "No file has been uploaded yet.",
+        "line": "{when} · {rows} rows",
+        "clean": "no errors",
+        "errors": "{count, plural, =1 {1 error} other {# errors}}",
+        "notApplied": "not applied"
+      }
     },
     "companies": {
       "title": "Companies",

@@ -273,7 +273,67 @@
     },
     "overview": {
       "title": "جائزہ",
-      "placeholder": "ٹیم کا جائزہ جلد یہاں نظر آئے گا۔"
+      "subtitle": "{month} · فروخت کا دن {day} از {total} · {reps, plural, =0 {کوئی نمائندہ نہیں} =1 {1 نمائندہ} other {# نمائندے}}",
+      "uploadExcel": "Excel فائل اپ لوڈ کریں",
+      "newIncentive": "نیا انعام",
+      "indicators": "ٹیم کے اشارے",
+      "figures": "{achieved} از {target} {unit} · متوقع {expected}%",
+      "heldFigures": "{achieved} از {target} {unit} · کوریج کی تازہ ترین اطلاع",
+      "pctLabel": "حاصل {pct}%",
+      "bar": "حاصل {achieved} از {target} {unit}، متوقع {expected}%",
+      "barHeld": "کور کیے {achieved} از {target} {unit}",
+      "barNoTarget": "ہدف نہیں",
+      "onPace": {
+        "label": "رفتار پر نمائندے",
+        "of": "از {total}",
+        "detail": "{slightly} تھوڑے پیچھے · {behind} کو فالو اپ چاہیے"
+      },
+      "closed": {
+        "label": "آج کے کلوز",
+        "of": "از {total}",
+        "detail": "{open} نے ابھی درج نہیں کیا"
+      },
+      "status": {
+        "ahead": "رفتار پر",
+        "slightly": "تھوڑا پیچھے",
+        "behind": "فالو اپ چاہیے",
+        "none": "ہدف نہیں"
+      },
+      "reps": {
+        "title": "نمائندوں کی کارکردگی",
+        "aside": "رفتار سے سب سے دور پہلے · گہرا نشان = آج کا متوقع",
+        "empty": "ابھی کوئی نمائندہ نہیں۔ نمائندوں کے صفحے سے شامل کریں۔",
+        "cols": {
+          "rep": "نمائندہ",
+          "supervisor": "سپروائزر",
+          "status": "حالت",
+          "lastClose": "آخری کلوز"
+        },
+        "noSupervisor": "—"
+      },
+      "lastClose": {
+        "today": "آج",
+        "yesterday": "کل",
+        "never": "ابھی کلوز نہیں"
+      },
+      "incentives": {
+        "title": "جاری انعامات",
+        "empty": "اس وقت کوئی انعام جاری نہیں۔",
+        "until": "{amount} {currency} · تاریخ {date} تک",
+        "seen": "اطلاع دیکھی",
+        "seenOf": "{seen} از {notified}",
+        "closest": "سب سے قریب",
+        "closestValue": "{achieved} از {needed}",
+        "none": "—"
+      },
+      "upload": {
+        "title": "آخری ڈیٹا اپ لوڈ",
+        "none": "ابھی کوئی فائل اپ لوڈ نہیں ہوئی۔",
+        "line": "{when} · {rows} قطاریں",
+        "clean": "کوئی غلطی نہیں",
+        "errors": "{count, plural, =1 {1 غلطی} other {# غلطیاں}}",
+        "notApplied": "لاگو نہیں ہوئی"
+      }
     },
     "companies": {
       "title": "کمپنیاں",

@@ -273,7 +273,67 @@
     },
     "overview": {
       "title": "نظرة عامة",
-      "placeholder": "نظرة الفريق هتظهر هنا قريب."
+      "subtitle": "{month} · يوم البيع {day} من {total} · {reps, plural, =0 {مفيش مناديب} =1 {مندوب واحد} =2 {مندوبين} few {# مناديب} other {# مندوب}}",
+      "uploadExcel": "رفع ملف Excel",
+      "newIncentive": "حافز جديد",
+      "indicators": "مؤشرات الفريق",
+      "figures": "{achieved} من {target} {unit} · المفروض {expected}%",
+      "heldFigures": "{achieved} من {target} {unit} · آخر تحديث للتغطية",
+      "pctLabel": "المحقق {pct}%",
+      "bar": "المحقق {achieved} من {target} {unit}، المفروض {expected}%",
+      "barHeld": "المغطى {achieved} من {target} {unit}",
+      "barNoTarget": "مفيش هدف",
+      "onPace": {
+        "label": "مناديب على المعدل",
+        "of": "من {total}",
+        "detail": "{slightly} متأخر شوية · {behind} محتاجين متابعة"
+      },
+      "closed": {
+        "label": "قفلات النهارده",
+        "of": "من {total}",
+        "detail": "{open} لسه ما سجّلوش"
+      },
+      "status": {
+        "ahead": "على المعدل",
+        "slightly": "متأخر شوية",
+        "behind": "محتاج متابعة",
+        "none": "من غير هدف"
+      },
+      "reps": {
+        "title": "أداء المناديب",
+        "aside": "مترتبين من الأبعد عن المعدل · الخط الغامق = المفروض النهارده",
+        "empty": "مفيش مناديب لسه. ضيف مندوب من صفحة المناديب.",
+        "cols": {
+          "rep": "المندوب",
+          "supervisor": "المشرف",
+          "status": "الحالة",
+          "lastClose": "آخر قفلة"
+        },
+        "noSupervisor": "—"
+      },
+      "lastClose": {
+        "today": "النهارده",
+        "yesterday": "أمس",
+        "never": "لسه ما قفلش"
+      },
+      "incentives": {
+        "title": "الحوافز الشغالة",
+        "empty": "مفيش حوافز شغالة دلوقتي.",
+        "until": "{amount} {currency} · لحد {date}",
+        "seen": "شافوا الإشعار",
+        "seenOf": "{seen} من {notified}",
+        "closest": "الأقرب",
+        "closestValue": "{achieved} من {needed}",
+        "none": "—"
+      },
+      "upload": {
+        "title": "آخر رفع بيانات",
+        "none": "لسه ما اترفعش أي ملف.",
+        "line": "{when} · {rows} صف",
+        "clean": "من غير أخطاء",
+        "errors": "{count, plural, =1 {خطأ واحد} =2 {خطأين} few {# أخطاء} other {# خطأ}}",
+        "notApplied": "ما اتطبقش"
+      }
     },
     "companies": {
       "title": "الشركات",
