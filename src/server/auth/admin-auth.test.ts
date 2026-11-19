@@ -471,6 +471,17 @@ describe("sessions at the expiry instant", () => {
 });
 
 describe("security headers", () => {
+  it("sends frame, sniffing and referrer headers on every path, the invite rules coming after (B13)", async () => {
+    const rules = await nextConfig.headers!();
+    const all = rules.find((r) => r.source === "/:path*")!;
+    const value = (k: string) => all.headers.find((h) => h.key === k)?.value;
+    expect(value("X-Frame-Options")).toBe("DENY");
+    expect(value("Content-Security-Policy")).toBe("frame-ancestors 'none'");
+    expect(value("X-Content-Type-Options")).toBe("nosniff");
+    expect(value("Referrer-Policy")).toBe("strict-origin-when-cross-origin");
+    expect(rules.indexOf(all)).toBeLessThan(rules.findIndex((r) => r.source === "/invite/:path*"));
+  });
+
   it("sends Referrer-Policy: no-referrer on /invite/* and /admin/invite/*", async () => {
     const rules = await nextConfig.headers!();
     const policyFor = (source: string) =>

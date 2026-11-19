@@ -10,7 +10,7 @@ import ur from "@/i18n/messages/ur.json";
 import type { Ctx } from "@/server/ctx";
 import { Forbidden, type Role } from "@/server/auth/roles";
 import { getCommissionView } from "@/server/repos/commission";
-import { listNotifications, markAllRead, unreadCount } from "@/server/repos/notifications";
+import { LIST_MAX, listNotifications, markAllRead, unreadCount } from "@/server/repos/notifications";
 import { createIncentive, listIncentives, type IncentiveInput } from "./incentives";
 import { saveFocusItem } from "./focus";
 import { publishScheme, saveDraft } from "./schemes";
@@ -329,5 +329,38 @@ describe("incentive catalogs", () => {
       expect(keysOf(pick(en)).sort()).toEqual(a);
       expect(keysOf(pick(ur)).sort()).toEqual(a);
     }
+  });
+});
+
+describe("B9: a full notification list clears the bell", () => {
+  it("with 105 unread, marking what the page rendered (plus everything at or before the oldest shown) leaves none unread", async () => {
+    const base = Date.parse("2026-11-01T00:00:00Z");
+    await db.insert(s.notifications).values(
+      Array.from({ length: 105 }, (_, i) => ({
+        id: `n-${String(i).padStart(3, "0")}`,
+        companyId: "demo-co",
+        userId: "ahmed",
+        kind: "incentive" as const,
+        title: { ar: "t" },
+        body: { ar: "b" },
+        createdAt: new Date(base + i * 60_000),
+      })),
+    );
+    const items = await listNotifications(rep("ahmed"));
+    expect(items).toHaveLength(LIST_MAX);
+    expect(await unreadCount(rep("ahmed"))).toBe(105);
+    // What the page did before: only the rendered ids.
+    await markAllRead(rep("ahmed"), items.map((n) => n.id));
+    expect(await unreadCount(rep("ahmed"))).toBe(5);
+    // What it does now.
+    await db.update(s.notifications).set({ readAt: null });
+    await markAllRead(rep("ahmed"), items.map((n) => n.id), { upTo: items[items.length - 1]!.createdAt });
+    expect(await unreadCount(rep("ahmed"))).toBe(0);
+  });
+
+  it("never touches another rep's notifications", async () => {
+    await createIncentive(admin(), input());
+    await markAllRead(rep("ahmed"), [], { upTo: new Date("2100-01-01T00:00:00Z") });
+    expect(await unreadCount(rep("khaled"))).toBe(1);
   });
 });

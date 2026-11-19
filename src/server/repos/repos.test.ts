@@ -301,8 +301,8 @@ describe("lock order (A3)", () => {
     const day = "2026-11-15";
     expect(await saveClose(ahmed(), form(day, { food: 5, coll: 7, bev: 9 }), { today: "2026-11-16" })).toEqual({ ok: true });
     const [close] = await db.select().from(s.dailyCloses).where(and(eq(s.dailyCloses.userId, "ahmed"), eq(s.dailyCloses.date, day)));
-    const rows = await db.execute(sql`select line_id from close_lines where close_id = ${close!.id} order by ctid`);
-    expect((rows.rows as { line_id: string }[]).map((r) => r.line_id)).toEqual(["bev", "coll", "food"]);
+    const rows = (await db.execute(sql`select line_id from close_lines where close_id = ${close!.id} order by ctid`)) as unknown as { rows: { line_id: string }[] };
+    expect(rows.rows.map((r) => r.line_id)).toEqual(["bev", "coll", "food"]);
   });
 });
 

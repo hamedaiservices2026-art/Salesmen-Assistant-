@@ -85,6 +85,13 @@
       "when": 1795115440105,
       "tag": "0011_policy_documents",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1795122807654,
+      "tag": "0012_target_changes_index_fk",
+      "breakpoints": true
     }
   ]
 }

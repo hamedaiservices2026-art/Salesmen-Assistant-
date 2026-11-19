@@ -4,7 +4,7 @@ import { getLocale, getTranslations } from "next-intl/server";
 import { Megaphone } from "lucide-react";
 import type { Locale } from "@/i18n/config";
 import { requireCtx } from "@/server/auth/guard";
-import { listNotifications, markAllRead } from "@/server/repos/notifications";
+import { LIST_MAX, listNotifications, markAllRead } from "@/server/repos/notifications";
 import { AppHeader } from "@/ui/components/AppHeader";
 import { INTL_TAG } from "@/ui/intl-tag";
 
@@ -18,7 +18,9 @@ export default async function NotificationsPage() {
   const [t, home, locale] = await Promise.all([getTranslations("notifications"), getTranslations("home"), getLocale()]);
   const items = await listNotifications(ctx);
   const unreadIds = items.filter((n) => !n.read).map((n) => n.id);
-  if (unreadIds.length > 0) after(() => markAllRead(ctx, unreadIds));
+  // A full list may hide older unread ones: they are marked too, so the bell clears.
+  const upTo = items.length >= LIST_MAX ? items[items.length - 1]!.createdAt : undefined;
+  if (unreadIds.length > 0 || upTo) after(() => markAllRead(ctx, unreadIds, { upTo }));
 
   const when = new Intl.DateTimeFormat(`${INTL_TAG[locale as Locale] ?? "ar-EG"}-u-nu-latn`, {
     day: "numeric",

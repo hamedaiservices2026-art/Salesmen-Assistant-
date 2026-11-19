@@ -58,7 +58,7 @@ Production never loads the demo: it has accounts whose passwords would be public
 | Monthly targets | `login, year, month, line, amount` | A new target replaces the old one and every change is logged in the targets history. |
 | Daily sales and collection | `login, date, line, amount` | The day's figures per rep and line. |
 
-- **Accepted files:** `.xlsx` only, up to 2 MB and 5,000 rows. A renamed non-Excel file, an empty file, a file with missing or duplicated column names or Excel tables it cannot read are refused with a message.
+- **Accepted files:** `.xlsx` only, up to 2 MB and 5,000 rows. A renamed non-Excel file, an empty file, or a file with missing or duplicated column names is refused with a message. A sheet formatted as an Excel Table is read like any other sheet (only its cells are used).
 - **Dates:** text `YYYY-MM-DD` or a date-formatted cell. Digits may be Western or Arabic-Indic. Future dates and non-selling days are refused. Amounts are in whole units of the line (cases) or in currency (value).
 - **All or nothing:** if any row has a problem, nothing is applied. The page shows a row-by-row report (row number, column, reason, up to 100 rows plus a count of the rest); fix the file and upload it again. A fully valid file applies every row at once.
 - **History:** the page lists the last 20 uploads with their row counts and outcome, applied or not.
@@ -78,5 +78,5 @@ Nothing in the admin console is withheld for the free tier; every admin screen d
 
 - **One upload at a time per server instance.** The upload lock is in memory, per admin and per instance. A second upload from the same admin while one runs is told to wait; two instances (as on a serverless host) do not coordinate, but a file is still applied all-or-nothing inside the database.
 - **Upload memory.** Reading a 2 MB `.xlsx` can use up to about 300 MB of memory. Keep the Vercel function memory at the plan's default or higher; a file that stays within the 2 MB and 5,000-row limits is the supported case.
-- **A forgotten PIN or password needs a new link from the admin** (`New link` in `/admin/users`); for the owner, run `pnpm admin:create-owner` again. The old PIN or password keeps working until the new link is opened.
+- **A forgotten PIN or password needs a new link from the admin** (`New sign-in link` in `/admin/users`); for the owner, run `pnpm admin:create-owner` again. The old PIN or password keeps working until the new link is opened.
 - Migrations use the connection in `DATABASE_URL`; behind a transaction pooler they can hang. A separate migration URL is planned.

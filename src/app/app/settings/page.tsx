@@ -1,13 +1,12 @@
 import { Check } from "lucide-react";
 import { getLocale, getTranslations } from "next-intl/server";
-import { LOCALES } from "@/i18n/config";
+import { LOCALES, LOCALE_ENDONYM } from "@/i18n/config";
 import { signOutAction } from "@/app/(auth-actions)/actions";
 import { requireCtx } from "@/server/auth/guard";
 import { getLogin } from "@/server/repos/profile";
 import { setLocaleAction } from "./actions";
 import { ChangePinForm } from "./change-pin-form";
 
-const OWN_NAME = { ar: "العربية", en: "English", ur: "اردو" } as const;
 
 export default async function SettingsPage() {
   const ctx = await requireCtx();
@@ -47,7 +46,7 @@ export default async function SettingsPage() {
                           : "bg-white font-medium text-ink")
                       }
                     >
-                      {OWN_NAME[code]}
+                      {LOCALE_ENDONYM[code]}
                       {current && (
                         <Check aria-hidden="true" size={22} strokeWidth={2} />
                       )}

@@ -3,21 +3,17 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { CircleCheck, Download, TriangleAlert, Upload } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { Card } from "@/ui/admin/Card";
 import { fieldInput, fieldLabel, primaryButton, secondaryButton } from "@/ui/admin/form-styles";
-import { REQUESTED_WITH, type UploadResponse } from "@/server/admin/upload-request-shared";
+import { COLUMNS, REQUESTED_WITH, replyKind, type UploadResponse } from "@/server/admin/upload-request-shared";
 
 /** Most error rows shown; the report says how many more there are. */
 export const SHOWN_ERRORS = 100;
 
-const COLUMNS = {
-  targets: ["login", "year", "month", "line", "amount"],
-  daily: ["login", "date", "line", "amount"],
-} as const;
-
 export function UploadCard({ kind }: { kind: "targets" | "daily" }) {
   const t = useTranslations("admin.uploads");
+  const locale = useLocale();
   const router = useRouter();
   const [state, setState] = useState<UploadResponse>({});
   const [pending, setPending] = useState(false);
@@ -33,6 +29,13 @@ export function UploadCard({ kind }: { kind: "targets" | "daily" }) {
         headers: { "X-Requested-With": REQUESTED_WITH },
         credentials: "same-origin",
       });
+      // 413 comes from the platform in front of the app, and an error page is not JSON: both read as
+      // the file being too large or the upload failing, never as a thrown parse error.
+      const reply = replyKind(res.status, res.headers.get("content-type"));
+      if (reply !== "json") {
+        setState({ kind, failure: reply });
+        return;
+      }
       const body = (await res.json()) as UploadResponse;
       setState({ ...body, kind });
       if (body.result?.applied) form.reset();
@@ -47,7 +50,7 @@ export function UploadCard({ kind }: { kind: "targets" | "daily" }) {
   const result = mine?.result;
   const shown = result?.errors.slice(0, SHOWN_ERRORS) ?? [];
   const more = result ? result.errorCount - shown.length : 0;
-  const columns = (names: string[] | undefined) => (names ?? []).join("، ");
+  const columns = (names: string[] | undefined) => new Intl.ListFormat(locale, { style: "long", type: "conjunction" }).format(names ?? []);
 
   const readError = result?.readError
     ? t(`readErrors.${result.readError}`, { columns: columns(result.missing ?? result.duplicates) })

@@ -70,7 +70,6 @@
     "navLabel": "التنقل الرئيسي",
     "unit": {
       "cases": "كرتونة",
-      "value": "ر.س",
       "outlets": "عميل"
     },
     "missingLink": "سجّل قفلة يوم {day}",
@@ -271,7 +270,7 @@
     },
     "nav": {
       "overview": "نظرة عامة",
-      "users": "المناديب",
+      "users": "المناديب والمستخدمين",
       "lines": "خطوط التارجت",
       "targets": "التارجت",
       "coverage": "التغطية",
@@ -297,7 +296,6 @@
       "indicators": "مؤشرات الفريق",
       "figures": "{achieved} من {target} {unit} · المفروض {expected}%",
       "heldFigures": "{achieved} من {target} {unit} · آخر تحديث للتغطية",
-      "pctLabel": "المحقق {pct}%",
       "bar": "المحقق {achieved} من {target} {unit}، المفروض {expected}%",
       "barHeld": "المغطى {achieved} من {target} {unit}",
       "barNoTarget": "مفيش هدف",
@@ -465,7 +463,8 @@
         "behindPct": "حد \"متأخر شوية\"",
         "behindPctHint": "المندوب اللي تحت المعدل بالنسبة دي أو أقل يبقى \"متأخر شوية\"، ولو أكتر يبقى \"متأخر\".",
         "sellingWeekdays": "أيام البيع",
-        "sellingWeekdaysHint": "الأيام اللي المناديب بيبيعوا فيها. الإجازات بتتشال منها."
+        "sellingWeekdaysHint": "الأيام اللي المناديب بيبيعوا فيها. الإجازات بتتشال منها.",
+        "sellingWeekdaysWarning": "تغيير أيام البيع أو أول الأسبوع بيغيّر كمان وتيرة الشهور اللي فاتت."
       },
       "weekdays": {
         "sun": "الأحد",
@@ -559,7 +558,9 @@
         "coverage_needs_outlets": "خط التغطية بيتحسب دايمًا بالعملاء",
         "outlets_only_for_coverage": "العملاء بتتستخدم في خط التغطية بس",
         "not_found": "الخط ده مش موجود",
-        "row_not_found": "الخط ده مش موجود"
+        "row_not_found": "الخط ده مش موجود",
+        "in_scheme": "الخط ده داخل في خطة عمولة منشورة — عدّل الخطة الأول",
+        "row_in_scheme": "الخط ده داخل في خطة عمولة منشورة — عدّل الخطة الأول"
       }
     },
     "focus": {
@@ -635,7 +636,7 @@
       "placeholder": "من غير تارجت",
       "errorsSummary": "مفيش حاجة اتحفظت. صلّح الخانات المعلّمة واحفظ تاني.",
       "errors": {
-        "invalid": "اكتب رقم صحيح",
+        "invalid": "اكتب رقم، وفي المبالغ لحد رقمين بعد العلامة العشرية",
         "not_found": "المندوب أو الخط ده مش موجود",
         "coverage_line": "أرقام التغطية بتيجي من تحديثات التغطية",
         "period": "الشهر ده مش صحيح"
@@ -788,8 +789,7 @@
         "gate": {
           "appliesTo": "الشرط ده بيوقف صرف",
           "none": "ضيف بنود الأول عشان تختار منها."
-        },
-        "issuesTitle": "في البند ده"
+        }
       },
       "fieldErrors": {
         "required": "مطلوب",
@@ -946,7 +946,6 @@
         "applied": "{count, plural, =0 {ما اتطبقش أي صف} one {اتطبّق صف واحد} two {اتطبّق صفين} few {اتطبّق # صفوف} many {اتطبّق # صف} other {اتطبّق # صف}}",
         "notApplied": "ما اتطبقش أي حاجة",
         "notAppliedHint": "الملف فيه {count, plural, one {مشكلة واحدة} two {مشكلتين} few {# مشاكل} many {# مشكلة} other {# مشكلة}}. صلّحها وارفع الملف تاني.",
-        "rowsRead": "الصفوف اللي اتقرت: {count}",
         "tableLabel": "الصفوف اللي فيها مشاكل",
         "row": "الصف",
         "column": "العمود",
@@ -983,7 +982,7 @@
         "unknown_rep": "المندوب مش موجود في شركتك أو مش شغّال",
         "unknown_line": "كود الخط مش موجود",
         "coverage_line": "خط التغطية بيتحدّث من شاشة التغطية",
-        "invalid_amount": "الرقم مش مقروء. اكتب رقم صحيح",
+        "invalid_amount": "اكتب رقم، وفي المبالغ لحد رقمين بعد العلامة العشرية",
         "invalid_period": "السنة أو الشهر غلط",
         "invalid_date": "التاريخ غلط. اكتبه YYYY-MM-DD",
         "future_date": "التاريخ لسه ما جاش",
@@ -1082,7 +1081,6 @@
   },
   "coverage": {
     "title": "تحديث التغطية",
-    "panelLabel": "التغطية",
     "figures": "{covered} من {total} عميل · {pct}",
     "lastUpdate": "آخر تحديث {date} · {name}",
     "need": "محتاج {more} عميل كمان توصل {nextPct}",

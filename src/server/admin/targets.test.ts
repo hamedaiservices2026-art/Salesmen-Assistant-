@@ -377,8 +377,8 @@ describe("lock order (A3)", () => {
       { userId: "ahmed", lineId: "bev", amount: 1 },
     ]);
     expect(r).toEqual({ ok: true, changed: 4 });
-    const rows = await db.execute(sql`select user_id, line_id from targets order by ctid`);
-    expect((rows.rows as { user_id: string; line_id: string }[]).map((x) => `${x.user_id}|${x.line_id}`)).toEqual([
+    const rows = (await db.execute(sql`select user_id, line_id from targets order by ctid`)) as unknown as { rows: { user_id: string; line_id: string }[] };
+    expect(rows.rows.map((x) => `${x.user_id}|${x.line_id}`)).toEqual([
       "ahmed|bev", "ahmed|food", "khaled|bev", "khaled|food",
     ]);
   });

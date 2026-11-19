@@ -4,6 +4,7 @@ import type { RawRow } from "@/domain/import/rows";
 import { normalizeText } from "@/domain/import/text";
 import type { Unit } from "@/domain/money";
 import { readSafeZip } from "./safe-zip";
+import { COLUMNS } from "@/server/admin/upload-request-shared";
 
 export type SheetKind = "targets" | "daily";
 export type ReadError = "not_xlsx" | "empty" | "missing_columns" | "duplicate_columns" | "too_large";
@@ -23,11 +24,6 @@ export const LIMITS = {
   sheetRows: 20_001,
   columns: 20,
 } as const;
-
-const COLUMNS: Record<SheetKind, readonly string[]> = {
-  targets: ["login", "year", "month", "line", "amount"],
-  daily: ["login", "date", "line", "amount"],
-};
 
 const ALIASES: Record<string, string[]> = {
   login: ["login", "username", "اسم المستخدم"],

@@ -103,3 +103,15 @@ describe("handleUpload", () => {
 function recordingDb() {
   return { insert: () => ({ values: async () => undefined }) };
 }
+
+describe("replyKind (B4)", () => {
+  it("413 is too_large whatever the body, non-JSON is failed, JSON is parsed", async () => {
+    const { replyKind } = await import("./upload-request-shared");
+    expect(replyKind(413, "text/html")).toBe("too_large");
+    expect(replyKind(413, "application/json")).toBe("too_large");
+    expect(replyKind(502, "text/html; charset=utf-8")).toBe("failed");
+    expect(replyKind(500, null)).toBe("failed");
+    expect(replyKind(200, "application/json")).toBe("json");
+    expect(replyKind(400, "application/json; charset=utf-8")).toBe("json");
+  });
+});

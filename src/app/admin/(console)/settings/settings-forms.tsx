@@ -4,7 +4,7 @@ import { useActionState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { Trash2 } from "lucide-react";
 import { CURRENCIES } from "@/domain/money";
-import { LOCALES, type Locale } from "@/i18n/config";
+import { LOCALES, LOCALE_ENDONYM, type Locale } from "@/i18n/config";
 import { INTL_TAG } from "@/ui/intl-tag";
 import {
   addHolidayAction,
@@ -14,7 +14,6 @@ import {
   type SettingsFormState,
 } from "./actions";
 
-const OWN_NAME = { ar: "العربية", en: "English", ur: "اردو" } as const;
 /** Time zones offered for the region; the company's own value is added when it is not among them. */
 const TIME_ZONES = [
   "Asia/Riyadh",
@@ -107,7 +106,7 @@ export function SettingsForm({ values }: { values: SettingsValues }) {
           <select name="defaultLocale" defaultValue={values.defaultLocale} className={input} {...aria("defaultLocale")}>
             {LOCALES.map((code) => (
               <option key={code} value={code} lang={code}>
-                {OWN_NAME[code]}
+                {LOCALE_ENDONYM[code]}
               </option>
             ))}
           </select>
@@ -166,6 +165,7 @@ export function SettingsForm({ values }: { values: SettingsValues }) {
           ))}
         </div>
         {error("sellingWeekdays") ?? <span className="mt-1.5 block text-[13px] text-ink-2">{t("fields.sellingWeekdaysHint")}</span>}
+        <span className="mt-1 block text-[13px] text-ink-2">{t("fields.sellingWeekdaysWarning")}</span>
       </fieldset>
 
       <div>

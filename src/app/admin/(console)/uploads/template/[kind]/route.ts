@@ -1,12 +1,11 @@
 import { isDailyLine } from "@/domain/lines";
 import { requireRole } from "@/server/auth/guard";
 import { loadLines } from "@/server/repos/month-data";
+import { isKind } from "@/server/admin/upload-request-shared";
 import { buildTemplate, type SheetKind } from "@/server/import/xlsx";
 
 const FILES: Record<SheetKind, string> = { targets: "targets-template.xlsx", daily: "daily-template.xlsx" };
 const XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-
-const isKind = (k: string): k is SheetKind => k === "targets" || k === "daily";
 
 /**
  * The upload template, admin only. A caller who is not a signed-in admin is redirected by `requireRole`

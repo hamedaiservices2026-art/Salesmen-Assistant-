@@ -165,3 +165,25 @@ describe("holidays", () => {
     expect(await snapshot()).toEqual(before);
   });
 });
+
+describe("B3: time zones beyond the supported list", () => {
+  const stored = async () => (await db.select({ tz: s.companies.timeZone }).from(s.companies).where(eq(s.companies.id, "demo-co")))[0]!.tz;
+  const canon = (z: string) => new Intl.DateTimeFormat("en", { timeZone: z }).resolvedOptions().timeZone;
+
+  it("saves Asia/Kolkata and Etc/GMT+3, canonicalised by the runtime", async () => {
+    for (const z of ["Asia/Kolkata", "Etc/GMT+3"]) {
+      expect(await updateCompanySettings(admin(), valid({ timeZone: z }))).toEqual({ ok: true });
+      expect(await stored()).toBe(canon(z));
+    }
+  });
+
+  it("an unchanged stored zone is always accepted, even one the list does not know", async () => {
+    await db.update(s.companies).set({ timeZone: "Asia/Calcutta" }).where(eq(s.companies.id, "demo-co"));
+    expect(await updateCompanySettings(admin(), valid({ timeZone: "Asia/Calcutta", name: "Renamed" }))).toEqual({ ok: true });
+    expect(await stored()).toBe("Asia/Calcutta");
+  });
+
+  it("an invalid name is still refused", async () => {
+    expect(await updateCompanySettings(admin(), valid({ timeZone: "Asia/Nowhere" }))).toEqual({ ok: false, errors: { timeZone: "invalid" } });
+  });
+});

@@ -66,16 +66,6 @@ Upload templates: `/admin/uploads` offers a downloadable `.xlsx` template for ea
 | `ALLOW_LOCAL_DB` | Set to `1` to let a production build (`NODE_ENV=production`) use the local PGlite database when `DATABASE_URL` is unset. Without it every database request of a production server fails with a clear error (the server itself boots; it never silently keeps data in a local folder). Needed for local production runs such as `pnpm e2e`. |
 | `ALLOW_DEMO_SEED` | Set to `1` to let `pnpm db:seed` run while `DATABASE_URL` is set. Without it the seed refuses, because re-seeding resets used invites and adds demo rows. |
 
-## Deploying
-
-A deployed instance needs:
-
-- `DATABASE_URL`, the Postgres connection string. Without it every database request of a production server fails with a clear error (it will not silently keep data in a local folder). Migrations from `drizzle/` run at start-up under a Postgres session advisory lock, so several instances can start together. That lock needs a session-level connection: use the **direct** connection string (Supabase port 5432), not the transaction pooler (port 6543), until a separate `MIGRATION_DATABASE_URL` is added in plan 4. The connection already uses `prepare: false`, so the pooler can be adopted for queries once migrations run on a direct connection.
-- `NODE_ENV=production` (set by `next start`).
-- Do not set `APP_TODAY` or `ALLOW_APP_TODAY`; they exist for demos and tests.
-
-The demo seed is not part of a deployment. To seed a deployed database anyway (a staging copy, for example) set `ALLOW_DEMO_SEED=1` together with `DATABASE_URL`; without it `pnpm db:seed` refuses.
-
 ## Local database warning
 
 The local PGlite database is single-process. Run only one thing against `.data/pglite` at a time: stop the dev server before seeding, and never seed while a server is running. `pnpm db:seed` does not reset the database by itself, so `rm -rf .data` first for a clean start. It also leaves existing rows as they are (for example supervisor links added to the seed later), so an already-seeded database keeps its old values.
@@ -106,4 +96,4 @@ Next: photo and voice day close, an assistant that reads the policy documents; p
 
 ## Deploying
 
-Step-by-step pilot deployment (Supabase + Vercel, free tiers): [docs/DEPLOY.md](docs/DEPLOY.md).
+Everything a deployment needs (the direct `DATABASE_URL`, variables that must not be set in production such as `APP_TODAY`, `ALLOW_APP_TODAY` and `ALLOW_DEMO_SEED`, and why the demo seed stays out of it): [docs/DEPLOY.md](docs/DEPLOY.md).

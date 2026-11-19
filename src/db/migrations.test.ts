@@ -83,3 +83,39 @@ describe("migration 0005 scheme versions", () => {
     ]);
   });
 });
+
+describe("migration 0012 target_changes index and upload foreign key", () => {
+  it("keeps real upload links, clears one that points at no upload, and adds the index and the constraint", async () => {
+    const db = await createTestDbAt("0011_policy_documents");
+    await db.execute(sql`insert into companies (id, name, selling_weekdays) values ('c1', 'Co', '{6,0,1,2,3,4}')`);
+    await db.execute(sql`insert into users (id, company_id, role, name, login) values ('u1', 'c1', 'admin', 'A', 'a@x.test')`);
+    await db.execute(
+      sql`insert into target_lines (id, company_id, code, name_ar, name_en, name_ur, unit, kind) values ('l1', 'c1', 'l1', 'x', 'x', 'x', 'cases', 'sales')`,
+    );
+    await db.execute(sql`insert into uploads (id, company_id, kind, filename, uploaded_by) values ('up-real', 'c1', 'targets', 'f.xlsx', 'u1')`);
+    await db.execute(
+      sql`insert into target_changes (id, company_id, user_id, line_id, year, month, source, changed_by, upload_id) values
+          ('a', 'c1', 'u1', 'l1', 2026, 11, 'excel', 'u1', 'up-real'),
+          ('b', 'c1', 'u1', 'l1', 2026, 11, 'excel', 'u1', 'up-gone'),
+          ('c', 'c1', 'u1', 'l1', 2026, 11, 'form', 'u1', NULL)`,
+    );
+    await migrateRest(db);
+    const rows = (await db.execute(sql`select id, upload_id from target_changes order by id`)) as unknown as {
+      rows: { id: string; upload_id: string | null }[];
+    };
+    expect(rows.rows).toEqual([
+      { id: "a", upload_id: "up-real" },
+      { id: "b", upload_id: null },
+      { id: "c", upload_id: null },
+    ]);
+    const idx = (await db.execute(sql`select indexname from pg_indexes where indexname = 'target_changes_company_created'`)) as unknown as {
+      rows: unknown[];
+    };
+    expect(idx.rows).toHaveLength(1);
+    await expect(
+      db.execute(
+        sql`insert into target_changes (id, company_id, user_id, line_id, year, month, source, changed_by, upload_id) values ('d', 'c1', 'u1', 'l1', 2026, 11, 'excel', 'u1', 'nope')`,
+      ),
+    ).rejects.toThrow();
+  });
+});

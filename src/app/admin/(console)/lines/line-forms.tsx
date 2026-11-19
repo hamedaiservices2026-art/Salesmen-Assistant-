@@ -44,7 +44,7 @@ const secondaryButton =
   "inline-flex min-h-11 items-center justify-center gap-1.5 whitespace-nowrap rounded-[10px] border border-line bg-white px-3.5 text-[14px] font-semibold text-brand hover:bg-brand-tint disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand";
 const label = "mb-1.5 block text-sm font-medium text-ink-2";
 
-export function LineForm({ line, nextSort }: { line: LineView | null; nextSort: number }) {
+export function LineForm({ line }: { line: LineView | null }) {
   const t = useTranslations("admin.lines");
   const [state, action, pending] = useActionState<LineFormState, FormData>(saveLineAction, {});
   const v = state.values ?? {};
@@ -83,8 +83,6 @@ export function LineForm({ line, nextSort }: { line: LineView | null; nextSort: 
         </p>
       )}
       {line && <input type="hidden" name="id" value={line.lineId} />}
-      <input type="hidden" name="sort" value={v.sort ?? line?.sort ?? nextSort} />
-      <input type="hidden" name="active" value={String(line?.active ?? true)} />
       <div className="grid grid-cols-3 items-start gap-4 max-[900px]:grid-cols-1">
         <label className="block">
           <span className={label}>{t("fields.nameAr")}</span>
@@ -152,6 +150,7 @@ export function LineForm({ line, nextSort }: { line: LineView | null; nextSort: 
           {error("unit")}
         </label>
       </div>
+      {error("active")}
       {locked && (
         <p className="m-0 text-[13.5px] text-ink-2">{t("fields.lockedHint")}</p>
       )}

@@ -70,7 +70,6 @@
     "navLabel": "Main navigation",
     "unit": {
       "cases": "cases",
-      "value": "SAR",
       "outlets": "customers"
     },
     "missingLink": "Record the close for day {day}",
@@ -271,7 +270,7 @@
     },
     "nav": {
       "overview": "Overview",
-      "users": "Reps",
+      "users": "Reps and users",
       "lines": "Target lines",
       "targets": "Targets",
       "coverage": "Coverage",
@@ -297,7 +296,6 @@
       "indicators": "Team indicators",
       "figures": "{achieved} of {target} {unit} · expected {expected}%",
       "heldFigures": "{achieved} of {target} {unit} · latest coverage update",
-      "pctLabel": "Achieved {pct}%",
       "bar": "Achieved {achieved} of {target} {unit}, expected {expected}%",
       "barHeld": "Covered {achieved} of {target} {unit}",
       "barNoTarget": "No target",
@@ -465,7 +463,8 @@
         "behindPct": "\"Slightly behind\" threshold",
         "behindPctHint": "A rep this far under pace or less is \"slightly behind\"; further under, he is \"behind\".",
         "sellingWeekdays": "Selling days",
-        "sellingWeekdaysHint": "Days on which reps sell. Holidays are taken out on top of these."
+        "sellingWeekdaysHint": "Days on which reps sell. Holidays are taken out on top of these.",
+        "sellingWeekdaysWarning": "Changing selling days or the week start also changes the pace of past months."
       },
       "weekdays": {
         "sun": "Sunday",
@@ -559,7 +558,9 @@
         "coverage_needs_outlets": "A coverage line is always counted in customers",
         "outlets_only_for_coverage": "Customers can only be used for a coverage line",
         "not_found": "This line was not found",
-        "row_not_found": "This line was not found"
+        "row_not_found": "This line was not found",
+        "in_scheme": "This line is part of a published commission scheme. Edit the scheme first",
+        "row_in_scheme": "This line is part of a published commission scheme. Edit the scheme first"
       }
     },
     "focus": {
@@ -635,7 +636,7 @@
       "placeholder": "No target",
       "errorsSummary": "Nothing was saved. Fix the marked cells and save again.",
       "errors": {
-        "invalid": "Enter a whole number",
+        "invalid": "Enter a number, up to 2 decimals for amounts",
         "not_found": "This rep or line was not found",
         "coverage_line": "Coverage numbers come from coverage updates",
         "period": "This month is not valid"
@@ -788,8 +789,7 @@
         "gate": {
           "appliesTo": "This condition holds back",
           "none": "Add other parts first, then choose from them."
-        },
-        "issuesTitle": "In this part"
+        }
       },
       "fieldErrors": {
         "required": "Required",
@@ -946,7 +946,6 @@
         "applied": "{count, plural, =0 {No rows applied} one {# row applied} other {# rows applied}}",
         "notApplied": "Nothing was applied",
         "notAppliedHint": "The file has {count, plural, one {# problem} other {# problems}}. Fix them and upload the file again.",
-        "rowsRead": "Rows read: {count}",
         "tableLabel": "Rows with problems",
         "row": "Row",
         "column": "Column",
@@ -983,7 +982,7 @@
         "unknown_rep": "No active rep with this login in your company",
         "unknown_line": "No line with this code",
         "coverage_line": "Coverage lines are updated from the coverage screen",
-        "invalid_amount": "The number cannot be read. Enter a whole number",
+        "invalid_amount": "Enter a number, up to 2 decimals for amounts",
         "invalid_period": "The year or month is wrong",
         "invalid_date": "The date is wrong. Write it as YYYY-MM-DD",
         "future_date": "This date has not come yet",
@@ -1082,7 +1081,6 @@
   },
   "coverage": {
     "title": "Update coverage",
-    "panelLabel": "Coverage",
     "figures": "{covered} of {total} customers · {pct}",
     "lastUpdate": "Last updated {date} · {name}",
     "need": "{more} more customers to reach {nextPct}",

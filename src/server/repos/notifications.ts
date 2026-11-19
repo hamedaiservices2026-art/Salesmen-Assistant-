@@ -1,11 +1,12 @@
-import { and, count, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNull, lte, or, type SQL } from "drizzle-orm";
 import * as s from "@/db/schema";
 import { assertOwnContext } from "@/server/auth/roles";
 import type { Ctx } from "@/server/ctx";
 
 export type NotificationView = { id: string; kind: "incentive"; title: string; body: string; createdAt: Date; read: boolean };
 
-const LIST_MAX = 100;
+/** How many notifications the list shows; a list this long may hide older unread ones. */
+export const LIST_MAX = 100;
 
 /** The text in the locale, the Arabic text when that one is missing or blank. Plain text: callers render it as text, never as HTML. */
 export function pickText(text: s.LocalText, locale: Ctx["locale"]): string {
@@ -44,12 +45,21 @@ export async function unreadCount(ctx: Ctx): Promise<number> {
 /**
  * Marks the caller's own unread notifications read: the given ids, or all of his when none are
  * given. Ids that are not his are ignored. Refused for a context that only reads on someone's behalf.
+ * `upTo`: also every unread notification created at or before that moment (the oldest one a full
+ * list showed), so a list cut at LIST_MAX does not leave older unread ones lighting the bell for good.
  */
-export async function markAllRead(ctx: Ctx, ids?: string[]): Promise<void> {
+export async function markAllRead(ctx: Ctx, ids?: string[], opts: { upTo?: Date } = {}): Promise<void> {
   assertOwnContext(ctx);
-  if (ids !== undefined && ids.length === 0) return;
+  if (ids !== undefined && ids.length === 0 && opts.upTo === undefined) return;
+  const pick: SQL[] = [];
+  if (ids !== undefined) {
+    const named = ids.length > 0 ? inArray(s.notifications.id, ids) : undefined;
+    const older = opts.upTo ? lte(s.notifications.createdAt, opts.upTo) : undefined;
+    const either = named && older ? or(named, older) : (named ?? older);
+    if (either) pick.push(either);
+  }
   await ctx.db
     .update(s.notifications)
     .set({ readAt: new Date() })
-    .where(and(own(ctx), isNull(s.notifications.readAt), ...(ids ? [inArray(s.notifications.id, ids)] : [])));
+    .where(and(own(ctx), isNull(s.notifications.readAt), ...pick));
 }

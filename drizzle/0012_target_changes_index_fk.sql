@@ -1,0 +1,4 @@
+-- A change logged against an upload id that has no uploads row (not expected: the row is written before the rows are applied) loses only that link, so the constraint can be added.
+UPDATE "target_changes" SET "upload_id" = NULL WHERE "upload_id" IS NOT NULL AND "upload_id" NOT IN (SELECT "id" FROM "uploads");--> statement-breakpoint
+ALTER TABLE "target_changes" ADD CONSTRAINT "target_changes_upload_id_uploads_id_fk" FOREIGN KEY ("upload_id") REFERENCES "public"."uploads"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "target_changes_company_created" ON "target_changes" USING btree ("company_id","created_at");

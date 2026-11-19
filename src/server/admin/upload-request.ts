@@ -1,7 +1,6 @@
 import { revalidatePath } from "next/cache";
 import type { Ctx } from "@/server/ctx";
-import type { SheetKind } from "@/server/import/xlsx";
-import { REQUESTED_WITH, type UploadResponse } from "./upload-request-shared";
+import { REQUESTED_WITH, isKind, type UploadResponse } from "./upload-request-shared";
 import {
   STORED_ERRORS,
   UPLOAD_MAX_BYTES,
@@ -75,8 +74,6 @@ export async function readCappedBody(request: Request): Promise<Uint8Array | nul
 
 const json = (status: number, body: UploadResponse): Response =>
   Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
-
-const isKind = (k: unknown): k is SheetKind => k === "targets" || k === "daily";
 
 /**
  * The upload endpoint's logic. `ctx` is the signed-in context (the route passes it from the

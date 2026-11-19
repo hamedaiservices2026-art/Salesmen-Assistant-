@@ -71,7 +71,10 @@ export async function updateCompanySettings(ctx: Ctx, input: SettingsInput): Pro
   if (!name) errors.name = "required";
   else if (name.length > NAME_MAX) errors.name = "invalid";
   if (!isCurrency(input.currency)) errors.currency = "invalid";
-  const timeZone = canonicalTimeZone(String(input.timeZone ?? ""));
+  // The stored zone is always accepted as it is (a company created with a zone this list lacks can still save).
+  const [stored] = await ctx.db.select({ timeZone: s.companies.timeZone }).from(s.companies).where(eq(s.companies.id, ctx.companyId));
+  const typedZone = String(input.timeZone ?? "").trim();
+  const timeZone = stored && typedZone === stored.timeZone ? stored.timeZone : canonicalTimeZone(typedZone);
   if (!timeZone) errors.timeZone = "invalid";
   const days = input.sellingWeekdays;
   if (!Array.isArray(days) || days.length === 0 || !days.every(isWeekday) || new Set(days).size !== days.length) {
