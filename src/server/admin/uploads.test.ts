@@ -355,6 +355,7 @@ describe("fix round 1: drafts, collections, rep_amount, revalidation", () => {
     await processUpload(admin(), await daily(["khaled", "2026-11-14", "bev", 40]), { today: TODAY });
     const [close] = await closesOf("khaled", "2026-11-14");
     expect(close).toMatchObject({ status: "draft", source: "excel" });
+    expect((await getClose(khaled(), "2026-11-14"))!.draft).toBe(true);
     const view = await getMonthView(khaled(), { year: 2026, month: 11, today: TODAY });
     expect(view.hasClosedToday).toBe(false);
     // the amount still counts toward the month, but the calendar day is not marked done
@@ -365,6 +366,7 @@ describe("fix round 1: drafts, collections, rep_amount, revalidation", () => {
     expect(days.find((d) => d.date === "2026-11-14")).toMatchObject({ draft: true, admin: { bev: { amount: 40, repAmount: null } } });
     expect(await saveClose(khaled(), form("2026-11-14", { bev: 40, food: 0, coll: 0 }), { today: TODAY })).toEqual({ ok: true });
     expect((await closesOf("khaled", "2026-11-14"))[0]!.status).toBe("confirmed");
+    expect((await getClose(khaled(), "2026-11-14"))!.draft).toBe(false);
     expect((await getMonthView(khaled(), { year: 2026, month: 11, today: TODAY })).hasClosedToday).toBe(true);
     expect((await getHistoryDays(khaled(), 2026, 11)).find((d) => d.date === "2026-11-14")!.draft).toBe(false);
   });

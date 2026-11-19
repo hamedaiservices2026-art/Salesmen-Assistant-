@@ -28,7 +28,8 @@ export type CloseForm = {
 
 /** What the rep sees for a line an admin's Excel upload set: the admin's amount and, when he typed his own, his. */
 export type AdminLine = { amount: number; repAmount: number | null };
-export type SavedClose = CloseForm & { admin: Record<string, AdminLine> };
+/** `draft`: created by an admin's upload and not yet confirmed by the rep (its money and stock fields are not his entries). */
+export type SavedClose = CloseForm & { admin: Record<string, AdminLine>; draft: boolean };
 
 export type SaveCloseResult = { ok: true } | { ok: false; errors: Record<string, string> };
 
@@ -64,6 +65,7 @@ export async function getClose(ctx: Ctx, date: ISODate): Promise<SavedClose | nu
     returned: close.returned,
     returns: returns.map((r) => ({ description: r.description, quantity: r.quantity, reason: r.reason })),
     note: close.note ?? "",
+    draft: close.status === "draft",
     admin: Object.fromEntries(
       lines.filter((l) => l.source === "excel").map((l) => [l.lineId, { amount: l.amount, repAmount: l.repAmount }]),
     ),

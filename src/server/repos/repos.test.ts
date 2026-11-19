@@ -195,7 +195,7 @@ describe("saveClose", () => {
       },
     );
     expect(await saveClose(ahmed(), full, { today: TODAY })).toEqual({ ok: true });
-    expect(await getClose(ahmed(), TODAY)).toEqual({ ...full, admin: {} });
+    expect(await getClose(ahmed(), TODAY)).toEqual({ ...full, admin: {}, draft: false });
     const view = await getMonthView(ahmed(), NOV);
     expect(view.focus.find((f) => f.id === "mango")!.achieved).toBe(135);
   });

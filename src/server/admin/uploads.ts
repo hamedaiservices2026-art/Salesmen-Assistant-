@@ -115,17 +115,20 @@ export async function singleFlight<T>(key: string, work: () => Promise<T>): Prom
   }
 }
 
-async function loadLookup(ctx: Ctx): Promise<ImportLookup> {
-  const [users, lines] = await Promise.all([
-    ctx.db
-      .select({ id: s.users.id, login: s.users.login })
-      .from(s.users)
-      .where(and(eq(s.users.companyId, ctx.companyId), eq(s.users.active, true), inArray(s.users.role, [...REP_ROLES]))),
-    ctx.db
-      .select({ id: s.targetLines.id, code: s.targetLines.code, unit: s.targetLines.unit, kind: s.targetLines.kind })
-      .from(s.targetLines)
-      .where(and(eq(s.targetLines.companyId, ctx.companyId), eq(s.targetLines.active, true))),
-  ]);
+/** `lock`: inside the apply transaction, the rows read are share-locked so a deactivation cannot slip in before the writes. */
+async function loadLookup(ctx: Ctx, lock = false): Promise<ImportLookup> {
+  const usersQ = ctx.db
+    .select({ id: s.users.id, login: s.users.login })
+    .from(s.users)
+    .where(and(eq(s.users.companyId, ctx.companyId), eq(s.users.active, true), inArray(s.users.role, [...REP_ROLES])))
+    .orderBy(asc(s.users.id));
+  const linesQ = ctx.db
+    .select({ id: s.targetLines.id, code: s.targetLines.code, unit: s.targetLines.unit, kind: s.targetLines.kind })
+    .from(s.targetLines)
+    .where(and(eq(s.targetLines.companyId, ctx.companyId), eq(s.targetLines.active, true)))
+    .orderBy(asc(s.targetLines.id));
+  const users = await (lock ? usersQ.for("share") : usersQ);
+  const lines = await (lock ? linesQ.for("share") : linesQ);
   return {
     reps: new Map(users.map((u) => [u.login.toLowerCase(), u.id])),
     lines: new Map(lines.map((l) => [l.code.toLowerCase(), { id: l.id, unit: l.unit, kind: l.kind }])),
@@ -178,9 +181,9 @@ export async function processUpload(ctx: Ctx, input: UploadInput, opts?: { today
   }
 
   const today = opts?.today ?? currentDay(ctx.timeZone);
-  const check = async (c: Ctx) => {
+  const check = async (c: Ctx, lock = false) => {
     // Lookups come from the caller's company only; a login or line code of another company is unknown.
-    const lookup = await loadLookup(c);
+    const lookup = await loadLookup(c, lock);
     const checked =
       kind === "targets"
         ? validateTargetRows(read.rows, lookup)
@@ -207,7 +210,7 @@ export async function processUpload(ctx: Ctx, input: UploadInput, opts?: { today
       // One upload per company at a time, taken before any row lock so the order is the same everywhere.
       await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`upload|${ctx.companyId}`}))`);
       // Checked again under the lock: a rep or line deactivated since the first pass is not written.
-      const again = await check({ ...ctx, db: tx });
+      const again = await check({ ...ctx, db: tx }, true);
       if (again.errors.length > 0) throw new Rejected(again.errors);
       if (kind === "targets") await applyTargetOps(ctx, tx, again.ops as TargetOp[], uploadId);
       else await applyDailyOps(ctx, tx, again.ops as DailyOp[], again.lookup);

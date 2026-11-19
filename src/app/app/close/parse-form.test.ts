@@ -118,4 +118,14 @@ describe("parseCloseForm", () => {
     const typed = parseCloseForm(data({ ...good, collections: "250.5" }), lines, focus);
     expect(typed.ok && typed.form.collections).toBe(25050);
   });
+
+  it("a draft close's form (admin lines filled, money blank) is refused until cash sales is entered", () => {
+    const fd = new FormData();
+    fd.set("date", "2026-11-14");
+    fd.set("line.bev", "40");
+    const r = parseCloseForm(fd, [{ lineId: "bev", unit: "cases" }], []);
+    expect(r).toEqual({ ok: false, errors: { cashSales: "required" } });
+    fd.set("cashSales", "0");
+    expect(parseCloseForm(fd, [{ lineId: "bev", unit: "cases" }], []).ok).toBe(true);
+  });
 });

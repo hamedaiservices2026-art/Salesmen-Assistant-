@@ -125,10 +125,14 @@ export default async function ClosePage({ searchParams }: { searchParams: Promis
       const n = saved.focus[f.id];
       if (n !== undefined) initial[`focus.${f.id}`] = inputValue(n, f.unit);
     }
-    for (const k of ["cashSales", "creditSales", "collections", "expenses"] as const) {
-      initial[k] = inputValue(saved[k], "value");
+    // A close an admin's upload created holds zeros the rep never entered: his money and stock
+    // fields start blank so he has to fill them (cash sales is required) before it is confirmed.
+    if (!saved.draft) {
+      for (const k of ["cashSales", "creditSales", "collections", "expenses"] as const) {
+        initial[k] = inputValue(saved[k], "value");
+      }
+      for (const k of ["loaded", "sold", "returned"] as const) initial[k] = inputValue(saved[k], "cases");
     }
-    for (const k of ["loaded", "sold", "returned"] as const) initial[k] = inputValue(saved[k], "cases");
   }
   const initialReturns: ReturnRow[] = (saved?.returns ?? []).map((r, key) => ({
     key,

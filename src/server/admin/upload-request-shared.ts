@@ -8,7 +8,7 @@ export type UploadResponse = {
   kind?: SheetKind;
   filename?: string;
   /** The request never reached the apply step. */
-  failure?: "no_file" | "busy" | "failed" | "bad_kind" | "too_large" | "forbidden";
+  failure?: "no_file" | "busy" | "failed" | "bad_kind" | "too_large" | "forbidden" | "bad_request";
   result?: {
     applied: boolean;
     rows: number;

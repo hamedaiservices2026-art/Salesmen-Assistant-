@@ -887,7 +887,8 @@
         "failed": "Something went wrong and nothing was applied. Try again.",
         "bad_kind": "Unknown file type.",
         "too_large": "The file is larger than the 2 MB limit.",
-        "forbidden": "You are not allowed to upload. Sign in with an admin account."
+        "forbidden": "You are not allowed to upload. Sign in with an admin account.",
+        "bad_request": "The request was not accepted. Reload the page and try again."
       },
       "columns": {
         "login": "login",
