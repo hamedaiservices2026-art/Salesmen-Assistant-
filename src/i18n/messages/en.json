@@ -146,7 +146,8 @@
     "backHome": "Back to home",
     "stockSummary": "Van stock (optional)",
     "adminNote": "Admin recorded {amount}",
-    "repNote": "You typed {amount}"
+    "repNote": "You typed {amount}",
+    "collectionsByAdmin": "Collections as recorded by the admin"
   },
   "commission": {
     "title": "Commission",
@@ -884,7 +885,9 @@
         "no_file": "Choose an Excel file first.",
         "busy": "An upload is already running. Wait for it to finish and try again.",
         "failed": "Something went wrong and nothing was applied. Try again.",
-        "bad_kind": "Unknown file type."
+        "bad_kind": "Unknown file type.",
+        "too_large": "The file is larger than the 2 MB limit.",
+        "forbidden": "You are not allowed to upload. Sign in with an admin account."
       },
       "columns": {
         "login": "login",

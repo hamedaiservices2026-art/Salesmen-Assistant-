@@ -184,7 +184,10 @@ export async function saveClose(ctx: Ctx, form: CloseForm, opts?: { today?: ISOD
           .delete(s.closeLines)
           .where(and(eq(s.closeLines.closeId, closeId), eq(s.closeLines.companyId, companyId), inArray(s.closeLines.lineId, repIds)));
       }
-      for (const lineId of excel.keys()) {
+      for (const [lineId, adminAmount] of excel) {
+        // What he typed is kept only when it differs from the admin's figure; an untouched prefill
+        // leaves any earlier value of his as it was.
+        if (form.lines[lineId] === adminAmount) continue;
         await tx
           .update(s.closeLines)
           .set({ repAmount: form.lines[lineId]!, updatedAt: new Date() })
@@ -215,7 +218,7 @@ export async function saveClose(ctx: Ctx, form: CloseForm, opts?: { today?: ISOD
       amount,
     }));
     if (lines.length) await tx.insert(s.closeLines).values(lines);
-    if (excel.size > 0) await syncCollections(tx as unknown as Db, companyId, closeId, form.lines, excel);
+    await syncCollections(tx as unknown as Db, companyId, closeId);
     // Inserted in focus id order: the foreign-key checks take row locks in the same order as a scheme publish.
     const focus = Object.entries(form.focus)
       .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
@@ -238,23 +241,26 @@ export async function saveClose(ctx: Ctx, form: CloseForm, opts?: { today?: ISOD
 }
 
 /**
- * The form derives `collections` from the typed collection lines, but an excel collection line keeps
- * the admin's amount, so the stored figure is recomputed from the amounts that really are stored.
+ * `collections` always equals the sum of the close's stored collection-line amounts (the admin's
+ * where an upload set the line, the rep's otherwise). The form derives it from what was typed, so
+ * when any collection line is admin-set it is recomputed from what is stored, whatever was posted.
  */
-async function syncCollections(
-  db: Db,
-  companyId: string,
-  closeId: string,
-  typed: Record<string, number>,
-  excel: Map<string, number>,
-): Promise<void> {
-  const collection = await db
-    .select({ id: s.targetLines.id })
-    .from(s.targetLines)
-    .where(and(eq(s.targetLines.companyId, companyId), eq(s.targetLines.active, true), eq(s.targetLines.kind, "collection")));
-  const ids = collection.map((l) => l.id);
-  if (![...excel.keys()].some((id) => ids.includes(id))) return;
-  const total = ids.reduce((sum, id) => sum + (excel.get(id) ?? typed[id] ?? 0), 0);
+async function syncCollections(db: Db, companyId: string, closeId: string): Promise<void> {
+  const rows = await db
+    .select({ amount: s.closeLines.amount, source: s.closeLines.source })
+    .from(s.closeLines)
+    .innerJoin(s.targetLines, eq(s.targetLines.id, s.closeLines.lineId))
+    .where(
+      and(
+        eq(s.closeLines.closeId, closeId),
+        eq(s.closeLines.companyId, companyId),
+        eq(s.targetLines.companyId, companyId),
+        eq(s.targetLines.active, true),
+        eq(s.targetLines.kind, "collection"),
+      ),
+    );
+  if (!rows.some((r) => r.source === "excel")) return;
+  const total = rows.reduce((sum, r) => sum + r.amount, 0);
   await db
     .update(s.dailyCloses)
     .set({ collections: total })

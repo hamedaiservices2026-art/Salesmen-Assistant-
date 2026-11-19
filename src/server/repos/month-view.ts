@@ -63,7 +63,7 @@ function focusPerDay(f: FocusTotal, selling: ISODate[], today: ISODate): number 
   return Math.ceil(remaining / daysLeft);
 }
 
-/** Per-date line amounts of the rep's closes in the month. */
+/** Per-date line amounts of the rep's confirmed closes in the month (drafts are open days). */
 async function loadDayAmounts(ctx: Ctx, start: ISODate, end: ISODate) {
   const rows = await ctx.db
     .select({ date: s.dailyCloses.date, lineId: s.closeLines.lineId, amount: s.closeLines.amount })
@@ -76,6 +76,8 @@ async function loadDayAmounts(ctx: Ctx, start: ISODate, end: ISODate) {
       and(
         eq(s.dailyCloses.companyId, ctx.companyId),
         eq(s.dailyCloses.userId, ctx.userId),
+        // A close an admin's upload created is a draft: the day is still open for him to close.
+        eq(s.dailyCloses.status, "confirmed"),
         gte(s.dailyCloses.date, start),
         lte(s.dailyCloses.date, end),
       ),

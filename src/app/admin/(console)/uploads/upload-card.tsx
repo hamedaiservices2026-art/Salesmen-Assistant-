@@ -1,11 +1,12 @@
 "use client";
 
-import { useActionState } from "react";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { CircleCheck, Download, TriangleAlert, Upload } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Card } from "@/ui/admin/Card";
 import { fieldInput, fieldLabel, primaryButton, secondaryButton } from "@/ui/admin/form-styles";
-import { uploadAction, type UploadState } from "./actions";
+import { REQUESTED_WITH, type UploadResponse } from "@/server/admin/upload-request-shared";
 
 /** Most error rows shown; the report says how many more there are. */
 export const SHOWN_ERRORS = 100;
@@ -17,7 +18,31 @@ const COLUMNS = {
 
 export function UploadCard({ kind }: { kind: "targets" | "daily" }) {
   const t = useTranslations("admin.uploads");
-  const [state, action, pending] = useActionState<UploadState, FormData>(uploadAction, {});
+  const router = useRouter();
+  const [state, setState] = useState<UploadResponse>({});
+  const [pending, setPending] = useState(false);
+
+  async function submit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = e.currentTarget;
+    setPending(true);
+    try {
+      const res = await fetch("/admin/uploads/upload", {
+        method: "POST",
+        body: new FormData(form),
+        headers: { "X-Requested-With": REQUESTED_WITH },
+        credentials: "same-origin",
+      });
+      const body = (await res.json()) as UploadResponse;
+      setState({ ...body, kind });
+      if (body.result?.applied) form.reset();
+      router.refresh();
+    } catch {
+      setState({ kind, failure: "failed" });
+    } finally {
+      setPending(false);
+    }
+  }
   const mine = state.kind === kind ? state : undefined;
   const result = mine?.result;
   const shown = result?.errors.slice(0, SHOWN_ERRORS) ?? [];
@@ -30,7 +55,7 @@ export function UploadCard({ kind }: { kind: "targets" | "daily" }) {
 
   return (
     <Card title={t(`${kind}.title`)} className="flex flex-col">
-      <form action={action} className="flex flex-col gap-4 px-5 pb-5">
+      <form onSubmit={submit} className="flex flex-col gap-4 px-5 pb-5">
         <input type="hidden" name="kind" value={kind} />
         <p className="m-0 text-[14px] leading-relaxed text-ink-2">{t(`${kind}.hint`)}</p>
         <p className="m-0 text-[13.5px] text-ink-2">

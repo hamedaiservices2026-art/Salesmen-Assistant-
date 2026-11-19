@@ -15,6 +15,7 @@ export function ReconciliationPanel({
   returned,
   currencyLabel,
   stockUnitLabel,
+  collectionsNote,
 }: {
   cashSales: string;
   collections: number; // minor units, derived by the form
@@ -24,6 +25,8 @@ export function ReconciliationPanel({
   returned: string;
   currencyLabel: string;
   stockUnitLabel: string;
+  /** Shown under the cash formula, e.g. when the collections come from the admin's figure. */
+  collectionsNote?: string;
 }) {
   const t = useTranslations("close");
   // An unreadable or empty field counts as 0 here only; the save path rejects it instead.
@@ -56,6 +59,7 @@ export function ReconciliationPanel({
           expenses: formatAmount(i.expenses, "value"),
         })}
       </p>
+      {collectionsNote && <p className="m-0 text-[13px] font-semibold text-on-brand-2">{collectionsNote}</p>}
       {showStock && (
         <>
       <div className="flex items-baseline justify-between gap-3 border-t border-white/15 pt-3">

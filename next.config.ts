@@ -5,8 +5,6 @@ const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 
 const nextConfig: NextConfig = {
   serverExternalPackages: ["@electric-sql/pglite"],
-  // The upload action takes a file of up to 2 MB (checked there); the framework default of 1 MB would refuse it first.
-  experimental: { serverActions: { bodySizeLimit: "3mb" } },
   // Invite links carry a secret token in the path: never send it on to another site as a referrer.
   async headers() {
     const noReferrer = [{ key: "Referrer-Policy", value: "no-referrer" }];

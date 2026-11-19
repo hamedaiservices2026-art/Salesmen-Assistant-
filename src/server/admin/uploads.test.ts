@@ -10,6 +10,7 @@ import { Forbidden, type Role } from "@/server/auth/roles";
 import { getMonthView } from "@/server/repos/month-view";
 import { getClose, saveClose, type CloseForm } from "@/server/repos/closes";
 import { getHistoryDays } from "@/server/repos/history";
+import { reconcile } from "@/domain/reconciliation";
 import { UPLOAD_MAX_BYTES, listUploads, processUpload, readUploadFile, rejectUpload, singleFlight } from "./uploads";
 
 const TODAY = "2026-11-14";
@@ -103,11 +104,11 @@ describe("daily upload", () => {
     expect(days[0]).toMatchObject({ date: "2026-11-12", lines: { bev: 120 }, admin: { bev: { amount: 120, repAmount: 106 } } });
   });
 
-  it("creates a confirmed excel close with zero money and collections from the collection lines", async () => {
+  it("creates a draft excel close with zero money and collections from the collection lines", async () => {
     const r = await processUpload(admin(), await daily(["khaled", "2026-11-14", "coll", 15000], ["khaled", "2026-11-14", "bev", 40]), { today: TODAY });
     expect(r.applied).toBe(true);
     const [close] = await closesOf("khaled", "2026-11-14");
-    expect(close).toMatchObject({ source: "excel", status: "confirmed", collections: 1_500_000, cashSales: 0, creditSales: 0, expenses: 0, loaded: 0, sold: 0, returned: 0 });
+    expect(close).toMatchObject({ source: "excel", status: "draft", collections: 1_500_000, cashSales: 0, creditSales: 0, expenses: 0, loaded: 0, sold: 0, returned: 0 });
     expect(await closeLine("khaled", "2026-11-14", "coll")).toEqual({ amount: 1_500_000, source: "excel", repAmount: null });
     // The rep opens the excel-created close and fills in cash: the admin amounts stay.
     const khaled = ctxOf("khaled", "rep");
@@ -344,5 +345,96 @@ describe("size guard and single flight", () => {
   it("frees the key when the work throws", async () => {
     await expect(singleFlight("admin-3", async () => { throw new Error("x"); })).rejects.toThrow("x");
     expect(await singleFlight("admin-3", async () => 1)).toEqual({ busy: false, value: 1 });
+  });
+});
+
+describe("fix round 1: drafts, collections, rep_amount, revalidation", () => {
+  const khaled = () => ctxOf("khaled", "rep");
+
+  it("R16: an upload-created close is a draft, an open day; the rep's save confirms it", async () => {
+    await processUpload(admin(), await daily(["khaled", "2026-11-14", "bev", 40]), { today: TODAY });
+    const [close] = await closesOf("khaled", "2026-11-14");
+    expect(close).toMatchObject({ status: "draft", source: "excel" });
+    const view = await getMonthView(khaled(), { year: 2026, month: 11, today: TODAY });
+    expect(view.hasClosedToday).toBe(false);
+    // the amount still counts toward the month, but the calendar day is not marked done
+    const bev = view.lines.find((l) => l.lineId === "bev")!;
+    expect(bev.achieved).toBe(1320 + 40);
+    expect(bev.days.find((d) => d.date === "2026-11-14")!.amount).toBeNull();
+    const days = await getHistoryDays(khaled(), 2026, 11);
+    expect(days.find((d) => d.date === "2026-11-14")).toMatchObject({ draft: true, admin: { bev: { amount: 40, repAmount: null } } });
+    expect(await saveClose(khaled(), form("2026-11-14", { bev: 40, food: 0, coll: 0 }), { today: TODAY })).toEqual({ ok: true });
+    expect((await closesOf("khaled", "2026-11-14"))[0]!.status).toBe("confirmed");
+    expect((await getMonthView(khaled(), { year: 2026, month: 11, today: TODAY })).hasClosedToday).toBe(true);
+    expect((await getHistoryDays(khaled(), 2026, 11)).find((d) => d.date === "2026-11-14")!.draft).toBe(false);
+  });
+
+  it("an upload to an already confirmed close leaves it confirmed", async () => {
+    await processUpload(admin(), await daily(["ahmed", "2026-11-12", "bev", 120]), { today: TODAY });
+    expect((await closesOf("ahmed", "2026-11-12"))[0]!.status).toBe("confirmed");
+  });
+
+  it("R17: cash to hand over equals the stored collections after an upload and a save", async () => {
+    await processUpload(admin(), await daily(["khaled", "2026-11-14", "coll", 15000]), { today: TODAY });
+    const [c] = await closesOf("khaled", "2026-11-14");
+    expect(c!.collections).toBe(1_500_000);
+    expect(reconcile(c!).cashToHandOver).toBe(1_500_000);
+    const saved = await getClose(khaled(), "2026-11-14");
+    expect(saved!.collections).toBe(1_500_000);
+    expect(saved!.admin.coll).toEqual({ amount: 1_500_000, repAmount: null });
+    await saveClose(khaled(), form("2026-11-14", { coll: 1_500_000, bev: 0, food: 0 }, { cashSales: 200_000, collections: 1_500_000 }), { today: TODAY });
+    const [after] = await closesOf("khaled", "2026-11-14");
+    expect(reconcile(after!).cashToHandOver).toBe(1_700_000);
+  });
+
+  it("R18: a rep who clears an admin-set collection field keeps the admin amount and collections follow the stored lines", async () => {
+    await processUpload(admin(), await daily(["ahmed", "2026-11-12", "coll", 20000]), { today: TODAY });
+    const before = await getClose(ahmed(), "2026-11-12");
+    await saveClose(ahmed(), form("2026-11-12", { ...before!.lines, coll: 0 }, { collections: 0 }), { today: TODAY });
+    expect(await closeLine("ahmed", "2026-11-12", "coll")).toMatchObject({ amount: 2_000_000, source: "excel", repAmount: 0 });
+    expect((await closesOf("ahmed", "2026-11-12"))[0]!.collections).toBe(2_000_000);
+    // a save that does not post the collection line at all
+    await saveClose(ahmed(), form("2026-11-12", { bev: 106 }, { collections: 5 }), { today: TODAY });
+    expect((await closesOf("ahmed", "2026-11-12"))[0]!.collections).toBe(2_000_000);
+  });
+
+  it("a second upload with a different value updates the amount and keeps the rep's 106", async () => {
+    await processUpload(admin(), await daily(["ahmed", "2026-11-12", "bev", 120]), { today: TODAY });
+    await processUpload(admin(), await daily(["ahmed", "2026-11-12", "bev", 125]), { today: TODAY });
+    expect(await closeLine("ahmed", "2026-11-12", "bev")).toEqual({ amount: 125, source: "excel", repAmount: 106 });
+  });
+
+  it("a re-save that leaves the admin value untouched does not set rep_amount", async () => {
+    await processUpload(admin(), await daily(["khaled", "2026-11-14", "bev", 40]), { today: TODAY });
+    await saveClose(khaled(), form("2026-11-14", { bev: 40 }), { today: TODAY });
+    expect(await closeLine("khaled", "2026-11-14", "bev")).toEqual({ amount: 40, source: "excel", repAmount: null });
+    // and with a previous rep value, an untouched admin-equal post keeps it
+    await processUpload(admin(), await daily(["ahmed", "2026-11-12", "bev", 120]), { today: TODAY });
+    await saveClose(ahmed(), form("2026-11-12", { bev: 120 }), { today: TODAY });
+    expect(await closeLine("ahmed", "2026-11-12", "bev")).toEqual({ amount: 120, source: "excel", repAmount: 106 });
+  });
+
+  it("re-validates inside the transaction: a rep deactivated meanwhile is not written, and the report is kept", async () => {
+    const before = await snapshot();
+    const ctx = admin();
+    const real = ctx.db.transaction.bind(ctx.db);
+    const racing = {
+      ...ctx,
+      db: Object.assign(Object.create(ctx.db), {
+        transaction: async (fn: (tx: never) => Promise<unknown>) => {
+          await db.update(s.users).set({ active: false }).where(eq(s.users.id, "ahmed"));
+          return real(fn as never);
+        },
+      }),
+    } as Ctx;
+    const r = await processUpload(racing, await daily(["ahmed", "2026-11-12", "bev", 120]), { today: TODAY });
+    expect(r).toMatchObject({ applied: false, errors: [{ row: 2, column: "login", code: "unknown_rep" }] });
+    expect(await snapshot()).toEqual(before);
+    expect(await allUploads()).toMatchObject([{ applied: false, errorCount: 1 }]);
+  });
+
+  it("strips direction and zero-width marks from stored filenames", async () => {
+    await processUpload(admin(), { ...(await daily(["ahmed", "2026-11-12", "bev", 120])), filename: "a\u202Eb\u200Bc\u2066d.xlsx" }, { today: TODAY });
+    expect((await allUploads())[0]!.filename).toBe("abcd.xlsx");
   });
 });

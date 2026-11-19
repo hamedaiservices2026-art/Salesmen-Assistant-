@@ -289,6 +289,7 @@ describe("history", () => {
       date: "2026-11-12",
       lines: { bev: 106, food: 790_000, coll: 1_900_000 },
       admin: {},
+      draft: false,
       cashToHandOver: 474_000 + 1_900_000,
     });
     const other = await getHistoryDays(await otherRep(), 2026, 11);

@@ -28,6 +28,8 @@ export type HistoryDay = {
   /** Lines an admin's Excel upload set, with what the rep typed himself (null when nothing). */
   admin: Record<string, { amount: number; repAmount: number | null }>;
   cashToHandOver: number;
+  /** Created by an admin's upload and not yet confirmed by the rep: an open day. */
+  draft: boolean;
 };
 
 /** Months in which the rep has a close or a target, newest first. */
@@ -151,6 +153,7 @@ export async function getHistoryDays(
     lines: byClose.get(c.id) ?? {},
     admin: adminByClose.get(c.id) ?? {},
     cashToHandOver: reconcile(c).cashToHandOver,
+    draft: c.status === "draft",
   }));
 }
 

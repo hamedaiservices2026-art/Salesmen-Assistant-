@@ -15,6 +15,7 @@ import { assertRole } from "@/server/auth/roles";
 import type { Ctx } from "@/server/ctx";
 import { readSheet, type ReadError, type SheetKind } from "@/server/import/xlsx";
 import { currentDay } from "@/server/today";
+import { normalizeText } from "@/domain/import/text";
 import { applyTargets } from "./targets";
 
 /** The largest file the upload action reads; readSheet keeps its own, larger guard as defence in depth. */
@@ -48,8 +49,9 @@ export type UploadRow = {
 const UPLOAD_ROLES = ["admin"] as const;
 const REP_ROLES = ["rep", "supervisor"] as const;
 
+/** The stored name: invisible direction and zero-width marks removed (they could reorder the name on screen), control characters turned to spaces. */
 const cleanName = (name: string): string =>
-  String(name).replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, FILENAME_MAX) || "file";
+  normalizeText(String(name).replace(/[\u0000-\u001f\u007f]/g, " ")).slice(0, FILENAME_MAX) || "file";
 
 async function record(
   ctx: Ctx,
@@ -175,40 +177,63 @@ export async function processUpload(ctx: Ctx, input: UploadInput, opts?: { today
     };
   }
 
-  // Lookups come from the caller's company only; a login or line code of another company is unknown.
-  const lookup = await loadLookup(ctx);
   const today = opts?.today ?? currentDay(ctx.timeZone);
-  const checked =
-    kind === "targets"
-      ? validateTargetRows(read.rows, lookup)
-      : validateDailyRows(read.rows, { ...lookup, today, isSellingDay: await sellingDayTest(ctx) });
+  const check = async (c: Ctx) => {
+    // Lookups come from the caller's company only; a login or line code of another company is unknown.
+    const lookup = await loadLookup(c);
+    const checked =
+      kind === "targets"
+        ? validateTargetRows(read.rows, lookup)
+        : validateDailyRows(read.rows, { ...lookup, today, isSellingDay: await sellingDayTest(c) });
+    return { lookup, ...checked };
+  };
+  const first = await check(ctx);
   const rows = read.rows.length;
-  const { errors } = checked;
-  const ops = checked.ops;
 
-  if (errors.length === 0 && ops.length === 0) {
+  if (first.errors.length === 0 && first.ops.length === 0) {
     const uploadId = await record(ctx, input);
     return { uploadId, applied: false, rows: 0, errors: [], readError: "empty" };
   }
   // Task 17's validators return the good rows even when some are bad; none of them is ever applied then.
-  if (errors.length > 0) {
-    const uploadId = await record(ctx, { ...input, rowCount: rows, errorCount: errors.length, errors });
-    return { uploadId, applied: false, rows, errors };
+  if (first.errors.length > 0) {
+    const uploadId = await record(ctx, { ...input, rowCount: rows, errorCount: first.errors.length, errors: first.errors });
+    return { uploadId, applied: false, rows, errors: first.errors };
   }
 
   const uploadId = await record(ctx, { ...input, rowCount: rows });
-  await ctx.db.transaction(async (t) => {
-    const tx = t as unknown as Db;
-    // One upload per company at a time, taken before any row lock so the order is the same everywhere.
-    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`upload|${ctx.companyId}`}))`);
-    if (kind === "targets") await applyTargetOps(ctx, tx, ops as TargetOp[], uploadId);
-    else await applyDailyOps(ctx, tx, ops as DailyOp[], lookup);
-    await tx
-      .update(s.uploads)
-      .set({ applied: true })
-      .where(and(eq(s.uploads.id, uploadId), eq(s.uploads.companyId, ctx.companyId)));
-  });
+  try {
+    await ctx.db.transaction(async (t) => {
+      const tx = t as unknown as Db;
+      // One upload per company at a time, taken before any row lock so the order is the same everywhere.
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`upload|${ctx.companyId}`}))`);
+      // Checked again under the lock: a rep or line deactivated since the first pass is not written.
+      const again = await check({ ...ctx, db: tx });
+      if (again.errors.length > 0) throw new Rejected(again.errors);
+      if (kind === "targets") await applyTargetOps(ctx, tx, again.ops as TargetOp[], uploadId);
+      else await applyDailyOps(ctx, tx, again.ops as DailyOp[], again.lookup);
+      await tx
+        .update(s.uploads)
+        .set({ applied: true })
+        .where(and(eq(s.uploads.id, uploadId), eq(s.uploads.companyId, ctx.companyId)));
+    });
+  } catch (e) {
+    if (e instanceof Rejected) {
+      await ctx.db
+        .update(s.uploads)
+        .set({ errorCount: e.errors.length, errors: e.errors.slice(0, STORED_ERRORS) })
+        .where(and(eq(s.uploads.id, uploadId), eq(s.uploads.companyId, ctx.companyId)));
+      return { uploadId, applied: false, rows, errors: e.errors };
+    }
+    console.error(`upload ${uploadId} failed to apply`, e);
+    throw e;
+  }
   return { uploadId, applied: true, rows, errors: [] };
+}
+
+class Rejected extends Error {
+  constructor(readonly errors: RowError[]) {
+    super("upload rejected on re-validation");
+  }
 }
 
 /** One `applyTargets` per month, earliest first, so two uploads always take the month locks in the same order. */
@@ -252,7 +277,7 @@ async function applyDailyOps(ctx: Ctx, tx: Db, ops: DailyOp[], lookup: ImportLoo
     const { userId, date } = group[0]!;
     const inserted = await tx
       .insert(s.dailyCloses)
-      .values({ id: randomUUID(), companyId, userId, date, source: "excel", status: "confirmed" })
+      .values({ id: randomUUID(), companyId, userId, date, source: "excel", status: "draft" })
       .onConflictDoNothing({ target: [s.dailyCloses.userId, s.dailyCloses.date] })
       .returning({ id: s.dailyCloses.id });
     let closeId = inserted[0]?.id;

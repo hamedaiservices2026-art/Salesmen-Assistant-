@@ -18,6 +18,8 @@ export type FormItem = {
   collection?: boolean;
   /** What the admin's upload recorded for this line, shown under the field. */
   notes?: string[];
+  /** The admin's stored amount (minor units) for a line an upload set; it, not the typed value, counts. */
+  adminAmount?: number;
 };
 
 const card = "rounded-[14px] border border-line bg-white px-4 py-1";
@@ -79,7 +81,7 @@ export function CloseForm({
   // A collection target line is the collections figure; only without one is it asked separately.
   const collections =
     collectionItems.length > 0
-      ? collectionItems.reduce((sum, it) => sum + (parseAmount(v(it.name), "value") ?? 0), 0)
+      ? collectionItems.reduce((sum, it) => sum + (it.adminAmount ?? parseAmount(v(it.name), "value") ?? 0), 0)
       : (parseAmount(v("collections"), "value") ?? 0);
   const moneyNames =
     collectionItems.length > 0
@@ -141,6 +143,7 @@ export function CloseForm({
         returned={v("returned")}
         currencyLabel={currencyLabel}
         stockUnitLabel={stockUnitLabel}
+        collectionsNote={collectionItems.some((it) => it.adminAmount !== undefined) ? t("collectionsByAdmin") : undefined}
       />
 
       <PrimaryButton disabled={pending}>{pending ? t("submitting") : t("submit")}</PrimaryButton>

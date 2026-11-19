@@ -50,14 +50,9 @@ export default async function HistoryMonthPage({
     numberingSystem: "latn",
     timeZone: "UTC",
   });
-  const label = (u: Unit) =>
-    labelFor((k) => tRoot(k as never), u, prefs.currency);
+  const label = (u: Unit) => labelFor((k) => tRoot(k as never), u, prefs.currency);
   const currency = label("value");
-  const unitLabel = {
-    cases: label("cases"),
-    value: currency,
-    outlets: label("outlets"),
-  };
+  const unitLabel = { cases: label("cases"), value: currency, outlets: label("outlets") };
 
   return (
     <>
@@ -141,8 +136,7 @@ export default async function HistoryMonthPage({
                       .filter((l) => d.lines[l.lineId] !== undefined)
                       .map((l) => {
                         const a = d.admin[l.lineId];
-                        const text = (n: number) =>
-                          `${formatAmount(n, l.unit)} ${unitLabel[l.unit]}`;
+                        const text = (n: number) => `${formatAmount(n, l.unit)} ${unitLabel[l.unit]}`;
                         return (
                           <div
                             key={l.lineId}
@@ -160,10 +154,7 @@ export default async function HistoryMonthPage({
                               </span>
                             </dd>
                             {a && (
-                              <dd
-                                dir="auto"
-                                className="m-0 basis-full text-[13px] text-ink-2"
-                              >
+                              <dd dir="auto" className="m-0 basis-full text-[13px] text-ink-2">
                                 {t("adminNote", { amount: text(a.amount) })}
                                 {a.repAmount !== null &&
                                   a.repAmount !== a.amount &&
@@ -174,19 +165,28 @@ export default async function HistoryMonthPage({
                         );
                       })}
                   </dl>
+                  {d.draft ? (
+                    <Link
+                      href={`/app/close?date=${d.date}`}
+                      className="flex min-h-11 items-center border-t border-line-soft pt-2.5 text-[14px] font-medium text-brand no-underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+                    >
+                      {t("gap")}
+                    </Link>
+                  ) : (
                   <div className="flex items-baseline justify-between gap-3 border-t border-line-soft pt-2.5">
-                    <span className="text-[14px] font-medium text-ink-2">
-                      {t("cash")}
-                    </span>
-                    <span className="text-[15px] font-bold text-brand tabular-nums">
-                      <bdi dir="ltr">
-                        {formatAmount(d.cashToHandOver, "value")}
-                      </bdi>{" "}
-                      <span className="text-[13px] font-medium">
-                        {currency}
+                      <span className="text-[14px] font-medium text-ink-2">
+                        {t("cash")}
                       </span>
-                    </span>
-                  </div>
+                      <span className="text-[15px] font-bold text-brand tabular-nums">
+                        <bdi dir="ltr">
+                          {formatAmount(d.cashToHandOver, "value")}
+                        </bdi>{" "}
+                        <span className="text-[13px] font-medium">
+                          {currency}
+                        </span>
+                      </span>
+                    </div>
+                  )}
                 </li>
               );
             })}

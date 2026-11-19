@@ -106,6 +106,7 @@ export default async function ClosePage({ searchParams }: { searchParams: Promis
     mode: l.unit === "cases" ? "numeric" : "decimal",
     collection: l.kind === "collection",
     notes: adminNotes(l.lineId, l.unit),
+    adminAmount: saved?.admin[l.lineId]?.amount,
   }));
   const focusItems: FormItem[] = focusOn(view.focus, date).map((f) => ({
     name: `focus.${f.id}`,
