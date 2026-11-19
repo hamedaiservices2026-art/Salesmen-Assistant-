@@ -309,7 +309,8 @@
           "status": "الحالة",
           "lastClose": "آخر قفلة"
         },
-        "noSupervisor": "—"
+        "noSupervisor": "—",
+        "supervisorTag": "مشرف"
       },
       "lastClose": {
         "today": "النهارده",
@@ -323,8 +324,9 @@
         "seen": "شافوا الإشعار",
         "seenOf": "{seen} من {notified}",
         "closest": "الأقرب",
-        "closestValue": "{achieved} من {needed}",
-        "none": "—"
+        "closestValue": "{achieved} من {needed} {unit}",
+        "none": "—",
+        "note": "بتظهر هنا الحوافز اللي اتعملت من شاشة الحوافز بس."
       },
       "upload": {
         "title": "آخر رفع بيانات",

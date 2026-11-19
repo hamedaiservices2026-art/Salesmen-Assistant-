@@ -59,6 +59,9 @@ export async function RepsTable({
                   <tr key={r.repId} className="border-t border-line-soft">
                     <th scope="row" className={`${td} text-start font-semibold text-ink`}>
                       <bdi>{r.name}</bdi>
+                      {r.isSupervisor && (
+                        <span className="ms-2 rounded bg-canvas px-1.5 py-0.5 align-middle text-[12px] font-medium text-ink-2">{t("reps.supervisorTag")}</span>
+                      )}
                     </th>
                     <td className={`${td} text-ink-2`}>{r.supervisorName ? <bdi>{r.supervisorName}</bdi> : t("reps.noSupervisor")}</td>
                     {shown.map((l) => {

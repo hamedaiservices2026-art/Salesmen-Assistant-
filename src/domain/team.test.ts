@@ -15,6 +15,7 @@ const rep = (name: string, lines: RepLine[]): RepStanding => ({
   repId: name,
   name,
   supervisorName: null,
+  isSupervisor: false,
   lines,
   lastClose: null,
   closedToday: false,
@@ -41,6 +42,20 @@ describe("paceDistance", () => {
   it("breaks ties by name", () => {
     const l = [line({ lineId: "bev", target: 100, expected: 40, achieved: 20 })];
     expect(sortByDistance([rep("b", l), rep("a", l)]).map((r) => r.name)).toEqual(["a", "b"]);
+  });
+});
+
+describe("exactness at 1e11 magnitudes", () => {
+  // 33333333333/100000000000 < 33333333334/100000000003 by about 1e-22; the cross products
+  // (about 3e21) are equal as doubles, so only exact integer arithmetic tells them apart.
+  const near = (name: string, expected: number, target: number) => rep(name, [line({ lineId: "bev", target, expected, achieved: 0 })]);
+  it("orders a near-tie exactly, whatever the names", () => {
+    const a = near("a", 33_333_333_333, 100_000_000_000);
+    const b = near("b", 33_333_333_334, 100_000_000_003);
+    expect(Number(33_333_333_333) * 100_000_000_003 === 33_333_333_334 * 100_000_000_000).toBe(true);
+    expect(sortByDistance([a, b]).map((r) => r.name)).toEqual(["b", "a"]);
+    expect(sortByDistance([b, a]).map((r) => r.name)).toEqual(["b", "a"]);
+    expect(paceDistance([...a.lines, ...b.lines])).toEqual({ num: 33_333_333_334, den: 100_000_000_003 });
   });
 });
 

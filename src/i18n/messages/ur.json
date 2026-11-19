@@ -309,7 +309,8 @@
           "status": "حالت",
           "lastClose": "آخری کلوز"
         },
-        "noSupervisor": "—"
+        "noSupervisor": "—",
+        "supervisorTag": "سپروائزر"
       },
       "lastClose": {
         "today": "آج",
@@ -323,8 +324,9 @@
         "seen": "اطلاع دیکھی",
         "seenOf": "{seen} از {notified}",
         "closest": "سب سے قریب",
-        "closestValue": "{achieved} از {needed}",
-        "none": "—"
+        "closestValue": "{achieved} از {needed} {unit}",
+        "none": "—",
+        "note": "یہاں صرف وہ انعامات نظر آتے ہیں جو انعامات کی اسکرین سے بنے۔"
       },
       "upload": {
         "title": "آخری ڈیٹا اپ لوڈ",

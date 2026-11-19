@@ -95,6 +95,7 @@ export default async function AdminOverviewPage() {
                               {t("incentives.closestValue", {
                                 achieved: formatAmount(i.closest.achieved, i.closest.unit),
                                 needed: formatAmount(i.closest.needed, i.closest.unit),
+                                unit: unitLabel(tAll, i.closest.unit, prefs.currency),
                               })}
                             </span>
                           </>
@@ -107,6 +108,7 @@ export default async function AdminOverviewPage() {
                 </div>
               ))
             )}
+            <p className="m-0 px-5 text-[12.5px] text-muted">{t("incentives.note")}</p>
           </Card>
           <Card title={t("upload.title")} className="flex flex-col gap-1.5 pb-4">
             {up ? (

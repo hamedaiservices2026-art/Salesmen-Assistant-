@@ -309,7 +309,8 @@
           "status": "Status",
           "lastClose": "Last close"
         },
-        "noSupervisor": "—"
+        "noSupervisor": "—",
+        "supervisorTag": "Supervisor"
       },
       "lastClose": {
         "today": "Today",
@@ -323,8 +324,9 @@
         "seen": "Saw the notice",
         "seenOf": "{seen} of {notified}",
         "closest": "Closest",
-        "closestValue": "{achieved} of {needed}",
-        "none": "—"
+        "closestValue": "{achieved} of {needed} {unit}",
+        "none": "—",
+        "note": "Only incentives made from the Incentives screen show here."
       },
       "upload": {
         "title": "Last data upload",

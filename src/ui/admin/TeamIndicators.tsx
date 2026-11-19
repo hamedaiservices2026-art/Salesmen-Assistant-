@@ -27,7 +27,7 @@ export async function TeamIndicators({ overview, currency }: { overview: Overvie
           <div key={tl.lineId} className={`${cell} border-b sm:border-b-0 sm:border-e`}>
             <span className="text-[13.5px] text-ink-2">{line.name}</span>
             <div className="flex flex-wrap items-baseline gap-2.5">
-              <span className="text-[32px] font-bold leading-[1.1] tabular-nums" aria-label={t("pctLabel", { pct: tl.pct ?? 0 })}>
+              <span className="text-[32px] font-bold leading-[1.1] tabular-nums">
                 {tl.pct ?? 0}%
               </span>
               {!tl.held && (

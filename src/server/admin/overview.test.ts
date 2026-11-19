@@ -8,6 +8,7 @@ import type { Ctx } from "@/server/ctx";
 import { addCoverageUpdate } from "@/server/repos/coverage";
 import { saveClose, type CloseForm } from "@/server/repos/closes";
 import { markAllRead } from "@/server/repos/notifications";
+import { and, eq } from "drizzle-orm";
 import { createIncentive, type IncentiveInput } from "./incentives";
 import { getOverview } from "./overview";
 
@@ -123,11 +124,34 @@ describe("getOverview", () => {
     expect(o.reps.find((r) => r.repId === "yousef")).toMatchObject({ closedToday: false, lastClose: null });
   });
 
-  it("leaves out supervisors and inactive reps", async () => {
+  it("leaves out inactive reps and supervisors without a target", async () => {
     await db.update(s.users).set({ active: false }).where(eqId("omar"));
     const o = await getOverview(admin(), NOV);
     expect(o.reps.map((r) => r.repId)).toEqual(["yousef", "ahmed", "khaled"]);
     expect(o.onPace.total).toBe(3);
+    expect(o.reps.some((r) => r.isSupervisor)).toBe(false);
+  });
+
+  it("lists a supervisor who holds a target, tagged, and counts him in the team", async () => {
+    await db.insert(s.targets).values({ id: "t-sami-bev", companyId: "demo-co", userId: "sami", year: 2026, month: 11, lineId: "bev", amount: 1000 });
+    const o = await getOverview(admin(), NOV);
+    expect(o.reps.map((r) => r.repId)).toContain("sami");
+    expect(o.reps.find((r) => r.repId === "sami")).toMatchObject({ isSupervisor: true, name: "سامي" });
+    expect(o.reps.filter((r) => r.isSupervisor)).toHaveLength(1);
+    expect(o.onPace.total).toBe(5);
+    expect(o.team.find((t) => t.lineId === "bev")).toMatchObject({ target: 13000, achieved: 3230 });
+    // His target in another month does not list him in this one.
+    await db.update(s.targets).set({ month: 12 }).where(eq(s.targets.id, "t-sami-bev"));
+    expect((await getOverview(admin(), NOV)).reps.map((r) => r.repId)).not.toContain("sami");
+  });
+
+  it("never lists another company's supervisor, even with a target", async () => {
+    await db.insert(s.users).values({ id: "other-sup", companyId: "other-co", role: "supervisor", name: "Other Sup", login: "sup@other.test" });
+    await db.insert(s.targets).values({ id: "t-other-sup", companyId: "other-co", userId: "other-sup", year: 2026, month: 11, lineId: "other-line", amount: 10 });
+    expect((await getOverview(admin(), NOV)).reps.map((r) => r.repId)).not.toContain("other-sup");
+    await db.insert(s.users).values({ id: "other-admin", companyId: "other-co", role: "admin", name: "Other Admin", login: "admin@other.test" });
+    const other = await getOverview(ctxOf("other-admin", "admin", "other-co"), NOV);
+    expect(other.reps.map((r) => r.repId).sort()).toEqual(["other-rep", "other-sup"]);
   });
 
   it("shows coverage as a held figure that never ranks anyone", async () => {
@@ -209,7 +233,6 @@ describe("getOverview", () => {
   });
 });
 
-import { and, eq } from "drizzle-orm";
 function eqId(id: string) {
   return eq(s.users.id, id);
 }

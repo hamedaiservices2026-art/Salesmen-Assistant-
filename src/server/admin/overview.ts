@@ -1,4 +1,4 @@
-import { and, eq, inArray, lte, sql } from "drizzle-orm";
+import { and, eq, inArray, lte, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import * as s from "@/db/schema";
 import { dayCounts, type ISODate } from "@/domain/calendar";
@@ -23,8 +23,12 @@ import { repCtx } from "./rep-ctx";
 import { listIncentives } from "./incentives";
 import { listUploads } from "./uploads";
 
-/** Reps read at a time. Each rep costs one `getMonthView` (about nine queries), so a company's overview is O(reps) with at most this many in flight. */
-export const REP_CHUNK = 10;
+/**
+ * Reps read at a time. Each rep costs one `getMonthView` (about nine queries); a page render holds
+ * at most this many in flight so one overview cannot take more than a few connections of the
+ * database pool, which other requests share. A company's overview is O(reps) queries.
+ */
+export const REP_CHUNK = 4;
 
 export type OverviewIncentive = {
   componentId: string;
@@ -74,8 +78,8 @@ function inputOf(view: MonthView): SchemeInput {
 
 /**
  * The admin's team overview for one month. Every rep's figures come from `getMonthView` on his own
- * context (`repCtx`), so they equal what he sees. The population is the company's active reps;
- * supervisors are not rows (their name is shown beside the reps they supervise).
+ * context (`repCtx`), so they equal what he sees. The population is the company's active reps plus
+ * active supervisors who hold a target in the month (R21); other supervisors are not listed.
  */
 export async function getOverview(ctx: Ctx, opts: { year: number; month: number; today: ISODate }): Promise<Overview> {
   assertRole(ctx, ["admin"]);
@@ -86,10 +90,29 @@ export async function getOverview(ctx: Ctx, opts: { year: number; month: number;
     loadCalendar(ctx, year, month),
     loadLines(ctx),
     ctx.db
-      .select({ id: s.users.id, name: s.users.name, supervisorName: sup.name })
+      .select({ id: s.users.id, name: s.users.name, role: s.users.role, supervisorName: sup.name })
       .from(s.users)
       .leftJoin(sup, and(eq(sup.id, s.users.supervisorId), eq(sup.companyId, ctx.companyId)))
-      .where(and(eq(s.users.companyId, ctx.companyId), eq(s.users.role, "rep"), eq(s.users.active, true))),
+      .where(
+        and(
+          eq(s.users.companyId, ctx.companyId),
+          eq(s.users.active, true),
+          or(
+            eq(s.users.role, "rep"),
+            // A supervisor who holds a target in the month is a seller too (R21).
+            and(
+              eq(s.users.role, "supervisor"),
+              inArray(
+                s.users.id,
+                ctx.db
+                  .select({ id: s.targets.userId })
+                  .from(s.targets)
+                  .where(and(eq(s.targets.companyId, ctx.companyId), eq(s.targets.year, year), eq(s.targets.month, month))),
+              ),
+            ),
+          ),
+        ),
+      ),
     loadScheme(ctx, year, month),
   ]);
   const counts = dayCounts(cal.selling, today);
@@ -131,6 +154,7 @@ export async function getOverview(ctx: Ctx, opts: { year: number; month: number;
         repId: d.r.id,
         name: d.r.name,
         supervisorName: d.r.supervisorName,
+        isSupervisor: d.r.role === "supervisor",
         lines: standingLines(d.view),
         lastClose: lastClose.get(d.r.id) ?? null,
         closedToday: d.view.hasClosedToday,
@@ -155,11 +179,15 @@ export async function getOverview(ctx: Ctx, opts: { year: number; month: number;
             reps.map((r) => ({ name: r.name, input: inputs.get(r.repId)! })),
           )
         : null;
-    const unit: Unit =
-      (win?.lineId !== undefined ? lineRows.find((l) => l.lineId === win.lineId)?.unit : undefined) ??
-      (win?.focusItemId !== undefined ? focusUnit.get(win.focusItemId) : undefined) ??
-      "cases";
-    const closest = win ? { name: win.name, achieved: win.achieved, needed: win.needed, unit } : null;
+    let closest: OverviewIncentive["closest"] = null;
+    if (win) {
+      // The leaf's line or focus item came from these reps' own month views, so its unit is always known.
+      const unit =
+        (win.lineId !== undefined ? lineRows.find((l) => l.lineId === win.lineId)?.unit : undefined) ??
+        (win.focusItemId !== undefined ? focusUnit.get(win.focusItemId) : undefined);
+      if (unit === undefined) throw new Error(`no unit for the leaf of ${i.componentId}`);
+      closest = { name: win.name, achieved: win.achieved, needed: win.needed, unit };
+    }
     return { componentId: i.componentId, label: i.label, amount: i.amount, endsOn: i.endsOn, seen: i.seen, notified: i.notified, closest };
   });
 

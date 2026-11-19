@@ -23,6 +23,8 @@ export type RepStanding = {
   name: string;
   supervisorName: string | null;
   lines: RepLine[];
+  /** A supervisor who holds a target in the month (listed beside the reps, tagged). */
+  isSupervisor: boolean;
   /** Latest confirmed close on or before today; upload-created drafts do not count. */
   lastClose: ISODate | null;
   closedToday: boolean;
