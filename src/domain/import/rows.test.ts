@@ -212,6 +212,10 @@ describe("text normalisation (invisible marks and odd spaces)", () => {
     expect(out.errors).toEqual([{ row: 3, column: "amount", code: "missing" }]);
   });
 
+  it("also strips the Arabic letter mark, bidi isolates and the soft hyphen", () => {
+    expect(normalizeText("a\u061Cb\u2066c\u2067d\u2068e\u2069f\u00ADg")).toBe("abcdefg");
+  });
+
   it("a row of only invisible characters is blank", () => {
     expect(validateTargetRows([r(2, { login: "\u200B", amount: "\u00A0" })], lookup)).toEqual({ ops: [], errors: [] });
   });

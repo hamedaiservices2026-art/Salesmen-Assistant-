@@ -1,5 +1,5 @@
 /** Zero-width and bidirectional marks that spreadsheets and chat apps leave inside cells. */
-const INVISIBLE = /[\u200B-\u200F\u202A-\u202E\u2060\uFEFF]/g;
+const INVISIBLE = /[\u00AD\u061C\u200B-\u200F\u202A-\u202E\u2060\u2066-\u2069\uFEFF]/g;
 /** No-break and other Unicode spaces (and line and paragraph separators) become one plain space. */
 const ODD_SPACES = /[\u00A0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000]/g;
 

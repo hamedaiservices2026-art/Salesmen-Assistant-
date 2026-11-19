@@ -11,6 +11,8 @@ export type SafeZipResult =
 export const ZIP_LIMITS = {
   entries: 200,
   perEntryInflated: 8 * 1024 * 1024,
+  /** All worksheet parts together: exceljs materialises them, so this bounds its heap (about 300 MB at the cap). */
+  sheetsInflated: 8 * 1024 * 1024,
   totalInflated: 12 * 1024 * 1024,
 } as const;
 
@@ -28,10 +30,14 @@ const isKept = (name: string): boolean =>
   KEPT.has(name) || /^xl\/worksheets\/sheet[0-9]+\.xml$/.test(name) || SHEET_RELS.test(name);
 
 /** Elements of a sheet that point at parts we dropped (their relationship ids would dangle). */
-const DANGLING = /<(?:drawing|legacyDrawing|legacyDrawingHF|picture)\b[^>]*\/>/g;
+// Every character class excludes `<` as well as `>`: `[^>]*` can run across tags and goes quadratic
+// on input such as 8 MB of `<drawing` with no `>`. With `[^<>]*` each match attempt ends at the next tag.
+const DANGLING =
+  /<(?:drawing|legacyDrawing|legacyDrawingHF|picture)\b[^<>]*\/>|<tableParts\b[^<>]*\/>|<tableParts\b[^<>]*>(?:\s|<tablePart\b[^<>]*\/>)*<\/tableParts>/g;
+const UTF8 = new TextDecoder("utf-8", { fatal: true });
 const SHEET = /^xl\/worksheets\/sheet[0-9]+\.xml$/;
 function withoutDangling(sheet: Uint8Array): Uint8Array {
-  return new TextEncoder().encode(new TextDecoder("utf-8").decode(sheet).replace(DANGLING, ""));
+  return new TextEncoder().encode(UTF8.decode(sheet).replace(DANGLING, ""));
 }
 
 /**
@@ -39,8 +45,8 @@ function withoutDangling(sheet: Uint8Array): Uint8Array {
  * the parser needs their targets); drawings, comments and the like point at parts we dropped.
  */
 function onlyHyperlinks(rels: Uint8Array): Uint8Array {
-  const text = new TextDecoder("utf-8").decode(rels);
-  const kept = (text.match(/<Relationship\b[^>]*\/>/g) ?? []).filter((r) => /Type="[^"]*\/hyperlink"/.test(r));
+  const text = UTF8.decode(rels);
+  const kept = (text.match(/<Relationship\b[^<>]*\/>/g) ?? []).filter((r) => /Type="[^"]*\/hyperlink"/.test(r));
   const head = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
   const ns = '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">';
   return new TextEncoder().encode(`${head}${ns}${kept.join("")}</Relationships>`);
@@ -145,10 +151,12 @@ export function readSafeZip(bytes: Uint8Array): SafeZipResult {
 
   const files = new Map<string, Uint8Array>();
   let inflated = 0;
+  let sheets = 0;
   for (const e of entries) {
     if (e.name.endsWith("/") || !isKept(e.name)) continue;
     if (e.usize > ZIP_LIMITS.perEntryInflated) return BIG;
     inflated += e.usize;
+    if (SHEET.test(e.name) && (sheets += e.usize) > ZIP_LIMITS.sheetsInflated) return BIG;
     if (inflated > ZIP_LIMITS.totalInflated) return BIG;
     const raw = bytes.subarray(e.dataStart, e.dataStart + e.csize);
     let data: Uint8Array;
@@ -165,9 +173,13 @@ export function readSafeZip(bytes: Uint8Array): SafeZipResult {
     }
     if (data.length !== e.usize || crc32(data) !== e.crc) return NOT;
     // The rewrites run after the CRC check, on parts already capped at 8 MB.
-    files.set(e.name, SHEET_RELS.test(e.name) ? onlyHyperlinks(data) : SHEET.test(e.name) ? withoutDangling(data) : data);
+    try {
+      files.set(e.name, SHEET_RELS.test(e.name) ? onlyHyperlinks(data) : SHEET.test(e.name) ? withoutDangling(data) : data);
+    } catch {
+      return NOT; // not valid UTF-8
+    }
   }
   if (!files.has("xl/workbook.xml") || !files.has("[Content_Types].xml")) return NOT;
-  if (![...files.keys()].some((k) => k.startsWith("xl/worksheets/"))) return NOT;
+  if (![...files.keys()].some((k) => SHEET.test(k))) return NOT;
   return { ok: true, files };
 }

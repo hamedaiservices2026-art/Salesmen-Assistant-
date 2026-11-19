@@ -111,4 +111,57 @@ describe("hostile zips: the reader is the only parser of attacker bytes", () => 
     ];
     expect(await readSheet(ab(writeZip([...entries, ...extra])), "daily")).toMatchObject({ ok: true });
   });
+
+  it("a sheet of 8 MB of `<drawing` with no `>` is rewritten in linear time", async () => {
+    const entries = await honestEntries();
+    const evil = utf8("<drawing".repeat(1_048_000));
+    const hostile = entries.map((e) => (e.name === "xl/worksheets/sheet1.xml" ? { ...e, content: evil } : e));
+    const t0 = Date.now();
+    await readSheet(ab(writeZip(hostile)), "daily");
+    expect(Date.now() - t0).toBeLessThan(1000);
+  });
+
+  it("a rels part of 8 MB of `<Relationship` with no `>` is filtered in linear time", async () => {
+    const entries = await honestEntries();
+    const evil = utf8("<Relationship".repeat(640_000));
+    const t0 = Date.now();
+    await readSheet(ab(writeZip([...entries, { name: "xl/worksheets/_rels/sheet1.xml.rels", content: evil }])), "daily");
+    expect(Date.now() - t0).toBeLessThan(1000);
+  });
+
+  it("invalid UTF-8 in a sheet is not_xlsx, not silently replaced", async () => {
+    const entries = await honestEntries();
+    const bad = entries.map((e) =>
+      e.name === "xl/worksheets/sheet1.xml" ? { ...e, content: new Uint8Array([...e.content, 0xff, 0xfe]) } : e,
+    );
+    expect(await readSheet(ab(writeZip(bad)), "daily")).toEqual(NOT_XLSX);
+  });
+
+  it("a sheet rels part with no worksheet part is not_xlsx", async () => {
+    const entries = (await honestEntries()).filter((e) => !/^xl\/worksheets\/sheet[0-9]+\.xml$/.test(e.name));
+    const withRels = [...entries, { name: "xl/worksheets/_rels/sheet1.xml.rels", content: utf8("<Relationships/>") }];
+    expect(await readSheet(ab(writeZip(withRels)), "daily")).toEqual(NOT_XLSX);
+  });
+
+  it("the sheet XML of all worksheets together is capped at 8 MB", async () => {
+    const entries = await honestEntries();
+    const filler = new Uint8Array(5 * 1024 * 1024).fill(0x20);
+    const two = [...entries, { name: "xl/worksheets/sheet2.xml", content: filler }, { name: "xl/worksheets/sheet3.xml", content: filler }];
+    expect(await readSheet(ab(writeZip(two)), "daily")).toEqual({ ok: false, error: "too_large" });
+  });
+
+  it("a workbook with an Excel Table reads, rows intact", async () => {
+    const wb = new ExcelJS.Workbook();
+    const sh = wb.addWorksheet("data");
+    sh.addTable({
+      name: "T1",
+      ref: "A1",
+      columns: [{ name: "login" }, { name: "date" }, { name: "line" }, { name: "amount" }],
+      rows: [["ahmed", "2026-11-12", "bev", 5], ["khaled", "2026-11-11", "food", 7]],
+    });
+    const buf = Buffer.from(await wb.xlsx.writeBuffer());
+    const r = await readSheet(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer, "daily");
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.rows.map((x) => x.cells.login)).toEqual(["ahmed", "khaled"]);
+  });
 });
