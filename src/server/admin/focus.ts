@@ -174,14 +174,28 @@ export async function saveFocusItem(ctx: Ctx, input: FocusInput): Promise<SaveFo
       }
     }
 
-    // Reps: active reps of this company only. A missing id and another company's give the same answer.
+    // Reps: an assignment that already exists stays as it is, even when the rep has been turned off
+    // since the form loaded; only ids being added must be active reps of this company. A missing id
+    // and another company's give the same answer.
     const ids = repIds!;
-    if (ids.length > 0) {
+    const existing =
+      input.id === undefined
+        ? new Set<string>()
+        : new Set(
+            (
+              await tx
+                .select({ userId: s.focusAssignments.userId })
+                .from(s.focusAssignments)
+                .where(and(eq(s.focusAssignments.focusItemId, id), eq(s.focusAssignments.companyId, ctx.companyId)))
+            ).map((a) => a.userId),
+          );
+    const added = ids.filter((r) => !existing.has(r));
+    if (added.length > 0) {
       const found = await tx
         .select({ id: s.users.id })
         .from(s.users)
-        .where(and(eq(s.users.companyId, ctx.companyId), eq(s.users.role, "rep"), eq(s.users.active, true), inArray(s.users.id, ids)));
-      if (found.length !== ids.length) return { ok: false as const, errors: { repIds: "not_found" } };
+        .where(and(eq(s.users.companyId, ctx.companyId), eq(s.users.role, "rep"), eq(s.users.active, true), inArray(s.users.id, added)));
+      if (found.length !== added.length) return { ok: false as const, errors: { repIds: "not_found" } };
     }
 
     const values = {
@@ -202,9 +216,26 @@ export async function saveFocusItem(ctx: Ctx, input: FocusInput): Promise<SaveFo
         .set({ ...values, updatedAt: new Date() })
         .where(and(eq(s.focusItems.id, id), eq(s.focusItems.companyId, ctx.companyId)));
     }
-    await tx.delete(s.focusAssignments).where(and(eq(s.focusAssignments.focusItemId, id), eq(s.focusAssignments.companyId, ctx.companyId)));
-    if (ids.length > 0) {
-      await tx.insert(s.focusAssignments).values(ids.map((userId) => ({ id: randomUUID(), companyId: ctx.companyId, focusItemId: id, userId })));
+    // Unticked assignments go; new ones are added. An assignment to a rep who is turned off is never
+    // touched (the form does not offer him, so it cannot say whether he was meant to stay).
+    const keep = new Set(ids);
+    const unticked = [...existing].filter((r) => !keep.has(r));
+    const drop =
+      unticked.length === 0
+        ? []
+        : (
+            await tx
+              .select({ id: s.users.id })
+              .from(s.users)
+              .where(and(eq(s.users.companyId, ctx.companyId), eq(s.users.active, true), inArray(s.users.id, unticked)))
+          ).map((u) => u.id);
+    if (drop.length > 0) {
+      await tx
+        .delete(s.focusAssignments)
+        .where(and(eq(s.focusAssignments.focusItemId, id), eq(s.focusAssignments.companyId, ctx.companyId), inArray(s.focusAssignments.userId, drop)));
+    }
+    if (added.length > 0) {
+      await tx.insert(s.focusAssignments).values(added.map((userId) => ({ id: randomUUID(), companyId: ctx.companyId, focusItemId: id, userId })));
     }
     return { ok: true as const, id };
   });

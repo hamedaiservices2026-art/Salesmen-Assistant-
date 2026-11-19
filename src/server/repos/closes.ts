@@ -191,7 +191,10 @@ export async function saveClose(ctx: Ctx, form: CloseForm, opts?: { today?: ISOD
       amount,
     }));
     if (lines.length) await tx.insert(s.closeLines).values(lines);
-    const focus = Object.entries(form.focus).map(([focusItemId, amount]) => ({
+    // Inserted in focus id order: the foreign-key checks take row locks in the same order as a scheme publish.
+    const focus = Object.entries(form.focus)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([focusItemId, amount]) => ({
       id: randomUUID(),
       companyId,
       closeId,

@@ -170,6 +170,31 @@ describe("saveFocusItem", () => {
     expect(r).toEqual({ ok: false, errors: { startsOn: "in_scheme" } });
   });
 
+  it("refuses a unit change of an item with recorded sales (in_use) and writes nothing", async () => {
+    // The demo seed already records close_focus amounts for cola.
+    expect((await db.select().from(s.closeFocus).where(eq(s.closeFocus.focusItemId, "cola"))).length).toBeGreaterThan(0);
+    const before = await snapshot();
+    const r = await saveFocusItem(admin(), input({ id: "cola", name: "كولا", unit: "value", target: 400, startsOn: "2026-11-01", endsOn: "2026-11-30", repIds: ["ahmed"] }));
+    expect(r).toEqual({ ok: false, errors: { unit: "in_use" } });
+    expect(await snapshot()).toEqual(before);
+  });
+
+  it("keeps an assignment of a rep turned off since the form loaded, and still validates new ids", async () => {
+    const r = await saveFocusItem(admin(), input({ repIds: ["ahmed", "omar"] }));
+    if (!r.ok) throw new Error("x");
+    await db.update(s.users).set({ active: false }).where(eq(s.users.id, "omar"));
+    // The stale form still sends omar: preserved. A form that no longer offers him omits him: still preserved.
+    expect((await saveFocusItem(admin(), input({ id: r.id, repIds: ["ahmed", "omar"], target: 301 }))).ok).toBe(true);
+    expect((await saveFocusItem(admin(), input({ id: r.id, repIds: ["ahmed"] }))).ok).toBe(true);
+    const rows = (await db.select().from(s.focusAssignments).where(eq(s.focusAssignments.focusItemId, r.id))).map((x) => x.userId).sort();
+    expect(rows).toEqual(["ahmed", "omar"]);
+    // Adding an inactive or other-company rep is refused with the same answer.
+    const a = await saveFocusItem(admin(), input({ id: r.id, repIds: ["ahmed", "yousef", "other-rep"] }));
+    expect(a).toEqual({ ok: false, errors: { repIds: "not_found" } });
+    await db.update(s.users).set({ active: false }).where(eq(s.users.id, "yousef"));
+    expect(await saveFocusItem(admin(), input({ id: r.id, repIds: ["ahmed", "yousef"] }))).toEqual(a);
+  });
+
   it("refuses non-admin callers", async () => {
     await expect(saveFocusItem(rep("ahmed"), input())).rejects.toBeInstanceOf(Forbidden);
     await expect(listFocusItems(rep("ahmed"), NOV)).rejects.toBeInstanceOf(Forbidden);
