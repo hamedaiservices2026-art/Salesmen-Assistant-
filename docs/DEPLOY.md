@@ -43,17 +43,40 @@ Production never loads the demo: it has accounts whose passwords would be public
 
 4. **The admin completes and publishes the scheme.** In `/admin/schemes` he adds the 90% to 99% and 110% tiers, any extra incentive at 100%, and the month's variable component (coverage or a volume item), checks the preview against a rep, and publishes.
 
-5. **The admin creates the rep and sends him the link.** In `/admin/users` he adds the rep, copies the invite link shown once and sends it. The rep opens it on his iPhone and chooses a 6-digit PIN. Targets for the month are set in `/admin/targets` (a form, or an Excel upload when plan 2 reaches it).
+5. **The admin creates the rep and sends him the link.** In `/admin/users` he adds the rep (and a supervisor, if the company has one), copies the invite link shown once and sends it. The rep opens it on his iPhone and chooses a 6-digit PIN. Targets for the month are set in `/admin/targets` (a form) or by Excel upload, below.
 
-`pnpm e2e:admin` runs this whole path on a temporary local database in a browser, with synthetic test amounts.
+6. **Coverage.** If the company measures coverage, the admin adds a line of kind `coverage` in `/admin/lines`. A coverage line has no cell in the targets grid: the rep, his supervisor (`/app/team`) or the admin (`/admin/coverage`) records customers covered out of customers in the territory.
 
-## 4. What to expect on the phone
+`pnpm e2e:admin` runs this path on a temporary local database in a browser, with synthetic test amounts.
+
+## 4. Upload the first Excel file
+
+`/admin/uploads` has two cards, one per kind. Each has a **template** button: the downloaded `.xlsx` holds the header row on its first sheet and, on a second sheet, the company's active line codes with their names and units (coverage lines are not listed and are refused in a file; they have their own page).
+
+| Kind | Columns | Use |
+| --- | --- | --- |
+| Monthly targets | `login, year, month, line, amount` | A new target replaces the old one and every change is logged in the targets history. |
+| Daily sales and collection | `login, date, line, amount` | The day's figures per rep and line. |
+
+- **Accepted files:** `.xlsx` only, up to 2 MB and 5,000 rows. A renamed non-Excel file, an empty file, a file with missing or duplicated column names or Excel tables it cannot read are refused with a message.
+- **Dates:** text `YYYY-MM-DD` or a date-formatted cell. Digits may be Western or Arabic-Indic. Future dates and non-selling days are refused. Amounts are in whole units of the line (cases) or in currency (value).
+- **All or nothing:** if any row has a problem, nothing is applied. The page shows a row-by-row report (row number, column, reason, up to 100 rows plus a count of the rest); fix the file and upload it again. A fully valid file applies every row at once.
+- **History:** the page lists the last 20 uploads with their row counts and outcome, applied or not.
+- **Precedence for daily files:** the admin's figure wins over the rep's for the same day and line, and the rep sees both on his close form ("the admin recorded X" and what he typed himself). The admin's figure is the one stored for that day and line.
+- **Draft closes:** an upload for a day on which the rep has no close creates a **draft** close. The day stays open for the rep (it still prompts him and shows as a gap), and his cash and stock fields start blank so he has to enter them and confirm. An upload for a day he has already closed adds the admin's figure to that close.
+
+## 5. What to expect on the phone
 
 - It is a website, not yet an installable app: open it in Safari. Home Screen install, push notifications, and offline use arrive in plan 4.
 - Arabic is the default; Settings switches to English or Urdu.
+- A mid-month incentive created in `/admin/incentives` reaches each rep as an in-app notification (the bell on his home screen shows the unread count).
 - Review the free-tier terms of the database and hosting services before entering real customer data.
 
-## 5. Known limits of this deployment
+## 6. Free tier and known limits
 
-- A forgotten PIN or password needs a new invite from the admin (`New link` in `/admin/users`), or `pnpm admin:create-owner` again for the owner.
+Nothing in the admin console is withheld for the free tier; every admin screen described above works on it. Known limits of this deployment:
+
+- **One upload at a time per server instance.** The upload lock is in memory, per admin and per instance. A second upload from the same admin while one runs is told to wait; two instances (as on a serverless host) do not coordinate, but a file is still applied all-or-nothing inside the database.
+- **Upload memory.** Reading a 2 MB `.xlsx` can use up to about 300 MB of memory. Keep the Vercel function memory at the plan's default or higher; a file that stays within the 2 MB and 5,000-row limits is the supported case.
+- **A forgotten PIN or password needs a new link from the admin** (`New link` in `/admin/users`); for the owner, run `pnpm admin:create-owner` again. The old PIN or password keeps working until the new link is opened.
 - Migrations use the connection in `DATABASE_URL`; behind a transaction pooler they can hang. A separate migration URL is planned.

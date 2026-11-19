@@ -1,6 +1,6 @@
 # Salesman Assistant
 
-A personal assistant for field sales reps. Every day it tells the rep where he stands against his monthly targets, what is left, what to focus on, and what he will earn. It is mobile-first and Arabic-first (with English and Urdu), and the commission figure is calculated transparently so every amount can be traced. Data arrives with almost no effort from the rep; in this first version he types his day close.
+A personal assistant for field sales reps. Every day it tells the rep where he stands against his monthly targets, what is left, what to focus on, and what he will earn. It is mobile-first and Arabic-first (with English and Urdu), and the commission figure is calculated transparently so every amount can be traced. The rep types his day close; the company's admin can also upload the day's figures from Excel.
 
 ## Requirements
 
@@ -16,7 +16,18 @@ pnpm db:seed
 pnpm dev
 ```
 
-`pnpm db:seed` prints two invite paths (`/invite/<token>`). Open Ahmed's invite on `http://localhost:3000`, choose a 6-digit PIN, and you are signed in. Later sign-ins use the login `ahmed` and that PIN. The seed is fixed to November 2026, so for a demo set `APP_TODAY=2026-11-14` before `pnpm dev`.
+`pnpm db:seed` prints three invite paths (`/invite/<token>`: Ahmed, the other company's rep, and the supervisor Sami). Open Ahmed's invite on `http://localhost:3000`, choose a 6-digit PIN, and you are signed in. Later sign-ins use the login `ahmed` and that PIN. The seed is fixed to November 2026, so for a demo set `APP_TODAY=2026-11-14` before `pnpm dev`.
+
+### Demo accounts (LOCAL-ONLY sample data)
+
+The local seed also creates two admin-console accounts whose passwords are written in `src/db/seed.ts`. They are synthetic sample data for a local database and must never be used anywhere reachable from the internet.
+
+| Account | Sign in at | Email | Password |
+| --- | --- | --- | --- |
+| Platform owner | `/admin/signin` | `owner@platform.test` | `demo-owner-2026` |
+| Demo company admin | `/admin/signin` | `admin@demo.test` | `demo-admin-2026` |
+
+The demo seed refuses a database that has `DATABASE_URL` set unless `ALLOW_DEMO_SEED=1`. With that override on a deployed database the demo owner and admin are created without a password; the seed prints their `/admin/invite/<token>` links instead, so no credential written in this repository opens them.
 
 ## Tests and checks
 
@@ -26,10 +37,23 @@ pnpm typecheck
 pnpm lint
 pnpm build
 pnpm e2e         # builds, seeds a temporary database, and drives the whole rep flow in a browser
-pnpm e2e:admin   # the owner's path: company, admin, rep, lines, targets, published scheme, the rep's commission screen
+pnpm e2e:admin   # the owner's path (company, admin, rep, lines, targets, published scheme, commission screen) and the demo company's admin path (overview order, coverage line, Excel upload, supervisor coverage, incentive and notification, isolation and role checks)
 ```
 
 `pnpm e2e` and `pnpm e2e:admin` need Playwright installed globally; it is not a project dependency. It uses a temporary database directory (through `PGLITE_DIR`) that it removes at the end, so your `.data` is left alone, and it starts its own server on a free port.
+
+## Scripts
+
+| Script | What it does |
+| --- | --- |
+| `pnpm db:seed` | Loads the demo data (local database, or a deployed one only with `ALLOW_DEMO_SEED=1`). |
+| `pnpm admin:create-owner <email> <name>` | Creates the platform owner and prints his `/admin/invite/<token>` link (valid 7 days). Run again for a new link. |
+| `pnpm db:pilot <company id or exact name>` | Adds the six pilot lines and a draft November 2026 scheme to an existing company. Safe to run twice. |
+| `pnpm e2e`, `pnpm e2e:admin` | Browser end-to-end runs on a temporary database (see above). |
+| `node scripts/admin-screenshot.mjs <path> <out.png> [--locale ar\|en\|ur] [--as owner\|admin] [--create-company]` | Signs in to the admin console with the demo credentials of a local seed and saves a 1440x1000 screenshot of `<path>`. `BASE_URL` defaults to `http://localhost:3000`. |
+| `node scripts/screenshot.mjs <path> <out.png> [--locale ar\|en\|ur]` | The same for a rep screen, signed in as the demo rep `ahmed`. |
+
+Upload templates: `/admin/uploads` offers a downloadable `.xlsx` template for each kind (`/admin/uploads/template/targets` and `/admin/uploads/template/daily`, admin only). The file's first sheet takes the columns `login, year, month, line, amount` (monthly targets) or `login, date, line, amount` (daily sales and collection); the second sheet lists the company's line codes.
 
 ## Environment variables
 
@@ -64,9 +88,18 @@ All seeded names, targets and figures are synthetic. They are not real customers
 
 Built (plan 1, rep core): invite and PIN sign-in, month-calendar home with standing on each target line, typed day close with reconciliation, traceable commission with a what-if, history, and Arabic, English and Urdu.
 
+Built (plan 2, admin): an admin console under `/admin` with its own email and password sign-in.
+
+- The platform owner creates companies and each company's first admin.
+- The admin manages users (reps, supervisors, other admins), company settings, target lines (sales, collection and coverage; units cases, value or outlets), monthly targets (a form or an Excel upload), coverage, focus items, policy documents, the monthly commission scheme (a structured editor with a live preview, versions and publish) and mid-month incentives that notify the reps.
+- The admin uploads daily sales and collection figures from Excel. Rows are all-or-nothing and reported row by row. The admin's amount wins over the rep's for the same day and line, and the rep sees the difference; a close created by an upload stays a draft until the rep confirms it.
+- The team overview ranks reps by distance from pace, computed by the same engine as the rep screens.
+- A supervisor sees `/app/team` and records coverage (customers covered out of customers in the territory) for his reps; reps update their own coverage at `/app/coverage`.
+- Reps get an in-app notifications page and a bell with the unread count.
+
 Pilot setup on a real database (no demo data): `pnpm admin:create-owner`, then `pnpm db:pilot <company>` for the six pilot lines and a draft November scheme; see [docs/DEPLOY.md](docs/DEPLOY.md).
 
-Next: admin dashboard and Excel upload; photo and voice day close, assistant and policy documents; notifications, install guide, offline and supervisor view.
+Next: photo and voice day close, an assistant that reads the policy documents; push notifications, install guide, offline use and a mobile supervisor view.
 
 - Design: `docs/superpowers/specs/2026-11-14-salesman-assistant-design.md`
 - Plans: `docs/superpowers/plans/`

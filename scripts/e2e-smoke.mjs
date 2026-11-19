@@ -20,6 +20,7 @@ const PIN = "482915";
 const checks = [];
 let server;
 let serverExited = false;
+let serverError;
 let browser;
 let dataRoot;
 
@@ -63,6 +64,7 @@ function freePort() {
 
 async function waitForServer(base) {
   for (let i = 0; i < 120; i++) {
+    if (serverError) fail(`server could not start: ${serverError.message}`);
     if (serverExited) fail("server exited before it was ready");
     try {
       const res = await fetch(`${base}/signin`);
@@ -96,6 +98,11 @@ async function main() {
   server = spawn("node_modules/.bin/next", ["start", "-p", String(port), "-H", "127.0.0.1"], {
     stdio: ["ignore", "inherit", "inherit"],
     env: { ...process.env, ...env, NODE_ENV: "production" },
+  });
+  server.once("error", (e) => {
+    // A failed spawn never emits "exit": mark the server gone so cleanup does not wait for it.
+    serverError = e;
+    serverExited = true;
   });
   server.once("exit", () => {
     serverExited = true;
@@ -236,10 +243,14 @@ async function cleanup() {
   dataRoot = undefined;
 }
 
-for (const sig of ["SIGINT", "SIGTERM"]) {
-  process.once(sig, () => {
+// A signal stops the run with the conventional 128 + signal number (SIGINT 130, SIGTERM 143).
+let stopping = false;
+for (const [sig, code] of [["SIGINT", 130], ["SIGTERM", 143]]) {
+  process.on(sig, () => {
+    if (stopping) return; // a second signal while cleaning up must not start a second cleanup
+    stopping = true;
     console.error(`\n${sig}: cleaning up`);
-    cleanup().finally(() => process.exit(130));
+    cleanup().finally(() => process.exit(code));
   });
 }
 
