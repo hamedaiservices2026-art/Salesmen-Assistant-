@@ -934,6 +934,69 @@
         "aside": "Last {count}"
       },
       "columnsLabel": "Columns"
+    },
+    "policies": {
+      "title": "Company policies",
+      "subtitle": "Policy texts the assistant will read to answer reps. Plain text only: paste it or load a .txt or .md file.",
+      "newPolicy": "New policy",
+      "newTitle": "New policy",
+      "editTitle": "Edit policy",
+      "saved": "Saved.",
+      "reload": "Reload the latest version",
+      "fields": {
+        "title": "Title",
+        "locale": "Language of the text",
+        "body": "Policy text"
+      },
+      "file": {
+        "label": "Load a file (optional)",
+        "hint": ".txt or .md, UTF-8, up to 1 MB. The text is placed in the box below; nothing is saved until you press Save.",
+        "errors": {
+          "unsupported_type": "Only .txt and .md files can be loaded",
+          "too_big": "The file is larger than 1 MB",
+          "bad_encoding": "The file is not UTF-8 text. Save it as UTF-8 and try again",
+          "read_failed": "The file could not be read"
+        }
+      },
+      "counter": "{count} of {max} characters",
+      "sections": {
+        "title": "Sections found: {count}",
+        "empty": "No sections yet. A line starting with # or a number such as 1) or 2.1. starts a new section.",
+        "preamble": "Before the first heading",
+        "chars": "{count} characters",
+        "more": "and {count} more sections"
+      },
+      "save": "Save changes",
+      "saveNew": "Save policy",
+      "saving": "Saving",
+      "cancel": "Cancel",
+      "errors": {
+        "required": "This field is required",
+        "too_long": "Too long",
+        "invalid": "Choose one of the listed languages",
+        "stale": "Someone else saved this policy while you were editing. Your changes were not saved.",
+        "not_found": "This policy no longer exists"
+      },
+      "list": {
+        "title": "Saved policies",
+        "aside": "{count} saved",
+        "empty": "No policies yet. Add the first one above."
+      },
+      "cols": {
+        "title": "Title",
+        "locale": "Language",
+        "sections": "Sections",
+        "updated": "Updated",
+        "actions": "Actions"
+      },
+      "edit": "Edit",
+      "delete": "Delete",
+      "confirm": {
+        "title": "Delete this policy?",
+        "body": "This cannot be undone:",
+        "cancel": "Keep it",
+        "confirm": "Delete"
+      }
     }
   },
   "coverage": {

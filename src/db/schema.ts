@@ -384,3 +384,23 @@ export const uploads = pgTable(
   },
   (t) => [index("uploads_company_created").on(t.companyId, t.createdAt)],
 );
+
+/** A company policy text kept for the assistant (plan 3). Plain text only; `sections` is derived from `body`. */
+export const policyDocuments = pgTable(
+  "policy_documents",
+  {
+    id: id(),
+    companyId: companyId(),
+    title: text("title").notNull(),
+    locale: text("locale", { enum: ["ar", "en", "ur"] }).notNull(),
+    body: text("body").notNull(),
+    sections: jsonb("sections").$type<{ label: string; text: string }[]>().notNull().default(sql`'[]'::jsonb`),
+    /** Version token: a save names the version it read and is refused as stale if another save got there first. */
+    version: integer("version").notNull().default(0),
+    uploadedBy: text("uploaded_by")
+      .notNull()
+      .references(() => users.id),
+    ...stamps(),
+  },
+  (t) => [index("policy_documents_company_updated").on(t.companyId, t.updatedAt)],
+);
