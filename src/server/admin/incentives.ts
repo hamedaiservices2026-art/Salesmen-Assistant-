@@ -160,7 +160,7 @@ export async function createIncentive(ctx: Ctx, input: IncentiveInput): Promise<
     if (!row || !row.published) return { ok: false as const, error: "no_published_scheme" as const };
     if (row.version !== expected) return { ok: false as const, error: "stale" as const };
 
-    const componentId = newComponentId(new Set(row.components.map((c) => c.id)));
+    const componentId = newComponentId(new Set([...row.components, ...(row.draft ?? [])].map((c) => c.id)));
     const bonus: Component = {
       id: componentId,
       type: "bonus",
