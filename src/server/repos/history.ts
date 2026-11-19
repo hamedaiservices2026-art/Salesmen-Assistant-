@@ -25,6 +25,8 @@ export type HistoryMonth = {
 export type HistoryDay = {
   date: ISODate;
   lines: Record<string, number>;
+  /** Lines an admin's Excel upload set, with what the rep typed himself (null when nothing). */
+  admin: Record<string, { amount: number; repAmount: number | null }>;
   cashToHandOver: number;
 };
 
@@ -117,6 +119,8 @@ export async function getHistoryDays(
       closeId: s.closeLines.closeId,
       lineId: s.closeLines.lineId,
       amount: s.closeLines.amount,
+      source: s.closeLines.source,
+      repAmount: s.closeLines.repAmount,
     })
     .from(s.closeLines)
     .innerJoin(s.dailyCloses, eq(s.closeLines.closeId, s.dailyCloses.id))
@@ -130,15 +134,22 @@ export async function getHistoryDays(
       ),
     );
   const byClose = new Map<string, Record<string, number>>();
+  const adminByClose = new Map<string, HistoryDay["admin"]>();
   for (const r of lineRows) {
     const rec = byClose.get(r.closeId) ?? {};
     rec[r.lineId] = r.amount;
     byClose.set(r.closeId, rec);
+    if (r.source === "excel") {
+      const admin = adminByClose.get(r.closeId) ?? {};
+      admin[r.lineId] = { amount: r.amount, repAmount: r.repAmount };
+      adminByClose.set(r.closeId, admin);
+    }
   }
 
   return closes.map((c) => ({
     date: c.date,
     lines: byClose.get(c.id) ?? {},
+    admin: adminByClose.get(c.id) ?? {},
     cashToHandOver: reconcile(c).cashToHandOver,
   }));
 }

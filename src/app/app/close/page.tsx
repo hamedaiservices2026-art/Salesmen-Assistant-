@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
-import { inputValue, type Unit } from "@/domain/money";
+import { formatAmount, inputValue, type Unit } from "@/domain/money";
 import { requireCtx } from "@/server/auth/guard";
 import { getCompanyPrefs } from "@/server/repos/company";
 import { focusName } from "@/domain/focus";
@@ -90,12 +90,22 @@ export default async function ClosePage({ searchParams }: { searchParams: Promis
   const lineName = (l: { nameAr: string; nameEn: string; nameUr: string }) => localLineName(l, locale as Locale);
 
   const dailyLines = view.lines.filter(isDailyLine);
+  // A line an admin's upload set: what the admin recorded and, when it differs, what the rep typed.
+  const adminNotes = (lineId: string, unit: Unit): string[] | undefined => {
+    const a = saved?.admin[lineId];
+    if (!a) return undefined;
+    const text = (n: number) => `${formatAmount(n, unit)} ${label(unit)}`;
+    const notes = [t("adminNote", { amount: text(a.amount) })];
+    if (a.repAmount !== null && a.repAmount !== a.amount) notes.push(t("repNote", { amount: text(a.repAmount) }));
+    return notes;
+  };
   const lineItems: FormItem[] = dailyLines.map((l) => ({
     name: `line.${l.lineId}`,
     label: lineName(l),
     unitLabel: label(l.unit),
     mode: l.unit === "cases" ? "numeric" : "decimal",
     collection: l.kind === "collection",
+    notes: adminNotes(l.lineId, l.unit),
   }));
   const focusItems: FormItem[] = focusOn(view.focus, date).map((f) => ({
     name: `focus.${f.id}`,
@@ -107,7 +117,7 @@ export default async function ClosePage({ searchParams }: { searchParams: Promis
   const initial: Record<string, string> = {};
   if (saved) {
     for (const l of dailyLines) {
-      const n = saved.lines[l.lineId];
+      const n = saved.admin[l.lineId]?.repAmount ?? saved.lines[l.lineId];
       if (n !== undefined) initial[`line.${l.lineId}`] = inputValue(n, l.unit);
     }
     for (const f of focusOn(view.focus, date)) {

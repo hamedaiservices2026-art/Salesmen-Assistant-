@@ -195,7 +195,7 @@ describe("saveClose", () => {
       },
     );
     expect(await saveClose(ahmed(), full, { today: TODAY })).toEqual({ ok: true });
-    expect(await getClose(ahmed(), TODAY)).toEqual(full);
+    expect(await getClose(ahmed(), TODAY)).toEqual({ ...full, admin: {} });
     const view = await getMonthView(ahmed(), NOV);
     expect(view.focus.find((f) => f.id === "mango")!.achieved).toBe(135);
   });
@@ -288,6 +288,7 @@ describe("history", () => {
     expect(days[0]).toEqual({
       date: "2026-11-12",
       lines: { bev: 106, food: 790_000, coll: 1_900_000 },
+      admin: {},
       cashToHandOver: 474_000 + 1_900_000,
     });
     const other = await getHistoryDays(await otherRep(), 2026, 11);

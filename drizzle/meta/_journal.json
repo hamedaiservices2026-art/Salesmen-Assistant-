@@ -71,6 +71,13 @@
       "when": 1795102255774,
       "tag": "0009_notifications_unread",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1795105894554,
+      "tag": "0010_uploads",
+      "breakpoints": true
     }
   ]
 }

@@ -16,6 +16,8 @@ export type FormItem = {
   unitLabel: string;
   mode: "decimal" | "numeric";
   collection?: boolean;
+  /** What the admin's upload recorded for this line, shown under the field. */
+  notes?: string[];
 };
 
 const card = "rounded-[14px] border border-line bg-white px-4 py-1";
@@ -67,6 +69,7 @@ export function CloseForm({
       value={values[it.name] ?? ""}
       onChange={(v) => setValues((s) => ({ ...s, [it.name]: v }))}
       error={err(it.name)}
+      notes={it.notes}
     />
   );
   const money = (name: string): FormItem => ({ name, label: t(name), unitLabel: currencyLabel, mode: "decimal" });

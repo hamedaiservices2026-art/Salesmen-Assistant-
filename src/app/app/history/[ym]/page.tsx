@@ -50,9 +50,14 @@ export default async function HistoryMonthPage({
     numberingSystem: "latn",
     timeZone: "UTC",
   });
-  const label = (u: Unit) => labelFor((k) => tRoot(k as never), u, prefs.currency);
+  const label = (u: Unit) =>
+    labelFor((k) => tRoot(k as never), u, prefs.currency);
   const currency = label("value");
-  const unitLabel = { cases: label("cases"), value: currency, outlets: label("outlets") };
+  const unitLabel = {
+    cases: label("cases"),
+    value: currency,
+    outlets: label("outlets"),
+  };
 
   return (
     <>
@@ -134,24 +139,40 @@ export default async function HistoryMonthPage({
                         })),
                     ]
                       .filter((l) => d.lines[l.lineId] !== undefined)
-                      .map((l) => (
-                        <div
-                          key={l.lineId}
-                          className="flex items-baseline justify-between gap-3"
-                        >
-                          <dt className="text-[14px] text-ink-2">
-                            {lineName(l, locale as Locale)}
-                          </dt>
-                          <dd className="m-0 text-[15px] font-bold tabular-nums">
-                            <bdi dir="ltr">
-                              {formatAmount(d.lines[l.lineId]!, l.unit)}
-                            </bdi>{" "}
-                            <span className="text-[13px] font-medium text-ink-2">
-                              {unitLabel[l.unit]}
-                            </span>
-                          </dd>
-                        </div>
-                      ))}
+                      .map((l) => {
+                        const a = d.admin[l.lineId];
+                        const text = (n: number) =>
+                          `${formatAmount(n, l.unit)} ${unitLabel[l.unit]}`;
+                        return (
+                          <div
+                            key={l.lineId}
+                            className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5"
+                          >
+                            <dt className="text-[14px] text-ink-2">
+                              {lineName(l, locale as Locale)}
+                            </dt>
+                            <dd className="m-0 text-[15px] font-bold tabular-nums">
+                              <bdi dir="ltr">
+                                {formatAmount(d.lines[l.lineId]!, l.unit)}
+                              </bdi>{" "}
+                              <span className="text-[13px] font-medium text-ink-2">
+                                {unitLabel[l.unit]}
+                              </span>
+                            </dd>
+                            {a && (
+                              <dd
+                                dir="auto"
+                                className="m-0 basis-full text-[13px] text-ink-2"
+                              >
+                                {t("adminNote", { amount: text(a.amount) })}
+                                {a.repAmount !== null &&
+                                  a.repAmount !== a.amount &&
+                                  ` · ${t("repNote", { amount: text(a.repAmount) })}`}
+                              </dd>
+                            )}
+                          </div>
+                        );
+                      })}
                   </dl>
                   <div className="flex items-baseline justify-between gap-3 border-t border-line-soft pt-2.5">
                     <span className="text-[14px] font-medium text-ink-2">

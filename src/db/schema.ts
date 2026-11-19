@@ -14,6 +14,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import type { Component } from "@/domain/commission";
+import type { RowError } from "@/domain/import/rows";
 
 const id = () => text("id").primaryKey();
 const amount = (name: string) => bigint(name, { mode: "number" });
@@ -195,6 +196,12 @@ export const closeLines = pgTable(
       .notNull()
       .references(() => targetLines.id),
     amount: amount("amount").notNull(),
+    /** Who set `amount`: the rep, or an admin's Excel upload (which wins over the rep's value). */
+    source: text("source", { enum: ["rep", "excel"] })
+      .notNull()
+      .default("rep"),
+    /** For an excel line: what the rep typed himself (null when he has not). */
+    repAmount: amount("rep_amount"),
     ...stamps(),
   },
   (t) => [uniqueIndex("close_lines_close_line").on(t.closeId, t.lineId)],
@@ -355,4 +362,25 @@ export const notifications = pgTable(
   (t) => [index("notifications_user_created").on(t.userId, t.createdAt), index("notifications_company_ref").on(t.companyId, t.ref),
     index("notifications_unread").on(t.userId).where(sql`${t.readAt} is null`),
   ],
+);
+
+/** One admin upload attempt and its outcome; written even when nothing was applied. */
+export const uploads = pgTable(
+  "uploads",
+  {
+    id: id(),
+    companyId: companyId(),
+    kind: text("kind", { enum: ["targets", "daily"] }).notNull(),
+    filename: text("filename").notNull(),
+    rowCount: integer("row_count").notNull().default(0),
+    /** The full count; `errors` keeps at most the first 200. */
+    errorCount: integer("error_count").notNull().default(0),
+    applied: boolean("applied").notNull().default(false),
+    errors: jsonb("errors").$type<RowError[]>().notNull().default(sql`'[]'::jsonb`),
+    uploadedBy: text("uploaded_by")
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("uploads_company_created").on(t.companyId, t.createdAt)],
 );

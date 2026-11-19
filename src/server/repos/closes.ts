@@ -26,13 +26,17 @@ export type CloseForm = {
   note: string;
 };
 
+/** What the rep sees for a line an admin's Excel upload set: the admin's amount and, when he typed his own, his. */
+export type AdminLine = { amount: number; repAmount: number | null };
+export type SavedClose = CloseForm & { admin: Record<string, AdminLine> };
+
 export type SaveCloseResult = { ok: true } | { ok: false; errors: Record<string, string> };
 
 const NUMBER_FIELDS = ["cashSales", "creditSales", "collections", "expenses", "loaded", "sold", "returned"] as const;
 const REASONS: readonly string[] = ["expired", "damaged", "other"];
 
 /** The rep's close for a date, or null. */
-export async function getClose(ctx: Ctx, date: ISODate): Promise<CloseForm | null> {
+export async function getClose(ctx: Ctx, date: ISODate): Promise<SavedClose | null> {
   const [close] = await ctx.db
     .select()
     .from(s.dailyCloses)
@@ -60,6 +64,9 @@ export async function getClose(ctx: Ctx, date: ISODate): Promise<CloseForm | nul
     returned: close.returned,
     returns: returns.map((r) => ({ description: r.description, quantity: r.quantity, reason: r.reason })),
     note: close.note ?? "",
+    admin: Object.fromEntries(
+      lines.filter((l) => l.source === "excel").map((l) => [l.lineId, { amount: l.amount, repAmount: l.repAmount }]),
+    ),
   };
 }
 
@@ -160,14 +167,29 @@ export async function saveClose(ctx: Ctx, form: CloseForm, opts?: { today?: ISOD
     const closeId = close.id;
 
     // Only the rows being submitted are replaced: amounts of since-deactivated lines or
-    // no-longer-offered focus items on an older day stay as they were.
+    // no-longer-offered focus items on an older day stay as they were. A line an admin's upload set
+    // (`source 'excel'`) keeps its amount; what the rep typed goes to `rep_amount`. The close row is
+    // locked by the upsert above, so an upload applying at the same moment waits and then sees this.
     const lineIds = Object.keys(form.lines);
+    const excel = new Map<string, number>();
     if (lineIds.length) {
-      await tx
-        .delete(s.closeLines)
-        .where(
-          and(eq(s.closeLines.closeId, closeId), eq(s.closeLines.companyId, companyId), inArray(s.closeLines.lineId, lineIds)),
-        );
+      const stored = await tx
+        .select({ lineId: s.closeLines.lineId, amount: s.closeLines.amount, source: s.closeLines.source })
+        .from(s.closeLines)
+        .where(and(eq(s.closeLines.closeId, closeId), eq(s.closeLines.companyId, companyId), inArray(s.closeLines.lineId, lineIds)));
+      for (const r of stored) if (r.source === "excel") excel.set(r.lineId, r.amount);
+      const repIds = lineIds.filter((id) => !excel.has(id));
+      if (repIds.length) {
+        await tx
+          .delete(s.closeLines)
+          .where(and(eq(s.closeLines.closeId, closeId), eq(s.closeLines.companyId, companyId), inArray(s.closeLines.lineId, repIds)));
+      }
+      for (const lineId of excel.keys()) {
+        await tx
+          .update(s.closeLines)
+          .set({ repAmount: form.lines[lineId]!, updatedAt: new Date() })
+          .where(and(eq(s.closeLines.closeId, closeId), eq(s.closeLines.companyId, companyId), eq(s.closeLines.lineId, lineId)));
+      }
     }
     const focusIds = Object.keys(form.focus);
     if (focusIds.length) {
@@ -183,7 +205,9 @@ export async function saveClose(ctx: Ctx, form: CloseForm, opts?: { today?: ISOD
     }
     await tx.delete(s.returns).where(and(eq(s.returns.closeId, closeId), eq(s.returns.companyId, companyId)));
 
-    const lines = Object.entries(form.lines).map(([lineId, amount]) => ({
+    const lines = Object.entries(form.lines)
+      .filter(([lineId]) => !excel.has(lineId))
+      .map(([lineId, amount]) => ({
       id: randomUUID(),
       companyId,
       closeId,
@@ -191,6 +215,7 @@ export async function saveClose(ctx: Ctx, form: CloseForm, opts?: { today?: ISOD
       amount,
     }));
     if (lines.length) await tx.insert(s.closeLines).values(lines);
+    if (excel.size > 0) await syncCollections(tx as unknown as Db, companyId, closeId, form.lines, excel);
     // Inserted in focus id order: the foreign-key checks take row locks in the same order as a scheme publish.
     const focus = Object.entries(form.focus)
       .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
@@ -210,4 +235,28 @@ export async function saveClose(ctx: Ctx, form: CloseForm, opts?: { today?: ISOD
     }
     return { ok: true };
   });
+}
+
+/**
+ * The form derives `collections` from the typed collection lines, but an excel collection line keeps
+ * the admin's amount, so the stored figure is recomputed from the amounts that really are stored.
+ */
+async function syncCollections(
+  db: Db,
+  companyId: string,
+  closeId: string,
+  typed: Record<string, number>,
+  excel: Map<string, number>,
+): Promise<void> {
+  const collection = await db
+    .select({ id: s.targetLines.id })
+    .from(s.targetLines)
+    .where(and(eq(s.targetLines.companyId, companyId), eq(s.targetLines.active, true), eq(s.targetLines.kind, "collection")));
+  const ids = collection.map((l) => l.id);
+  if (![...excel.keys()].some((id) => ids.includes(id))) return;
+  const total = ids.reduce((sum, id) => sum + (excel.get(id) ?? typed[id] ?? 0), 0);
+  await db
+    .update(s.dailyCloses)
+    .set({ collections: total })
+    .where(and(eq(s.dailyCloses.id, closeId), eq(s.dailyCloses.companyId, companyId)));
 }

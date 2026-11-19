@@ -14,6 +14,7 @@ export function AmountField({
   value,
   onChange,
   error,
+  notes,
 }: {
   name: string;
   label: string;
@@ -22,6 +23,8 @@ export function AmountField({
   value: string;
   onChange: (value: string) => void;
   error?: string;
+  /** Short lines under the field (for example what an admin recorded for it). */
+  notes?: string[];
 }) {
   const id = useId();
   return (
@@ -51,6 +54,15 @@ export function AmountField({
           }
         />
       </div>
+      {notes && notes.length > 0 && (
+        <ul className="m-0 mt-1.5 flex list-none flex-col gap-0.5 p-0 text-[13px] text-ink-2">
+          {notes.map((n) => (
+            <li key={n} dir="auto">
+              {n}
+            </li>
+          ))}
+        </ul>
+      )}
       {error && (
         <p id={`${id}-error`} className="m-0 mt-1.5 text-[13px] font-semibold text-alert">
           {error}
