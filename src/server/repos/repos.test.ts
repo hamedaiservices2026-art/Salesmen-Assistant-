@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { createTestDb } from "@/db/testing";
 import { seedDemo, type SeedResult } from "@/db/seed";
 import type { Db } from "@/db/client";
@@ -264,6 +264,53 @@ describe("getCommissionView", () => {
     expect(v.projected).toEqual({ total: 0, results: [] });
     expect(v.atFullTarget).toEqual({ total: 0, results: [] });
     expect(v.nearest).toBeNull();
+  });
+});
+
+describe("history after a line is deactivated (R23a)", () => {
+  it("a past month still evaluates its published scheme on a line deactivated since", async () => {
+    await db.insert(s.schemes).values({
+      id: "oct", companyId: seed.companyId, name: "October", year: 2026, month: 10, published: true, version: 1,
+      components: [{ id: "t", type: "tiered", label: "x", lineId: "bev", tiers: [{ minPct: 80, pay: { kind: "fixed", amount: 123_000 } }] }],
+    });
+    await db.insert(s.targets).values({ id: "t-oct", companyId: seed.companyId, userId: "ahmed", lineId: "bev", year: 2026, month: 10, amount: 100 });
+    await db.insert(s.dailyCloses).values({ id: "c-oct", companyId: seed.companyId, userId: "ahmed", date: "2026-10-05", status: "confirmed" });
+    await db.insert(s.closeLines).values({ id: "cl-oct", companyId: seed.companyId, closeId: "c-oct", lineId: "bev", amount: 90 });
+    const octOf = async () => (await getHistoryMonths(ahmed(), { today: TODAY })).find((m) => m.month === 10)!;
+    expect((await octOf()).commission).toBe(123_000);
+    await db.update(s.targetLines).set({ active: false }).where(eq(s.targetLines.id, "bev"));
+    expect((await octOf()).commission).toBe(123_000);
+  });
+});
+
+describe("amount cap (A4)", () => {
+  it("saveClose refuses a line amount above AMOUNT_MAX and accepts AMOUNT_MAX", async () => {
+    const day = "2026-11-15";
+    expect(await saveClose(ahmed(), form(day, { bev: 100_000_000_001 }), { today: "2026-11-16" })).toEqual({
+      ok: false,
+      errors: { "lines.bev": "invalid" },
+    });
+    expect(await saveClose(ahmed(), form(day, { bev: 100_000_000_000 }), { today: "2026-11-16" })).toEqual({ ok: true });
+  });
+});
+
+describe("lock order (A3)", () => {
+  it("saveClose writes close_lines in line id order whatever order the form lists them in", async () => {
+    // Deadlocks between two transactions cannot be provoked deterministically on PGlite (one connection),
+    // so this asserts the property that prevents them: the physical insert order is the sorted id order.
+    const day = "2026-11-15";
+    expect(await saveClose(ahmed(), form(day, { food: 5, coll: 7, bev: 9 }), { today: "2026-11-16" })).toEqual({ ok: true });
+    const [close] = await db.select().from(s.dailyCloses).where(and(eq(s.dailyCloses.userId, "ahmed"), eq(s.dailyCloses.date, day)));
+    const rows = await db.execute(sql`select line_id from close_lines where close_id = ${close!.id} order by ctid`);
+    expect((rows.rows as { line_id: string }[]).map((r) => r.line_id)).toEqual(["bev", "coll", "food"]);
+  });
+});
+
+describe("history never lists a later month (A8)", () => {
+  it("a December target does not show in November's history", async () => {
+    await db.insert(s.targets).values({ id: "t-dec", companyId: seed.companyId, userId: "ahmed", lineId: "bev", year: 2026, month: 12, amount: 100 });
+    const months = await getHistoryMonths(ahmed(), { today: TODAY });
+    expect(months.map((m) => m.month)).toEqual([11]);
   });
 });
 

@@ -238,3 +238,19 @@ describe("inputAtFullTarget with asOf and gates", () => {
     });
   });
 });
+
+describe("nearestWin offers a per_unit abovePct threshold (A7)", () => {
+  const scheme: Scheme = {
+    id: "x",
+    name: "x",
+    components: [{ id: "u", type: "per_unit", label: "u", lineId: "bev", rate: { kind: "per_case", amount: 10 }, abovePct: 100 }],
+  };
+  it("points at the line when below the threshold", () => {
+    const input: SchemeInput = { lines: { bev: { target: 100, achieved: 90 } }, focus: {} };
+    expect(nearestWin(scheme, input)).toMatchObject({ componentId: "u", lineId: "bev", gap: 10, gain: 1000 });
+  });
+  it("offers nothing once the threshold is met", () => {
+    const input: SchemeInput = { lines: { bev: { target: 100, achieved: 100 } }, focus: {} };
+    expect(nearestWin(scheme, input)).toBeNull();
+  });
+});

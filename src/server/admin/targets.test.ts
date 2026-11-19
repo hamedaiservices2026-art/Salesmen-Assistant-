@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PgDatabase } from "drizzle-orm/pg-core";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { createTestDb } from "@/db/testing";
 import { seedDemo, type SeedResult } from "@/db/seed";
 import type { Db } from "@/db/client";
@@ -113,6 +113,7 @@ describe("applyTargets", () => {
 
   it("creates a target that did not exist, logging old null", async () => {
     await db.delete(s.targets).where(eq(s.targets.userId, "yousef"));
+    await db.insert(s.uploads).values({ id: "up-1", companyId: "demo-co", kind: "targets", filename: "t.xlsx", uploadedBy: seed.adminId });
     expect(await apply([{ userId: "yousef", lineId: "bev", amount: 900 }], { source: "excel", uploadId: "up-1" })).toEqual({
       ok: true,
       changed: 1,
@@ -361,5 +362,24 @@ describe("listTargetChanges", () => {
     expect(log[0]!.at).toBeInstanceOf(Date);
     expect(log[0]!.byName).toBe((await db.select().from(s.users).where(eq(s.users.id, seed.adminId)))[0]!.name);
     expect(await listTargetChanges(admin(), { limit: 1 })).toHaveLength(1);
+  });
+});
+
+describe("lock order (A3)", () => {
+  it("writes targets in (user, line) order whatever order the entries come in", async () => {
+    // Opposite-order deadlocks cannot be provoked deterministically on PGlite (one connection); the
+    // property that prevents them is asserted instead: rows are written in sorted order.
+    await db.delete(s.targets).where(eq(s.targets.year, 2026));
+    const r = await apply([
+      { userId: "khaled", lineId: "food", amount: 3 },
+      { userId: "ahmed", lineId: "food", amount: 2 },
+      { userId: "khaled", lineId: "bev", amount: 4 },
+      { userId: "ahmed", lineId: "bev", amount: 1 },
+    ]);
+    expect(r).toEqual({ ok: true, changed: 4 });
+    const rows = await db.execute(sql`select user_id, line_id from targets order by ctid`);
+    expect((rows.rows as { user_id: string; line_id: string }[]).map((x) => `${x.user_id}|${x.line_id}`)).toEqual([
+      "ahmed|bev", "ahmed|food", "khaled|bev", "khaled|food",
+    ]);
   });
 });

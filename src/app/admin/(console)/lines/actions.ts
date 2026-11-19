@@ -11,7 +11,7 @@ export type LineFormState = {
   saved?: boolean;
 };
 
-export type LineRowState = { error?: "not_found" };
+export type LineRowState = { error?: "not_found" | "in_scheme" };
 
 function text(form: FormData, name: string): string {
   const v = form.get(name);
@@ -43,8 +43,10 @@ export async function saveLineAction(_prev: LineFormState, form: FormData): Prom
     nameUr: values.nameUr,
     unit: values.unit as LineInput["unit"],
     kind: values.kind as LineInput["kind"],
-    sort: values.sort.trim() === "" ? NaN : Number(values.sort),
-    active: values.active === "true",
+    // The form posts neither: a new line goes last and starts active, an edit leaves both as they are
+    // now (a deactivation or a move made since the form opened must not be undone by saving a name).
+    sort: values.sort.trim() === "" ? undefined : Number(values.sort),
+    active: values.active === "" ? undefined : values.active === "true",
   });
   if (!result.ok) return { errors: result.errors, values };
   revalidatePath("/admin/lines");

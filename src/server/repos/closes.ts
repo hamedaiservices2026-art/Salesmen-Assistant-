@@ -4,6 +4,7 @@ import type { ISODate } from "@/domain/calendar";
 import * as s from "@/db/schema";
 import type { Db } from "@/db/client";
 import { assertOwnContext } from "@/server/auth/roles";
+import { AMOUNT_MAX } from "@/domain/money";
 import type { Ctx } from "@/server/ctx";
 import { currentDay } from "@/server/today";
 import { isDailyLine } from "@/domain/lines";
@@ -74,6 +75,7 @@ export async function getClose(ctx: Ctx, date: ISODate): Promise<SavedClose | nu
 
 function amountError(n: unknown): string | null {
   if (typeof n !== "number" || !Number.isSafeInteger(n)) return "invalid";
+  if (n > AMOUNT_MAX) return "invalid";
   return n < 0 ? "negative" : null;
 }
 
@@ -210,8 +212,11 @@ export async function saveClose(ctx: Ctx, form: CloseForm, opts?: { today?: ISOD
     }
     await tx.delete(s.returns).where(and(eq(s.returns.closeId, closeId), eq(s.returns.companyId, companyId)));
 
+    // Inserted in line id order (like the focus rows below): the foreign-key checks take row locks in
+    // the same order everywhere, so two closes and a scheme publish cannot wait on each other.
     const lines = Object.entries(form.lines)
       .filter(([lineId]) => !excel.has(lineId))
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
       .map(([lineId, amount]) => ({
       id: randomUUID(),
       companyId,

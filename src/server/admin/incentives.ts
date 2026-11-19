@@ -9,7 +9,7 @@ import type { Ctx } from "@/server/ctx";
 import { pickText } from "@/server/repos/notifications";
 import { loadSchemeRefs, publishComponents } from "./schemes";
 import { updateDraftRow } from "./schemes-internal";
-import { AMOUNT_MAX } from "./targets";
+import { AMOUNT_MAX } from "@/domain/money";
 
 export type LocalInput = { ar: string; en?: string; ur?: string };
 export type IncentiveInput = {

@@ -440,3 +440,32 @@ describe("fix round 1: drafts, collections, rep_amount, revalidation", () => {
     expect((await allUploads())[0]!.filename).toBe("abcd.xlsx");
   });
 });
+
+describe("amount cap in an upload (A5)", () => {
+  it("1e11 + 1 halalas in a targets file is a row error with nothing written, never a throw", async () => {
+    const before = await snapshot();
+    const r = await processUpload(admin(), await targets(["ahmed", 2026, 11, "food", "1000000000.01"]), { today: TODAY });
+    expect(r).toMatchObject({ applied: false, errors: [{ row: 2, column: "amount", code: "invalid_amount" }] });
+    expect(await snapshot()).toEqual(before);
+  });
+  it("1e11 + 1 cases in a daily file is refused the same way", async () => {
+    const r = await processUpload(admin(), await daily(["ahmed", "2026-11-12", "bev", 100_000_000_001]), { today: TODAY });
+    expect(r).toMatchObject({ applied: false, errors: [{ row: 2, column: "amount", code: "invalid_amount" }] });
+  });
+});
+
+describe("float noise in an uploaded workbook (B1)", () => {
+  it("a formula cell with a noisy cached result and a noisy plain number both apply", async () => {
+    const formula = { formula: "0.1+0.2+8250", result: 8250.300000000001 };
+    const r = await processUpload(
+      admin(),
+      await targets(["ahmed", 2026, 11, "food", formula], ["khaled", 2026, 11, "food", 0.1 + 0.2]),
+      { today: TODAY },
+    );
+    expect(r).toMatchObject({ applied: true, rows: 2, errors: [] });
+    const rows = await db.select().from(s.targets).where(and(eq(s.targets.lineId, "food"), eq(s.targets.year, 2026), eq(s.targets.month, 11)));
+    const by = Object.fromEntries(rows.map((x) => [x.userId, x.amount]));
+    expect(by.ahmed).toBe(825030);
+    expect(by.khaled).toBe(30);
+  });
+});

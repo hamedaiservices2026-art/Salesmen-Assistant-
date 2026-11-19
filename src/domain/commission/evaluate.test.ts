@@ -220,3 +220,18 @@ describe("componentLabel", () => {
     expect(componentLabel({ ...bev, labelEn: "Beverage tiers" }, "ar")).toBe("شرائح المشروبات");
   });
 });
+
+describe("per_case products (A4)", () => {
+  const per = (amount: number): Scheme => ({
+    id: "p",
+    name: "p",
+    components: [{ id: "u", type: "per_unit", label: "u", lineId: "bev", rate: { kind: "per_case", amount } }],
+  });
+  const input = (achieved: number) => ({ lines: { bev: { target: 1, achieved } }, focus: {} });
+  it("an exact product above 2^53 is refused, not rounded", () => {
+    expect(() => evaluateScheme(per(1_000_000_000), input(100_000_000_000))).toThrow(RangeError);
+  });
+  it("a large safe product is exact", () => {
+    expect(evaluateScheme(per(1_000_000), input(9_007_199_254)).total).toBe(9_007_199_254_000_000);
+  });
+});

@@ -77,11 +77,15 @@ export async function loadCalendar(ctx: Ctx, year: number, month: number): Promi
 }
 
 /** Active target lines of the company, in display order, coverage lines included (see isDailyLine). */
-export async function loadLines(ctx: Ctx): Promise<LineInfo[]> {
+export async function loadLines(ctx: Ctx, opts: { includeInactive?: boolean } = {}): Promise<LineInfo[]> {
   const rows = await ctx.db
     .select()
     .from(s.targetLines)
-    .where(and(eq(s.targetLines.companyId, ctx.companyId), eq(s.targetLines.active, true)))
+    .where(
+      opts.includeInactive
+        ? eq(s.targetLines.companyId, ctx.companyId)
+        : and(eq(s.targetLines.companyId, ctx.companyId), eq(s.targetLines.active, true)),
+    )
     .orderBy(asc(s.targetLines.sort), asc(s.targetLines.id));
   return rows.map((r) => ({
     lineId: r.id,
@@ -184,10 +188,15 @@ async function loadFocus(ctx: Ctx, start: ISODate, end: ISODate): Promise<FocusT
  * no target row and no close amounts: its target is the customers in his territory (`total`) and its
  * achieved the customers covered, from his latest coverage update of the month (0 and 0 without one).
  */
-export async function loadMonthTotals(ctx: Ctx, year: number, month: number): Promise<MonthTotals> {
+export async function loadMonthTotals(
+  ctx: Ctx,
+  year: number,
+  month: number,
+  opts: { includeInactive?: boolean } = {},
+): Promise<MonthTotals> {
   const { start, end } = monthBounds(year, month);
   const [lines, targets, achieved, focus, coverage] = await Promise.all([
-    loadLines(ctx),
+    loadLines(ctx, opts),
     loadTargets(ctx, year, month),
     loadLineSums(ctx, start, end),
     loadFocus(ctx, start, end),

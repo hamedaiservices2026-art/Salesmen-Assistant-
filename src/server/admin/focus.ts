@@ -7,7 +7,7 @@ import { isISODate, referencedFocusIds } from "@/domain/commission";
 import type { ISODate } from "@/domain/calendar";
 import { assertRole } from "@/server/auth/roles";
 import type { Ctx } from "@/server/ctx";
-import { AMOUNT_MAX } from "./targets";
+import { AMOUNT_MAX } from "@/domain/money";
 
 export type FocusRow = {
   id: string;

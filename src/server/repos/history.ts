@@ -70,12 +70,18 @@ export async function getHistoryMonths(
 ): Promise<HistoryMonth[]> {
   const today = opts.today ?? currentDay(ctx.timeZone);
   const thisMonth = today.slice(0, 7);
-  const months = await activeMonths(ctx);
+  // A month later than today's has no history yet (a target set ahead of time is not listed).
+  const months = (await activeMonths(ctx)).filter((m) => m.year * 100 + m.month <= Number(thisMonth.replace("-", "")));
   return Promise.all(
     months.map(async ({ year, month }) => {
-      const [totals, scheme] = await Promise.all([
+      const key = `${year}-${String(month).padStart(2, "0")}`;
+      const past = key < thisMonth;
+      // A past month's published scheme is evaluated on all of the company's lines, the ones turned off
+      // since included, so turning a line off never rewrites what that month paid (R23a).
+      const [totals, scheme, allTotals] = await Promise.all([
         loadMonthTotals(ctx, year, month),
         loadScheme(ctx, year, month),
+        past ? loadMonthTotals(ctx, year, month, { includeInactive: true }) : null,
       ]);
       const lines = totals.lines.map((l) => {
         const target = totals.targets.get(l.lineId) ?? 0;
@@ -85,10 +91,9 @@ export async function getHistoryMonths(
           pct: target > 0 ? Math.floor((achieved * 100) / target) : null,
         };
       });
-      const key = `${year}-${String(month).padStart(2, "0")}`;
-      const asOf = key < thisMonth ? monthBounds(year, month).end : today;
+      const asOf = past ? monthBounds(year, month).end : today;
       const commission = scheme
-        ? evaluateScheme(scheme, schemeInput(totals), { asOf }).total
+        ? evaluateScheme(scheme, schemeInput(allTotals ?? totals), { asOf }).total
         : null;
       return { year, month, lines, commission };
     }),

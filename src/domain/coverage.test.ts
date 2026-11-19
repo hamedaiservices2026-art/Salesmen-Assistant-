@@ -44,6 +44,21 @@ describe("coverageTiers", () => {
     expect(coverageTiers(scheme, "cov")).toEqual([70, 85]);
     expect(coverageTiers(null, "cov")).toEqual([]);
   });
+  it("also reads line_pct_at_least leaves of bonus and gate components on that line (A6)", () => {
+    const withLeaves: Scheme = {
+      id: "s",
+      name: "s",
+      components: [
+        ...scheme.components,
+        { id: "g", type: "gate", label: "g", appliesTo: ["a"], condition: { kind: "line_pct_at_least", lineId: "cov", minPct: 60 } },
+        {
+          id: "bo", type: "bonus", label: "bo", amount: 1, startsOn: "2026-11-01", endsOn: "2026-11-30",
+          condition: { kind: "all", conditions: [{ kind: "line_pct_at_least", lineId: "cov", minPct: 95 }, { kind: "line_pct_at_least", lineId: "bev", minPct: 10 }] },
+        },
+      ],
+    };
+    expect(coverageTiers(withLeaves, "cov")).toEqual([60, 70, 85, 95]);
+  });
 });
 
 describe("coverageErrors", () => {

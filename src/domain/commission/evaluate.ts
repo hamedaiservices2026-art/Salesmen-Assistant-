@@ -23,6 +23,16 @@ export function mulDivRound(a: number, b: number, c: number): number {
   return Number((TWO * n + d) / (TWO * d));
 }
 
+/**
+ * achieved × rate for a per-case rate, exact through BigInt. A product that is not a safe integer is
+ * refused (RangeError) instead of being returned as a rounded double.
+ */
+export function perCaseAmount(achieved: number, rate: number): number {
+  const product = BigInt(achieved) * BigInt(rate);
+  if (product > BigInt(Number.MAX_SAFE_INTEGER)) throw new RangeError("per-case commission is too large to compute exactly");
+  return Number(product);
+}
+
 /** floor(achieved × 100 ÷ target); null when target ≤ 0. */
 export function pctOf(achieved: number, target: number): number | null {
   if (target <= 0) return null;
@@ -152,7 +162,7 @@ function evaluateComponent(
             },
           };
       }
-      const amount = c.rate.kind === "per_case" ? achieved * c.rate.amount : mulDivRound(achieved, c.rate.bps, 10000);
+      const amount = c.rate.kind === "per_case" ? perCaseAmount(achieved, c.rate.amount) : mulDivRound(achieved, c.rate.bps, 10000);
       return { amount, reason: "rate", detail: { lineId: c.lineId, achieved, ...pctDetail } };
     }
     case "bonus": {

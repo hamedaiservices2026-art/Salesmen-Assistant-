@@ -261,3 +261,46 @@ describe("daily date window and digits", () => {
     expect(out.ops.map((o) => o.date)).toEqual(["2026-11-12", "2026-11-12"]);
   });
 });
+
+describe("amount cap (A4/A5)", () => {
+  it("a target above AMOUNT_MAX (1e11 + 1 halalas) is an invalid_amount row error", () => {
+    const out = validateTargetRows([r(2, { login: "ahmed", year: 2026, month: 11, line: "food", amount: "1000000000.01" })], lookup);
+    expect(out.ops).toEqual([]);
+    expect(out.errors).toEqual([{ row: 2, column: "amount", code: "invalid_amount" }]);
+  });
+  it("exactly AMOUNT_MAX passes", () => {
+    const out = validateTargetRows([r(2, { login: "ahmed", year: 2026, month: 11, line: "food", amount: "1000000000" })], lookup);
+    expect(out.errors).toEqual([]);
+  });
+  it("a daily amount above the cap is refused too", () => {
+    const out = validateDailyRows([r(2, { login: "ahmed", date: "2026-11-10", line: "bev", amount: 100_000_000_001 })], daily);
+    expect(out.errors).toEqual([{ row: 2, column: "amount", code: "invalid_amount" }]);
+  });
+});
+
+describe("number cells with float noise (B1)", () => {
+  const food = (amount: unknown) =>
+    validateTargetRows([r(2, { login: "ahmed", year: 2026, month: 11, line: "food", amount })], lookup);
+  it("0.1 + 0.2 SAR is 30 halalas", () => {
+    expect(food(0.1 + 0.2).ops[0]!.amount).toBe(30);
+  });
+  it("8250.300000000001 SAR is 825030 halalas", () => {
+    expect(food(8250.300000000001).ops[0]!.amount).toBe(825030);
+  });
+  it("a third decimal is still refused", () => {
+    expect(food(8250.301).errors).toEqual([{ row: 2, column: "amount", code: "invalid_amount" }]);
+  });
+  it("case and outlet counts accept noise at scale 1 and refuse a fraction", () => {
+    const bev = (amount: unknown) => validateTargetRows([r(2, { login: "ahmed", year: 2026, month: 11, line: "bev", amount })], lookup);
+    expect(bev(120.0000000001).ops[0]!.amount).toBe(120);
+    expect(bev(120.5).errors).toEqual([{ row: 2, column: "amount", code: "invalid_amount" }]);
+  });
+  it("negative and non-finite numbers are refused", () => {
+    expect(food(-1).errors).toHaveLength(1);
+    expect(food(Number.NaN).errors).toHaveLength(1);
+  });
+  it("year and month cells may carry noise too", () => {
+    const out = validateTargetRows([r(2, { login: "ahmed", year: 2026.0000000001, month: 10.9999999999, line: "bev", amount: 5 })], lookup);
+    expect(out.ops[0]).toMatchObject({ year: 2026, month: 11 });
+  });
+});

@@ -262,7 +262,8 @@ describe("saveDraft and publishScheme", () => {
 
 describe("a published scheme naming a line that is later deactivated (Review Focus 3)", () => {
   it("Ahmed's commission still evaluates (c_coll no_target) and the editor flags the line before the next publish", async () => {
-    expect(await setLineActive(admin(), "coll", false)).toEqual({ ok: true });
+    // R23: allowed once the scheme naming it belongs to a past month.
+    expect(await setLineActive(admin(), "coll", false, { today: "2026-12-05" })).toEqual({ ok: true });
 
     const view = await getCommissionView(ahmed(), { ...NOV, today: TODAY });
     expect(view.actual.results.find((r) => r.componentId === "c_coll")).toMatchObject({ amount: 0, reason: "no_target" });
@@ -303,7 +304,9 @@ describe("lines named by a scheme are in use", () => {
     expect(
       (await saveLine(admin(), { id, code: "juice", nameAr: "عصير طازج", nameEn: "Juice", nameUr: "جوس", unit: "cases", kind: "sales", sort: 9, active: true })).ok,
     ).toBe(true);
-    expect(await setLineActive(admin(), id, false)).toEqual({ ok: true });
+    // R23: turning it off is refused while the December scheme is current or ahead, allowed afterwards.
+    expect(await setLineActive(admin(), id, false, { today: "2026-12-05" })).toEqual({ ok: false, error: "in_scheme" });
+    expect(await setLineActive(admin(), id, false, { today: "2027-01-05" })).toEqual({ ok: true });
   });
 
   it("a line named only by a saved draft is in use too", async () => {

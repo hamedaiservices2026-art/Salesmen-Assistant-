@@ -9,6 +9,8 @@ import { assertRole } from "@/server/auth/roles";
 import type { Ctx } from "@/server/ctx";
 import { isUniqueViolation } from "@/server/db-errors";
 import type { LineInfo } from "@/server/repos/month-data";
+import { currentDay } from "@/server/today";
+import type { ISODate } from "@/domain/calendar";
 
 export type LineRow = Omit<LineInfo, "createdOn"> & { sort: number; active: boolean; inUse: boolean };
 
@@ -21,12 +23,28 @@ export type LineInput = {
   nameUr: string;
   unit: Unit;
   kind: LineKind;
-  sort: number;
-  active: boolean;
+  /** Create only: the order. An update changes it only when given (the edit form leaves it out). */
+  sort?: number;
+  /** Create only: whether the line starts active. An update changes it only when given. */
+  active?: boolean;
 };
 
 export type SaveLineResult = { ok: true; id: string } | { ok: false; errors: Record<string, string> };
-export type LineActionResult = { ok: true } | { ok: false; error: "not_found" };
+export type LineActionResult = { ok: true } | { ok: false; error: "not_found" | "in_scheme" };
+type LineOpts = { today?: ISODate };
+
+/**
+ * True when a PUBLISHED scheme of the current or a later month names the line (drafts do not count).
+ * Turning such a line off would change what the scheme pays a rep, so it is refused (R23b).
+ */
+async function namedByCurrentScheme(db: Db, companyId: string, lineId: string, today: ISODate): Promise<boolean> {
+  const rows = await db
+    .select({ year: s.schemes.year, month: s.schemes.month, components: s.schemes.components })
+    .from(s.schemes)
+    .where(and(eq(s.schemes.companyId, companyId), eq(s.schemes.published, true)));
+  const thisMonth = Number(today.slice(0, 4)) * 100 + Number(today.slice(5, 7));
+  return rows.some((r) => r.year * 100 + r.month >= thisMonth && referencedLineIds(r.components).includes(lineId));
+}
 
 const NAME_MAX = 80;
 const UNITS = ["cases", "value", "outlets"] as const satisfies readonly Unit[];
@@ -99,7 +117,7 @@ export async function listAllLines(ctx: Ctx): Promise<LineRow[]> {
  * `unit` carries the shape errors of `lineShapeError`. Once a line is in use its code, unit and kind
  * are fixed (`in_use`); names, order and the active flag can always change.
  */
-export async function saveLine(ctx: Ctx, input: LineInput): Promise<SaveLineResult> {
+export async function saveLine(ctx: Ctx, input: LineInput, opts: LineOpts = {}): Promise<SaveLineResult> {
   assertRole(ctx, ["admin"]);
   const errors: Record<string, string> = {};
   const code = String(input.code ?? "").trim().toLowerCase();
@@ -119,8 +137,8 @@ export async function saveLine(ctx: Ctx, input: LineInput): Promise<SaveLineResu
     const shape = lineShapeError({ unit: input.unit, kind: input.kind });
     if (shape) errors.unit = shape;
   }
-  if (!Number.isInteger(input.sort) || input.sort < 0 || input.sort > SORT_MAX) errors.sort = "invalid";
-  if (typeof input.active !== "boolean") errors.active = "invalid";
+  if (input.sort !== undefined && (!Number.isInteger(input.sort) || input.sort < 0 || input.sort > SORT_MAX)) errors.sort = "invalid";
+  if (input.active !== undefined && typeof input.active !== "boolean") errors.active = "invalid";
   if (Object.keys(errors).length > 0) return { ok: false, errors };
 
   try {
@@ -139,6 +157,10 @@ export async function saveLine(ctx: Ctx, input: LineInput): Promise<SaveLineResu
         const qualified = `${ctx.companyId}-${code}`;
         const [idTaken] = await tx.select({ id: s.targetLines.id }).from(s.targetLines).where(eq(s.targetLines.id, qualified));
         const id = idTaken ? `${qualified}-${randomUUID()}` : qualified;
+        const [top] = await tx
+          .select({ top: max(s.targetLines.sort) })
+          .from(s.targetLines)
+          .where(eq(s.targetLines.companyId, ctx.companyId));
         await tx.insert(s.targetLines).values({
           id,
           companyId: ctx.companyId,
@@ -148,8 +170,8 @@ export async function saveLine(ctx: Ctx, input: LineInput): Promise<SaveLineResu
           nameUr,
           unit: input.unit,
           kind: input.kind,
-          sort: input.sort,
-          active: input.active,
+          sort: input.sort ?? (top?.top ?? 0) + 1,
+          active: input.active ?? true,
         });
         return { ok: true as const, id };
       }
@@ -171,6 +193,10 @@ export async function saveLine(ctx: Ctx, input: LineInput): Promise<SaveLineResu
         if (input.kind !== line.kind) locked.kind = "in_use";
         return { ok: false as const, errors: locked };
       }
+      const turnsOff = input.active === false && line.active;
+      if (turnsOff && (await namedByCurrentScheme(db, ctx.companyId, line.id, opts.today ?? currentDay(ctx.timeZone)))) {
+        return { ok: false as const, errors: { active: "in_scheme" } };
+      }
       await tx
         .update(s.targetLines)
         .set({
@@ -180,8 +206,8 @@ export async function saveLine(ctx: Ctx, input: LineInput): Promise<SaveLineResu
           nameUr,
           unit: input.unit,
           kind: input.kind,
-          sort: input.sort,
-          active: input.active,
+          sort: input.sort ?? line.sort,
+          active: input.active ?? line.active,
           updatedAt: new Date(),
         })
         .where(and(eq(s.targetLines.id, line.id), eq(s.targetLines.companyId, ctx.companyId)));
@@ -193,15 +219,29 @@ export async function saveLine(ctx: Ctx, input: LineInput): Promise<SaveLineResu
   }
 }
 
-/** Turns a line of the caller's company off or on. Its figures stay; reps stop seeing it while it is off. */
-export async function setLineActive(ctx: Ctx, id: string, active: boolean): Promise<LineActionResult> {
+/**
+ * Turns a line of the caller's company off or on. Its figures stay; reps stop seeing it while it is off.
+ * Turning it off is refused (`in_scheme`) while a published scheme of this or a later month names it.
+ */
+export async function setLineActive(ctx: Ctx, id: string, active: boolean, opts: LineOpts = {}): Promise<LineActionResult> {
   assertRole(ctx, ["admin"]);
-  const changed = await ctx.db
-    .update(s.targetLines)
-    .set({ active, updatedAt: new Date() })
-    .where(and(eq(s.targetLines.id, String(id)), eq(s.targetLines.companyId, ctx.companyId)))
-    .returning({ id: s.targetLines.id });
-  return changed.length === 1 ? { ok: true } : { ok: false, error: "not_found" };
+  return ctx.db.transaction(async (tx) => {
+    // The row lock takes turns with a scheme publish, which locks the lines it names before validating.
+    const [line] = await tx
+      .select({ id: s.targetLines.id })
+      .from(s.targetLines)
+      .where(and(eq(s.targetLines.id, String(id)), eq(s.targetLines.companyId, ctx.companyId)))
+      .for("update");
+    if (!line) return { ok: false as const, error: "not_found" as const };
+    if (!active && (await namedByCurrentScheme(tx as unknown as Db, ctx.companyId, line.id, opts.today ?? currentDay(ctx.timeZone)))) {
+      return { ok: false as const, error: "in_scheme" as const };
+    }
+    await tx
+      .update(s.targetLines)
+      .set({ active, updatedAt: new Date() })
+      .where(and(eq(s.targetLines.id, line.id), eq(s.targetLines.companyId, ctx.companyId)));
+    return { ok: true as const };
+  });
 }
 
 /** Moves a line one place up or down among the caller's company lines (the order reps see). */
@@ -240,14 +280,4 @@ export async function moveLine(ctx: Ctx, id: string, direction: "up" | "down"): 
     }
     return { ok: true as const };
   });
-}
-
-/** The next free order value, for a new line. */
-export async function nextLineSort(ctx: Ctx): Promise<number> {
-  assertRole(ctx, ["admin"]);
-  const [row] = await ctx.db
-    .select({ top: max(s.targetLines.sort) })
-    .from(s.targetLines)
-    .where(eq(s.targetLines.companyId, ctx.companyId));
-  return (row?.top ?? 0) + 1;
 }

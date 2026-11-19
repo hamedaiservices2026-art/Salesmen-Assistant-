@@ -46,6 +46,9 @@ async function snapshot() {
   return lines.sort((a, b) => a.id.localeCompare(b.id));
 }
 
+/** A day after the published November scheme, so deactivating its lines is allowed. */
+const AFTER_NOV = "2026-12-05";
+
 const input = (over: Partial<LineInput> = {}): LineInput => ({
   code: "newline",
   nameAr: "خط جديد",
@@ -199,7 +202,7 @@ describe("saveLine: edit", () => {
   it("a line in use can still change its order and be deactivated", async () => {
     const r = await saveLine(admin(), {
       id: "food", code: "food", nameAr: "أغذية", nameEn: "Food", nameUr: "غذا", unit: "value", kind: "sales", sort: 7, active: false,
-    });
+    }, { today: AFTER_NOV });
     expect(r.ok).toBe(true);
     expect(await lineRow("food")).toMatchObject({ sort: 7, active: false });
   });
@@ -236,7 +239,7 @@ describe("saveLine: edit", () => {
 
 describe("setLineActive and moveLine", () => {
   it("deactivates and reactivates a line", async () => {
-    expect(await setLineActive(admin(), "coll", false)).toEqual({ ok: true });
+    expect(await setLineActive(admin(), "coll", false, { today: AFTER_NOV })).toEqual({ ok: true });
     expect((await lineRow("coll")).active).toBe(false);
     expect(await setLineActive(admin(), "coll", true)).toEqual({ ok: true });
     expect((await lineRow("coll")).active).toBe(true);
@@ -297,14 +300,63 @@ describe("what a rep sees", () => {
   });
 
   it("deactivating coll removes it from Ahmed's month view, the home still renders, and the commission view still evaluates", async () => {
-    await setLineActive(admin(), "coll", false);
+    await setLineActive(admin(), "coll", false, { today: AFTER_NOV });
     const view = await getMonthView(ahmed(), NOV);
     expect(view.lines.map((l) => l.lineId)).toEqual(["bev", "food"]);
     await expect(getCommissionView(ahmed(), NOV)).resolves.toBeDefined();
   });
 
   it("deactivating food removes it from Ahmed's month view", async () => {
-    await setLineActive(admin(), "food", false);
+    await setLineActive(admin(), "food", false, { today: AFTER_NOV });
     expect((await getMonthView(ahmed(), NOV)).lines.map((l) => l.lineId)).toEqual(["bev", "coll"]);
+  });
+});
+
+describe("R23: turning a line off does not rewrite money", () => {
+  const IN_NOV = "2026-11-14";
+  const base = { id: "coll", code: "coll", nameAr: "وصولي", nameEn: "Collection", nameUr: "وصولی", unit: "value", kind: "collection", sort: 3 } as const;
+
+  it("setLineActive(false) is refused with in_scheme while a published scheme of this or a later month names the line", async () => {
+    expect(await setLineActive(admin(), "coll", false, { today: IN_NOV })).toEqual({ ok: false, error: "in_scheme" });
+    expect((await lineRow("coll")).active).toBe(true);
+    expect(await setLineActive(admin(), "bev", false, { today: "2026-10-30" })).toEqual({ ok: false, error: "in_scheme" });
+  });
+
+  it("saveLine with active=false is refused the same way and changes nothing", async () => {
+    const r = await saveLine(admin(), { ...base, nameEn: "Renamed", active: false }, { today: IN_NOV });
+    expect(r).toEqual({ ok: false, errors: { active: "in_scheme" } });
+    expect(await lineRow("coll")).toMatchObject({ active: true, nameEn: "Collection" });
+  });
+
+  it("allowed once every scheme naming the line is in a past month, and reactivating is always allowed", async () => {
+    expect(await setLineActive(admin(), "coll", false, { today: AFTER_NOV })).toEqual({ ok: true });
+    expect(await setLineActive(admin(), "coll", true, { today: IN_NOV })).toEqual({ ok: true });
+  });
+
+  it("an unpublished draft naming the line does not block", async () => {
+    await db.insert(s.schemes).values({
+      id: "dec", companyId: "demo-co", name: "Dec", year: 2026, month: 12, components: [], published: false,
+      draft: [{ id: "d", type: "tiered", label: "x", lineId: "food", tiers: [{ minPct: 80, pay: { kind: "fixed", amount: 1 } }] }],
+    });
+    expect(await setLineActive(admin(), "food", false, { today: AFTER_NOV })).toEqual({ ok: true });
+  });
+});
+
+describe("B2: editing a line does not touch its order or active flag", () => {
+  const edit = { id: "food", code: "food", nameAr: "أغذية", nameEn: "Food 2", nameUr: "غذا", unit: "value", kind: "sales" } as const;
+
+  it("a save without sort/active leaves a deactivation made since the form opened, and the order", async () => {
+    await setLineActive(admin(), "food", false, { today: AFTER_NOV });
+    await moveLine(admin(), "food", "up");
+    const before = await lineRow("food");
+    expect(await saveLine(admin(), { ...edit })).toEqual({ ok: true, id: "food" });
+    expect(await lineRow("food")).toMatchObject({ active: false, sort: before.sort, nameEn: "Food 2" });
+  });
+
+  it("a new line without sort goes last and starts active", async () => {
+    const r = await saveLine(admin(), { code: "last", nameAr: "آخر", nameEn: "", nameUr: "", unit: "cases", kind: "sales" });
+    if (!r.ok) throw new Error("setup");
+    const rows = await listAllLines(admin());
+    expect(rows[rows.length - 1]).toMatchObject({ lineId: r.id, active: true });
   });
 });

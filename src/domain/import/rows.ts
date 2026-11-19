@@ -1,6 +1,6 @@
 import type { ISODate } from "@/domain/calendar";
 import type { LineKind } from "@/domain/lines";
-import { parseAmount, type Unit } from "@/domain/money";
+import { AMOUNT_MAX, parseAmount, type Unit } from "@/domain/money";
 import { normalizeText, westernDigits } from "./text";
 
 /** One data row of an uploaded sheet; `row` is the spreadsheet row number, keys are canonical column names. */
@@ -46,12 +46,32 @@ function cellText(v: unknown): string | null {
   return null;
 }
 
+/**
+ * A number cell as a whole stored figure, or null. Excel stores 8250.30 as a double that may print as
+ * 8250.300000000001, and a formula's cached result carries the same noise: the value is scaled
+ * (100 for money, 1 for counts), rounded, and refused only when it is further than 1e-6 from a whole
+ * number of stored units (a third decimal, for instance).
+ */
+function numberCell(v: number, scale: number): number | null {
+  if (!Number.isFinite(v)) return null;
+  const scaled = v * scale;
+  const whole = Math.round(scaled);
+  if (Math.abs(scaled - whole) > 1e-6 || whole < 0 || !Number.isSafeInteger(whole)) return null;
+  return whole;
+}
+
 function amountOf(v: unknown, unit: Unit): number | null {
-  const text = cellText(v);
-  return text === null ? null : parseAmount(text, unit);
+  let amount: number | null;
+  if (typeof v === "number") amount = numberCell(v, unit === "value" ? 100 : 1);
+  else {
+    const text = cellText(v);
+    amount = text === null ? null : parseAmount(text, unit);
+  }
+  return amount !== null && amount > AMOUNT_MAX ? null : amount;
 }
 
 function intOf(v: unknown): number | null {
+  if (typeof v === "number") return numberCell(v, 1);
   const text = cellText(v);
   return text === null ? null : parseAmount(text, "cases");
 }
@@ -105,11 +125,16 @@ function toError(row: number, f: Failure): RowError {
   return f.column === undefined ? { row, code: f.code } : { row, column: f.column, code: f.code };
 }
 
+/** The rows `validate*Rows` look at, in order: blank rows dropped. The n-th op of a clean file came from the n-th of these. */
+export function dataRows(rows: RawRow[]): RawRow[] {
+  return rows.filter((r) => !Object.values(r.cells).every(isBlank));
+}
+
 function run<Op extends object>(
   rows: RawRow[],
   check: (cells: Record<string, unknown>, seen: Set<string>) => Failure | { op: Op },
 ): { ops: Op[]; errors: RowError[] } {
-  const data = rows.filter((r) => !Object.values(r.cells).every(isBlank));
+  const data = dataRows(rows);
   if (data.length > MAX_DATA_ROWS) return { ops: [], errors: [{ row: 0, code: "too_many_rows" }] };
   const seen = new Set<string>();
   const ops: Op[] = [];

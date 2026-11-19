@@ -9,8 +9,10 @@ import {
   type Scheme,
   type SchemeInput,
 } from "@/domain/commission";
+import { and, eq } from "drizzle-orm";
 import type { LineKind } from "@/domain/lines";
 import type { Unit } from "@/domain/money";
+import * as s from "@/db/schema";
 import type { Ctx } from "@/server/ctx";
 import { loadCalendar, loadMonthTotals, loadScheme, schemeInput } from "./month-data";
 
@@ -24,6 +26,22 @@ export type CommissionView = {
   nearest: NearestWin;
   lines: { lineId: string; nameAr: string; nameEn: string; nameUr: string; unit: Unit; kind: LineKind }[];
 };
+
+/**
+ * Selling-day counts for the projection. A day with a close (any status, drafts included, since drafts
+ * count in the totals) is elapsed, so its amount is projected over the days it covers (R22).
+ * `computePace` keeps the spec's days before today.
+ */
+async function countsWithToday(ctx: Ctx, selling: ISODate[], today: ISODate) {
+  const base = dayCounts(selling, today);
+  if (!selling.includes(today)) return base;
+  const [row] = await ctx.db
+    .select({ id: s.dailyCloses.id })
+    .from(s.dailyCloses)
+    .where(and(eq(s.dailyCloses.companyId, ctx.companyId), eq(s.dailyCloses.userId, ctx.userId), eq(s.dailyCloses.date, today)))
+    .limit(1);
+  return row ? { total: base.total, elapsed: base.elapsed + 1, left: base.left - 1 } : base;
+}
 
 const empty = (): Evaluation => ({ total: 0, results: [] });
 
@@ -49,7 +67,7 @@ export async function commissionViewWith(
     loadMonthTotals(ctx, year, month),
     schemeOf,
   ]);
-  const counts = dayCounts(cal.selling, today);
+  const counts = await countsWithToday(ctx, cal.selling, today);
   const input = schemeInput(totals);
   const lines = totals.lines.map(({ lineId, nameAr, nameEn, nameUr, unit, kind }) => ({ lineId, nameAr, nameEn, nameUr, unit, kind }));
 

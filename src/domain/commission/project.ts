@@ -93,6 +93,13 @@ function candidates(scheme: Scheme, input: SchemeInput, opts: EvalOptions): Cand
         if (t.minPct <= pct) continue;
         out.push({ componentId: c.id, label: c.label, lineId: c.lineId, needed: neededForPct(t.minPct, m.target), achieved: m.achieved });
       }
+    } else if (c.type === "per_unit") {
+      // A per-unit component that pays only above a percent: reaching that percent is a win too.
+      if (c.abovePct === undefined) continue;
+      const m = input.lines[c.lineId] ?? { target: 0, achieved: 0 };
+      const pct = pctOf(m.achieved, m.target);
+      if (pct === null || pct >= c.abovePct) continue;
+      out.push({ componentId: c.id, label: c.label, lineId: c.lineId, needed: neededForPct(c.abovePct, m.target), achieved: m.achieved });
     } else if (c.type === "bonus" || c.type === "gate") {
       if (c.type === "bonus" && opts.asOf !== undefined && (opts.asOf > c.endsOn || opts.asOf < c.startsOn)) continue;
       const cand = conditionCandidate(c.id, c.label, c.condition, input);

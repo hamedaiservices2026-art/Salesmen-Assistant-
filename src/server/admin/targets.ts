@@ -4,7 +4,7 @@ import { alias } from "drizzle-orm/pg-core";
 import type { Db } from "@/db/client";
 import * as s from "@/db/schema";
 import { lineName } from "@/domain/lines";
-import type { Unit } from "@/domain/money";
+import { AMOUNT_MAX, type Unit } from "@/domain/money";
 import { assertRole } from "@/server/auth/roles";
 import type { Ctx } from "@/server/ctx";
 import { loadLines, type LineInfo } from "@/server/repos/month-data";
@@ -43,8 +43,7 @@ export const targetKey = (userId: string, lineId: string) => `${userId}|${lineId
 
 const TARGET_ROLES = ["rep", "supervisor"] as const;
 const LOG_LIMIT_MAX = 200;
-/** Sanity cap in the stored unit (cases, or halalas for value lines). */
-export const AMOUNT_MAX = 100_000_000_000;
+export { AMOUNT_MAX };
 
 /** The reps (and supervisors, who also carry targets) and sales and collection lines of one month, with the amounts set. */
 export async function getTargetGrid(ctx: Ctx, period: { year: number; month: number }): Promise<TargetGrid> {
@@ -106,8 +105,10 @@ async function applyIn(db: Db, ctx: Ctx, input: ApplyTargetsInput): Promise<Appl
 
   const userIds = [...new Set([...wanted.values()].map((e) => e.userId))];
   const lineIds = [...new Set([...wanted.values()].map((e) => e.lineId))];
-  const [users, lines] = await Promise.all([
-    db
+  // LOCK ORDER: users and lines are share-locked (FOR KEY SHARE) in id order before anything is
+  // written, one query after the other, so the foreign-key checks of the inserts below cannot
+  // deadlock with a close save or a scheme publish that locks the same rows in id order.
+  const users = await db
       .select({ id: s.users.id })
       .from(s.users)
       .where(
@@ -117,12 +118,15 @@ async function applyIn(db: Db, ctx: Ctx, input: ApplyTargetsInput): Promise<Appl
           inArray(s.users.role, [...TARGET_ROLES]),
           inArray(s.users.id, userIds),
         ),
-      ),
-    db
+      )
+      .orderBy(asc(s.users.id))
+      .for("key share");
+  const lines = await db
       .select({ id: s.targetLines.id, kind: s.targetLines.kind })
       .from(s.targetLines)
-      .where(and(eq(s.targetLines.companyId, ctx.companyId), eq(s.targetLines.active, true), inArray(s.targetLines.id, lineIds))),
-  ]);
+      .where(and(eq(s.targetLines.companyId, ctx.companyId), eq(s.targetLines.active, true), inArray(s.targetLines.id, lineIds)))
+      .orderBy(asc(s.targetLines.id))
+      .for("key share");
   const userOk = new Set(users.map((u) => u.id));
   const kindOf = new Map(lines.map((l) => [l.id, l.kind]));
 
@@ -152,7 +156,9 @@ async function applyIn(db: Db, ctx: Ctx, input: ApplyTargetsInput): Promise<Appl
   const current = new Map(existing.map((r) => [targetKey(r.userId, r.lineId), r]));
 
   let changed = 0;
-  for (const [key, e] of wanted) {
+  // Written in (user, line) order, the order the existing rows were locked in.
+  const ordered = [...wanted].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  for (const [key, e] of ordered) {
     const old = current.get(key);
     let oldAmount = old?.amount ?? null;
     if (oldAmount === e.amount) continue;

@@ -22,10 +22,20 @@ export function coverageNeed(c: CoverageCount, tiers: number[]): { nextPct: numb
   return { nextPct: next, more: Math.max(0, needed - c.covered) };
 }
 
-/** The tier percents (ascending) of the scheme's tiered components on `lineId`. */
+/**
+ * The percents (ascending) a commission component asks of `lineId`: the tiers of its tiered components,
+ * and the `line_pct_at_least` leaves of bonus and gate conditions (alone or inside an `all`).
+ */
 export function coverageTiers(scheme: Scheme | null, lineId: string): number[] {
   if (!scheme) return [];
-  const pcts = scheme.components.flatMap((c) => (c.type === "tiered" && c.lineId === lineId ? c.tiers.map((t) => t.minPct) : []));
+  const pcts = scheme.components.flatMap((c) => {
+    if (c.type === "tiered") return c.lineId === lineId ? c.tiers.map((t) => t.minPct) : [];
+    if (c.type === "bonus" || c.type === "gate") {
+      const leaves = c.condition.kind === "all" ? c.condition.conditions : [c.condition];
+      return leaves.flatMap((l) => (l.kind === "line_pct_at_least" && l.lineId === lineId ? [l.minPct] : []));
+    }
+    return [];
+  });
   return [...new Set(pcts)].sort((a, b) => a - b);
 }
 
