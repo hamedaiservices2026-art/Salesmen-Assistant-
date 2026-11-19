@@ -105,6 +105,7 @@ export default async function ClosePage({ searchParams }: { searchParams: Promis
     unitLabel: label(l.unit),
     mode: l.unit === "cases" ? "numeric" : "decimal",
     collection: l.kind === "collection",
+    optional: l.createdOn > date,
     notes: adminNotes(l.lineId, l.unit),
     adminAmount: saved?.admin[l.lineId]?.amount,
   }));

@@ -11,6 +11,8 @@ const FOOD_SAR = [7200, 8100, 7400, 7900, 6800, 7600, 8300, 7100, 7500, 7000, 79
 const COLL_SAR = [17000, 17000, 17000, 17000, 17000, 17000, 17000, 17000, 17000, 17000, 19000];
 const FOCUS_PER_DAY = [10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 20]; // sums to 120
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+/** Demo lines predate every demo close, so none counts as added later (see `LineInfo.createdOn`). */
+const LINES_CREATED = new Date("2026-01-01T00:00:00Z");
 
 /** Reps added to the demo team: the same amount on each of the 11 selling days, so their totals are easy to check. */
 const TEAM = [
@@ -113,9 +115,9 @@ export async function seedDemo(db: Db, options: SeedOptions = { deployed: false 
       },
     ]);
     await ins(s.targetLines, [
-      { id: "bev", companyId, code: "bev", nameAr: "مشروبات", nameEn: "Beverages", nameUr: "مشروبات", unit: "cases", kind: "sales", sort: 1 },
-      { id: "food", companyId, code: "food", nameAr: "أغذية", nameEn: "Food", nameUr: "اشیائے خوردونوش", unit: "value", kind: "sales", sort: 2 },
-      { id: "coll", companyId, code: "coll", nameAr: "تحصيل", nameEn: "Collection", nameUr: "وصولی", unit: "value", kind: "collection", sort: 3 },
+      { id: "bev", companyId, code: "bev", nameAr: "مشروبات", nameEn: "Beverages", nameUr: "مشروبات", unit: "cases", kind: "sales", sort: 1, createdAt: LINES_CREATED },
+      { id: "food", companyId, code: "food", nameAr: "أغذية", nameEn: "Food", nameUr: "اشیائے خوردونوش", unit: "value", kind: "sales", sort: 2, createdAt: LINES_CREATED },
+      { id: "coll", companyId, code: "coll", nameAr: "تحصيل", nameEn: "Collection", nameUr: "وصولی", unit: "value", kind: "collection", sort: 3, createdAt: LINES_CREATED },
       {
         id: "other-line",
         companyId: otherCompanyId,
@@ -126,6 +128,7 @@ export async function seedDemo(db: Db, options: SeedOptions = { deployed: false 
         unit: "cases",
         kind: "sales",
         sort: 1,
+        createdAt: LINES_CREATED,
       },
     ]);
     const target = (userId: string, lineId: string, amount: number) => ({

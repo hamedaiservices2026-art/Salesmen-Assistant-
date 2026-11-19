@@ -2,7 +2,7 @@ import type { LineKind } from "@/domain/lines";
 // Internal loaders shared by the rep repos. Every query is scoped to ctx.companyId and,
 // for per-rep rows, ctx.userId.
 import { and, asc, eq, gte, inArray, lte, sql } from "drizzle-orm";
-import { monthGrid, sellingDays, type ISODate } from "@/domain/calendar";
+import { monthGrid, sellingDays, todayIn, type ISODate } from "@/domain/calendar";
 import type { Scheme, SchemeInput } from "@/domain/commission";
 import type { Unit } from "@/domain/money";
 import * as s from "@/db/schema";
@@ -25,6 +25,8 @@ export type LineInfo = {
   nameUr: string;
   unit: Unit;
   kind: LineKind;
+  /** The date the line was created, in the company's time zone. */
+  createdOn: ISODate;
 };
 
 export type FocusTotal = {
@@ -89,6 +91,7 @@ export async function loadLines(ctx: Ctx): Promise<LineInfo[]> {
     nameUr: r.nameUr,
     unit: r.unit,
     kind: r.kind,
+    createdOn: todayIn(ctx.timeZone, r.createdAt),
   }));
 }
 

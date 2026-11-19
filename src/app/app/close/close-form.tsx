@@ -16,6 +16,8 @@ export type FormItem = {
   unitLabel: string;
   mode: "decimal" | "numeric";
   collection?: boolean;
+  /** The line was created after this day, so it may be left empty. */
+  optional?: boolean;
   /** What the admin's upload recorded for this line, shown under the field. */
   notes?: string[];
   /** The admin's stored amount (minor units) for a line an upload set; it, not the typed value, counts. */
@@ -65,7 +67,7 @@ export function CloseForm({
     <AmountField
       key={it.name}
       name={it.name}
-      label={it.label}
+      label={it.optional ? `${it.label} (${t("optional")})` : it.label}
       unitLabel={unitLabel}
       mode={it.mode}
       value={values[it.name] ?? ""}
@@ -83,10 +85,12 @@ export function CloseForm({
     collectionItems.length > 0
       ? collectionItems.reduce((sum, it) => sum + (it.adminAmount ?? parseAmount(v(it.name), "value") ?? 0), 0)
       : (parseAmount(v("collections"), "value") ?? 0);
-  const moneyNames =
+  const salesItems = lineItems.filter((it) => !it.collection);
+  // Collection lines sit among the money fields (cash, credit, collected, expenses), not under "sell today".
+  const moneyItems: FormItem[] =
     collectionItems.length > 0
-      ? ["cashSales", "creditSales", "expenses"]
-      : ["cashSales", "creditSales", "collections", "expenses"];
+      ? [money("cashSales"), money("creditSales"), ...collectionItems, money("expenses")]
+      : ["cashSales", "creditSales", "collections", "expenses"].map(money);
   const stockOpen = ["loaded", "sold", "returned"].some(
     (n) => (initial[n] ?? "") !== "" || state.errors[n] !== undefined,
   );
@@ -102,18 +106,20 @@ export function CloseForm({
         </p>
       )}
 
-      <section aria-labelledby="h-lines" className="flex flex-col gap-1.5">
-        <h2 id="h-lines" className={heading}>
-          {t("linesTitle")}
-        </h2>
-        <div className={card}>{lineItems.map((it) => field(it))}</div>
-      </section>
+      {salesItems.length > 0 && (
+        <section aria-labelledby="h-lines" className="flex flex-col gap-1.5">
+          <h2 id="h-lines" className={heading}>
+            {t("linesTitle")}
+          </h2>
+          <div className={card}>{salesItems.map((it) => field(it))}</div>
+        </section>
+      )}
 
       <section aria-labelledby="h-money" className="flex flex-col gap-1.5">
         <h2 id="h-money" className={heading}>
           {t("moneyTitle")}
         </h2>
-        <div className={card}>{moneyNames.map((n) => field(money(n)))}</div>
+        <div className={card}>{moneyItems.map((it) => field(it))}</div>
       </section>
 
       {focusItems.length > 0 && (

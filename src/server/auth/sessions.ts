@@ -18,7 +18,7 @@ export const SESSION_COOKIE_MAX_AGE_S = 365 * 24 * 60 * 60;
  * Precomputed (a hash of a throwaway string at the current cost), so the first unknown login of a
  * process costs one scrypt run like every other.
  */
-const DECOY_HASH =
+export const DECOY_HASH =
   "scrypt$16384$8$1$8b536842b92f706bb3498ed8198087e9$014a7e8457a3b494c532e208798ab9e8eb0a67ba9ac33744a2ef173396005d88";
 
 export async function createSession(db: Db, userId: string, now: Date = new Date()): Promise<string> {

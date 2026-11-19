@@ -7,7 +7,8 @@ function roundDiv(numerator: number, denominator: number): number {
   return Math.floor((2 * numerator + denominator) / (2 * denominator));
 }
 
-function ceilDiv(numerator: number, denominator: number): number {
+/** Integer division rounding up (non-negative numerator, positive denominator). */
+export function ceilDiv(numerator: number, denominator: number): number {
   return Math.floor((numerator + denominator - 1) / denominator);
 }
 

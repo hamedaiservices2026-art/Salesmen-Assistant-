@@ -8,6 +8,9 @@ import * as pin from "./pin";
 import { hashSecret, verifySecret } from "./pin";
 import { acceptInvite, createInvite, peekInvite } from "./invites";
 import { createSession, destroySession, getSessionUser, signIn } from "./sessions";
+import { changePin } from "./change-pin";
+import { hashToken } from "./token";
+import type { Ctx } from "@/server/ctx";
 
 vi.mock("./pin", async (orig) => {
   const actual = await orig<typeof import("./pin")>();
@@ -309,5 +312,85 @@ describe("inactive users", () => {
     await db.update(s.users).set({ active: false }).where(eq(s.users.id, "ahmed"));
     expect(await signIn(db, "ahmed", "482915")).toEqual({ ok: false, error: "invalid" });
     expect(await getSessionUser(db, token)).toBeNull();
+  });
+});
+
+describe("changePin", () => {
+  let keep: string;
+  let other: string;
+  const ctxOf = (extra: Partial<Ctx> = {}): Ctx => ({
+    db,
+    companyId: seed.companyId,
+    userId: "ahmed",
+    role: "rep",
+    locale: "ar",
+    timeZone: "Asia/Riyadh",
+    ...extra,
+  });
+  const sessionsLeft = async () =>
+    (await db.select().from(s.sessions).where(eq(s.sessions.userId, "ahmed"))).map((r) => r.tokenHash);
+
+  beforeEach(async () => {
+    const r = await acceptInvite(db, seed.inviteToken, "482915");
+    if (!r.ok) throw new Error("invite");
+    keep = r.sessionToken;
+    other = await createSession(db, "ahmed");
+  });
+
+  it("changes the PIN, signs in with the new one, drops other sessions and keeps the current", async () => {
+    expect(await changePin(ctxOf(), { currentPin: "482915", newPin: "739164", keepToken: keep })).toEqual({ ok: true });
+    expect((await signIn(db, "ahmed", "739164")).ok).toBe(true);
+    expect(await signIn(db, "ahmed", "482915")).toEqual({ ok: false, error: "invalid" });
+    const left = await sessionsLeft();
+    expect(left).toContain(hashToken(keep));
+    expect(left).not.toContain(hashToken(other));
+    expect(await getSessionUser(db, other)).toBeNull();
+    expect(await getSessionUser(db, keep)).not.toBeNull();
+  });
+
+  it("accepts Arabic-Indic digits like sign-in does", async () => {
+    expect(await changePin(ctxOf(), { currentPin: "٤٨٢٩١٥", newPin: "٧٣٩١٦٤", keepToken: keep })).toEqual({ ok: true });
+    expect((await signIn(db, "ahmed", "739164")).ok).toBe(true);
+  });
+
+  it("a wrong current PIN is invalid, counts toward the lockout, and the sixth try is locked", async () => {
+    for (let i = 0; i < 5; i++) {
+      expect(await changePin(ctxOf(), { currentPin: "000000", newPin: "739164", keepToken: keep })).toEqual({ ok: false, error: "invalid" });
+    }
+    expect(await changePin(ctxOf(), { currentPin: "482915", newPin: "739164", keepToken: keep })).toEqual({ ok: false, error: "locked" });
+    expect(await signIn(db, "ahmed", "482915")).toEqual({ ok: false, error: "locked" });
+    expect(await sessionsLeft()).toContain(hashToken(other));
+  });
+
+  it("a wrong current PIN changes nothing", async () => {
+    await changePin(ctxOf(), { currentPin: "000000", newPin: "739164", keepToken: keep });
+    expect((await signIn(db, "ahmed", "482915")).ok).toBe(true);
+    expect(await sessionsLeft()).toContain(hashToken(other));
+  });
+
+  it("rejects weak or malformed new PINs and the same PIN, after the current PIN checks out", async () => {
+    for (const p of ["111111", "123456", "12345", "1234567", "12345a"]) {
+      expect(await changePin(ctxOf(), { currentPin: "482915", newPin: p, keepToken: keep })).toEqual({ ok: false, error: "weak_pin" });
+    }
+    expect(await changePin(ctxOf(), { currentPin: "482915", newPin: "482915", keepToken: keep })).toEqual({ ok: false, error: "same" });
+    expect((await signIn(db, "ahmed", "482915")).ok).toBe(true);
+    expect(await sessionsLeft()).toContain(hashToken(other));
+  });
+
+  it("a weak or same answer is never given for a wrong current PIN (no oracle)", async () => {
+    expect(await changePin(ctxOf(), { currentPin: "000000", newPin: "111111", keepToken: keep })).toEqual({ ok: false, error: "invalid" });
+    expect(await changePin(ctxOf(), { currentPin: "000000", newPin: "000000", keepToken: keep })).toEqual({ ok: false, error: "invalid" });
+  });
+
+  it("runs the same verify routine for a wrong PIN as for sign-in", async () => {
+    vi.mocked(pin.verifySecret).mockClear();
+    await changePin(ctxOf(), { currentPin: "000000", newPin: "739164", keepToken: keep });
+    expect(vi.mocked(pin.verifySecret)).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses a read-only acting-for context and admin accounts", async () => {
+    await expect(changePin(ctxOf({ actingFor: "admin" }), { currentPin: "482915", newPin: "739164", keepToken: keep })).rejects.toThrow();
+    const r = await changePin(ctxOf({ userId: seed.adminId, role: "admin" }), { currentPin: "482915", newPin: "739164", keepToken: keep });
+    expect(r).toEqual({ ok: false, error: "invalid" });
   });
 });

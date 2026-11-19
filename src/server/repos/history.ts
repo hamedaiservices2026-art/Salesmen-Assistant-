@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, lte } from "drizzle-orm";
+import { and, desc, eq, gte, lte, min } from "drizzle-orm";
 import type { ISODate } from "@/domain/calendar";
 import { evaluateScheme } from "@/domain/commission";
 import { reconcile } from "@/domain/reconciliation";
@@ -155,6 +155,24 @@ export async function getHistoryDays(
     cashToHandOver: reconcile(c).cashToHandOver,
     draft: c.status === "draft",
   }));
+}
+
+/**
+ * The date of the rep's earliest confirmed close, or null. Upload-created drafts are open days
+ * and never set the cutoff, so a draft cannot pull the gap rows back before the rep started.
+ */
+export async function getFirstCloseDate(ctx: Ctx): Promise<ISODate | null> {
+  const [row] = await ctx.db
+    .select({ first: min(s.dailyCloses.date) })
+    .from(s.dailyCloses)
+    .where(
+      and(
+        eq(s.dailyCloses.companyId, ctx.companyId),
+        eq(s.dailyCloses.userId, ctx.userId),
+        eq(s.dailyCloses.status, "confirmed"),
+      ),
+    );
+  return row?.first ?? null;
 }
 
 /** The company's selling days of a month (weekdays minus holidays), ascending. */

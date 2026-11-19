@@ -22,19 +22,23 @@ export type DayRow<D extends { date: ISODate }> =
 
 /**
  * Closed days plus past selling days with no close, newest first. A gap is a selling day strictly
- * before today; today itself appears only when it has a close, and no future date appears.
+ * before today and not before the rep's first confirmed close (`firstClose`); a rep with no
+ * confirmed close has no gaps at all, so a new rep is not shown a month of missing days. Today
+ * itself appears only when it has a close, and no future date appears.
  */
 export function mergeDayRows<D extends { date: ISODate }>(
   closed: D[],
   selling: ISODate[],
   today: ISODate,
+  firstClose: ISODate | null,
 ): DayRow<D>[] {
   const have = new Set(closed.map((d) => d.date));
   const rows: DayRow<D>[] = closed
     .filter((d) => d.date <= today)
     .map((day) => ({ kind: "day", day }));
-  for (const date of selling)
-    if (date < today && !have.has(date)) rows.push({ kind: "gap", date });
+  if (firstClose !== null)
+    for (const date of selling)
+      if (date < today && date >= firstClose && !have.has(date)) rows.push({ kind: "gap", date });
   return rows.sort((a, b) =>
     rowDate(b) < rowDate(a) ? -1 : rowDate(b) > rowDate(a) ? 1 : 0,
   );

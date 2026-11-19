@@ -4,7 +4,7 @@ import * as s from "@/db/schema";
 import { createTestDb } from "@/db/testing";
 import { seedDemo } from "@/db/seed";
 import { getMonthView, type LineView } from "@/server/repos/month-view";
-import { calendarCells } from "./calendar-cells";
+import { calendarCells, calendarSummary } from "./calendar-cells";
 
 let bev: LineView;
 
@@ -49,5 +49,20 @@ describe("calendarCells for a line with no target", () => {
     const second = cells[1]!;
     expect(second).toMatchObject({ day: 2, mark: "recorded", amount: 118 });
     expect(cells.some((c) => c?.mark === "below" || c?.mark === "hit")).toBe(false);
+  });
+});
+
+describe("calendarSummary", () => {
+  it("reports hit and below days for a line with a target", () => {
+    const hit = bev.days.filter((d) => d.mark === "hit").length;
+    const below = bev.days.filter((d) => d.mark === "below").length;
+    expect(calendarSummary(bev)).toEqual({ key: "calendarSummary", values: { hit, below } });
+  });
+  it("a line without a target reports recorded days instead", () => {
+    const line = {
+      target: 0,
+      days: [{ mark: "recorded" as const }, { mark: "recorded" as const }, { mark: "missing" as const }],
+    };
+    expect(calendarSummary(line)).toEqual({ key: "calendarSummaryRecorded", values: { recorded: 2 } });
   });
 });

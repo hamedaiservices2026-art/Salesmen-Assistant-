@@ -47,6 +47,7 @@
     "expected": "Expected by today {expected}",
     "daysLabel": "Days of the month",
     "calendarSummary": "{month}: {hit} days at or above the daily pace, {below} days below it, today is day {day} of the month",
+    "calendarSummaryRecorded": "{month}: {recorded, plural, one {# day recorded} other {# days recorded}}, today is day {day} of the month",
     "calendarSummaryRequired": ", and {required} {unit} are needed",
     "today": "Today",
     "legendHit": "Hit daily pace",
@@ -131,6 +132,7 @@
     },
     "submit": "Confirm the day",
     "submitting": "Saving…",
+    "optional": "optional",
     "fixErrors": "Some numbers need a look",
     "errors": {
       "required": "Type the number",
@@ -218,7 +220,23 @@
     "languageLabel": "Choose language",
     "signOut": "Sign out",
     "loginLabel": "Username",
-    "signOutNote": "You will need your username and PIN to sign in again."
+    "signOutNote": "You will need your username and PIN to sign in again.",
+    "pin": {
+      "title": "Change PIN",
+      "current": "Current PIN",
+      "new": "New PIN",
+      "confirm": "Type the new PIN again",
+      "submit": "Change PIN",
+      "done": "PIN changed. Your other devices were signed out.",
+      "forgot": "If you forget your PIN, ask your admin for a new link.",
+      "errors": {
+        "invalid": "The current PIN is wrong",
+        "locked": "Too many tries. Wait 15 minutes, and if you still cannot remember it, ask your admin for a new link",
+        "weak_pin": "Choose a harder PIN",
+        "same": "The new PIN is the same as the old one. Choose another",
+        "mismatch": "The two new PINs do not match"
+      }
+    }
   },
   "currency": {
     "SAR": "SAR",

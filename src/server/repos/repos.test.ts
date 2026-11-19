@@ -9,7 +9,8 @@ import { isDailyLine } from "@/domain/lines";
 import { getMonthView } from "./month-view";
 import { getClose, saveClose, type CloseForm } from "./closes";
 import { getCommissionView } from "./commission";
-import { getHistoryDays, getHistoryMonths } from "./history";
+import { getFirstCloseDate, getHistoryDays, getHistoryMonths } from "./history";
+import { loadLines } from "./month-data";
 import { getCompanyPrefs } from "./company";
 
 const TODAY = "2026-11-14";
@@ -349,5 +350,61 @@ describe("company preferences on the rep screens", () => {
     expect(view.lines.filter(isDailyLine).map((l) => l.lineId)).toEqual(["bev", "food", "coll"]);
     const r = await saveClose(ahmed(), form(TODAY, { bev: 5, cov: 5 }), { today: TODAY });
     expect(r).toEqual({ ok: false, errors: { "lines.cov": "unknown" } });
+  });
+});
+
+describe("getFirstCloseDate", () => {
+  it("is the earliest confirmed close of the rep", async () => {
+    expect(await getFirstCloseDate(ahmed())).toBe("2026-11-01");
+  });
+  it("is null for a rep with no closes and ignores an upload draft", async () => {
+    const [u] = await db.select().from(s.users).where(eq(s.users.id, "yousef"));
+    const ctx: Ctx = { ...ahmed(), userId: u!.id };
+    expect(await getFirstCloseDate(ctx)).toBeNull();
+    await db.insert(s.dailyCloses).values({
+      id: "draft-1",
+      companyId: seed.companyId,
+      userId: "yousef",
+      date: "2026-11-02",
+      source: "excel",
+      status: "draft",
+    });
+    expect(await getFirstCloseDate(ctx)).toBeNull();
+  });
+  it("is company and user scoped", async () => {
+    await db.insert(s.dailyCloses).values({
+      id: "old-1",
+      companyId: seed.companyId,
+      userId: "khaled",
+      date: "2026-09-02",
+      source: "manual",
+      status: "confirmed",
+    });
+    expect(await getFirstCloseDate(ahmed())).toBe("2026-11-01");
+    const other = await otherRep();
+    const [row] = await db.select().from(s.dailyCloses).where(eq(s.dailyCloses.userId, other.userId)).orderBy(s.dailyCloses.date);
+    expect(await getFirstCloseDate(other)).toBe(row?.date ?? null);
+  });
+});
+
+describe("line createdOn and earlier-month closes", () => {
+  it("createdOn is the creation date in the company time zone", async () => {
+    await db
+      .update(s.targetLines)
+      .set({ createdAt: new Date("2026-11-12T21:30:00Z") }) // 00:30 on 13 Nov in Riyadh
+      .where(eq(s.targetLines.id, "coll"));
+    const lines = await loadLines(ahmed());
+    expect(lines.find((l) => l.lineId === "coll")!.createdOn).toBe("2026-11-13");
+    expect(lines.find((l) => l.lineId === "bev")!.createdOn < "2026-11-01").toBe(true);
+  });
+
+  it("saves a close for an earlier-month Thursday", async () => {
+    expect(await saveClose(ahmed(), form("2026-10-29", { bev: 40 }), { today: TODAY })).toEqual({ ok: true });
+    expect((await getClose(ahmed(), "2026-10-29"))!.lines).toEqual({ bev: 40 });
+  });
+
+  it("re-saving 12 Nov without a line created on 13 Nov succeeds", async () => {
+    expect(await saveClose(ahmed(), form("2026-11-12", { bev: 106, food: 790000 }), { today: TODAY })).toEqual({ ok: true });
+    expect((await getClose(ahmed(), "2026-11-12"))!.lines).toMatchObject({ bev: 106, food: 790000 });
   });
 });

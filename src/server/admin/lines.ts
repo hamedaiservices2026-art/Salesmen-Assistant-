@@ -10,7 +10,7 @@ import type { Ctx } from "@/server/ctx";
 import { isUniqueViolation } from "@/server/db-errors";
 import type { LineInfo } from "@/server/repos/month-data";
 
-export type LineRow = LineInfo & { sort: number; active: boolean; inUse: boolean };
+export type LineRow = Omit<LineInfo, "createdOn"> & { sort: number; active: boolean; inUse: boolean };
 
 export type LineInput = {
   /** The line to change; omitted to create one. */

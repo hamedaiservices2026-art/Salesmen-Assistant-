@@ -128,4 +128,27 @@ describe("parseCloseForm", () => {
     fd.set("cashSales", "0");
     expect(parseCloseForm(fd, [{ lineId: "bev", unit: "cases" }], []).ok).toBe(true);
   });
+
+  it("an empty optional line is left out, not required and not 0", () => {
+    const opt = [lines[0]!, lines[1]!, { ...lines[2]!, optional: true }];
+    const r = parseCloseForm(data({ ...good, "line.coll": "" }), opt, focus);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.form.lines).toEqual({ bev: 130, food: 825050 });
+  });
+
+  it("a filled optional line is read, and a bad one is still invalid", () => {
+    const opt = [lines[0]!, lines[1]!, { ...lines[2]!, optional: true }];
+    const ok = parseCloseForm(data(good), opt, focus);
+    expect(ok.ok && ok.form.lines["coll"]).toBe(1900000);
+    expect(parseCloseForm(data({ ...good, "line.coll": "x" }), opt, focus)).toEqual({
+      ok: false,
+      errors: { "line.coll": "invalid" },
+    });
+  });
+
+  it("an omitted optional collection line adds nothing to collections", () => {
+    const opt = [lines[0]!, { ...lines[2]!, kind: "collection" as const, optional: true }];
+    const r = parseCloseForm(data({ "line.bev": "5", "line.coll": "" }), opt, focus);
+    expect(r.ok && r.form.collections).toBe(0);
+  });
 });

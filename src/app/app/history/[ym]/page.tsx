@@ -7,7 +7,7 @@ import { getCompanyPrefs } from "@/server/repos/company";
 import { lineName } from "@/domain/lines";
 import type { Locale } from "@/i18n/config";
 import { unitLabel as labelFor } from "@/ui/unit-label";
-import { getHistoryDays, getMonthSellingDays } from "@/server/repos/history";
+import { getFirstCloseDate, getHistoryDays, getMonthSellingDays } from "@/server/repos/history";
 import { loadLines } from "@/server/repos/month-data";
 import { currentDay } from "@/server/today";
 import { formatAmount, type Unit } from "@/domain/money";
@@ -26,7 +26,7 @@ export default async function HistoryMonthPage({
   if (!parsed) notFound();
   const { year, month } = parsed;
 
-  const [t, tRoot, locale, closed, selling, lines, prefs] = await Promise.all([
+  const [t, tRoot, locale, closed, selling, lines, prefs, firstClose] = await Promise.all([
     getTranslations("history"),
     getTranslations(),
     getLocale(),
@@ -34,8 +34,9 @@ export default async function HistoryMonthPage({
     getMonthSellingDays(ctx, year, month),
     loadLines(ctx),
     getCompanyPrefs(ctx),
+    getFirstCloseDate(ctx),
   ]);
-  const rows = mergeDayRows(closed, selling, today);
+  const rows = mergeDayRows(closed, selling, today, firstClose);
   const loc = locale as keyof typeof INTL_TAG;
   const tag = INTL_TAG[loc] ?? "ar-EG";
   const first = new Date(Date.UTC(year, month - 1, 1));

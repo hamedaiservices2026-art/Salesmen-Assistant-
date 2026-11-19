@@ -31,11 +31,11 @@ export function returnIndexes(data: FormData): number[] {
  * name, and `ret.<i>.description|quantity|reason`. A required field left empty is `required`, one
  * that cannot be read as a number is `invalid`; nothing unreadable is ever turned into 0.
  * When the company has a collection-kind line, `collections` is the sum of those lines (the form
- * has no separate field); otherwise it is read from the `collections` field, optional.
+ * has no separate field; an omitted optional line counts 0); otherwise it is read from the `collections` field, optional.
  */
 export function parseCloseForm(
   data: FormData,
-  lines: { lineId: string; unit: Unit; kind?: LineKind }[],
+  lines: { lineId: string; unit: Unit; kind?: LineKind; optional?: boolean }[],
   focus: { id: string; unit: Unit }[],
 ): ParseResult {
   const errors: Record<string, "required" | "invalid"> = {};
@@ -55,7 +55,11 @@ export function parseCloseForm(
   };
 
   const lineAmounts: Record<string, number> = {};
-  for (const l of lines) lineAmounts[l.lineId] = read(`line.${l.lineId}`, l.unit, true);
+  for (const l of lines) {
+    // A line that did not exist yet on the close's date may be left empty; it is then not saved.
+    if (l.optional && text(data, `line.${l.lineId}`) === "") continue;
+    lineAmounts[l.lineId] = read(`line.${l.lineId}`, l.unit, true);
+  }
   const focusAmounts: Record<string, number> = {};
   for (const f of focus) focusAmounts[f.id] = read(`focus.${f.id}`, f.unit, false);
 

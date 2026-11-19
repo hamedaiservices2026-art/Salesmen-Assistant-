@@ -1,3 +1,4 @@
+import { ceilDiv } from "@/domain/pace";
 import { evaluateScheme, projectInput, whatIf, type Scheme, type SchemeInput } from "@/domain/commission";
 import type { Unit } from "@/domain/money";
 
@@ -34,8 +35,8 @@ export function whatIfAt(
   const baseEnd = base.lines[line.lineId] ?? metric;
 
   const need = Math.max(0, baseEnd.achieved - metric.achieved);
-  const startRate = counts.left > 0 ? Math.floor((need + counts.left - 1) / counts.left) : 0;
-  const minSteps = -Math.ceil(startRate / step);
+  const startRate = counts.left > 0 ? ceilDiv(need, counts.left) : 0;
+  const minSteps = -ceilDiv(startRate, step);
   const n = Math.max(minSteps, steps);
   const rate = Math.max(0, startRate + n * step);
   const canDecrease = n > minSteps;

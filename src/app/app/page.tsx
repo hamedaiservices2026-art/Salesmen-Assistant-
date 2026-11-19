@@ -20,7 +20,7 @@ import { MonthCalendar } from "@/ui/components/MonthCalendar";
 import { PrimaryLink } from "@/ui/components/PrimaryLink";
 import { StatusChip } from "@/ui/components/StatusChip";
 import { TodayPanel } from "@/ui/components/TodayPanel";
-import { calendarCells } from "@/ui/components/calendar-cells";
+import { calendarCells, calendarSummary } from "@/ui/components/calendar-cells";
 import { coverageNeedText, coverageSummary } from "@/ui/coverage-copy";
 import { INTL_TAG } from "@/ui/intl-tag";
 
@@ -139,8 +139,6 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   }
 
   const cells = calendarCells(line, view.weekStartsOn);
-  const hit = line.days.filter((d) => d.mark === "hit").length;
-  const below = line.days.filter((d) => d.mark === "below").length;
   const hasMissing = line.days.some((d) => d.mark === "missing");
   const hasRecorded = line.days.some((d) => d.mark === "recorded");
   const need = todayNeed({
@@ -150,8 +148,9 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
     nextDayRequired: line.nextDayRequired,
     noTarget: pace.status === "no_target",
   });
+  const sum = calendarSummary(line);
   const summary =
-    t("calendarSummary", { month: fmt({ month: "long" }).format(todayDate), hit, below, day: todayDate.getUTCDate() }) +
+    t(sum.key, { ...sum.values, month: fmt({ month: "long" }).format(todayDate), day: todayDate.getUTCDate() }) +
     (need.kind === "need" && need.amount !== null
       ? t("calendarSummaryRequired", { required: amt(need.amount), unit: unitLabel })
       : "");

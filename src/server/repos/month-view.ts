@@ -17,6 +17,8 @@ export type LineView = {
   nameUr: string;
   unit: Unit;
   kind: LineKind;
+  /** The date the line was created (company time zone); a close dated earlier does not need it. */
+  createdOn: ISODate;
   target: number;
   achieved: number;
   pace: ReturnType<typeof computePace>;

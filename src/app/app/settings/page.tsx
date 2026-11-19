@@ -5,6 +5,7 @@ import { signOutAction } from "@/app/(auth-actions)/actions";
 import { requireCtx } from "@/server/auth/guard";
 import { getLogin } from "@/server/repos/profile";
 import { setLocaleAction } from "./actions";
+import { ChangePinForm } from "./change-pin-form";
 
 const OWN_NAME = { ar: "العربية", en: "English", ur: "اردو" } as const;
 
@@ -56,6 +57,12 @@ export default async function SettingsPage() {
               })}
             </ul>
           </form>
+        </section>
+        <section aria-labelledby="pin-title" className="flex flex-col gap-2.5">
+          <h2 id="pin-title" className="m-0 text-[15px] font-bold">
+            {t("pin.title")}
+          </h2>
+          <ChangePinForm />
         </section>
         <form action={signOutAction} className="flex flex-col gap-2">
           <p className="m-0 flex flex-wrap items-baseline gap-2 text-[15px]">
