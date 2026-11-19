@@ -1,0 +1,1 @@
+CREATE INDEX "notifications_unread" ON "notifications" USING btree ("user_id") WHERE "notifications"."read_at" is null;

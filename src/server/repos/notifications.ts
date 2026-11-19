@@ -1,4 +1,4 @@
-import { and, count, desc, eq, isNull } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNull } from "drizzle-orm";
 import * as s from "@/db/schema";
 import { assertOwnContext } from "@/server/auth/roles";
 import type { Ctx } from "@/server/ctx";
@@ -41,11 +41,15 @@ export async function unreadCount(ctx: Ctx): Promise<number> {
   return row?.n ?? 0;
 }
 
-/** Marks the caller's own unread notifications read. Refused for a context that only reads on someone's behalf. */
-export async function markAllRead(ctx: Ctx): Promise<void> {
+/**
+ * Marks the caller's own unread notifications read: the given ids, or all of his when none are
+ * given. Ids that are not his are ignored. Refused for a context that only reads on someone's behalf.
+ */
+export async function markAllRead(ctx: Ctx, ids?: string[]): Promise<void> {
   assertOwnContext(ctx);
+  if (ids !== undefined && ids.length === 0) return;
   await ctx.db
     .update(s.notifications)
     .set({ readAt: new Date() })
-    .where(and(own(ctx), isNull(s.notifications.readAt)));
+    .where(and(own(ctx), isNull(s.notifications.readAt), ...(ids ? [inArray(s.notifications.id, ids)] : [])));
 }

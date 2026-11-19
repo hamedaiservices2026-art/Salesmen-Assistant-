@@ -8,6 +8,7 @@ import { assertRole } from "@/server/auth/roles";
 import type { Ctx } from "@/server/ctx";
 import { pickText } from "@/server/repos/notifications";
 import { loadSchemeRefs, publishComponents } from "./schemes";
+import { updateDraftRow } from "./schemes-internal";
 import { AMOUNT_MAX } from "./targets";
 
 export type LocalInput = { ar: string; en?: string; ur?: string };
@@ -39,6 +40,11 @@ export type IncentiveRow = {
   notified: number;
   seen: number;
 };
+
+/** Thrown inside the transaction to roll it back when the draft moved under us. */
+class StaleIncentive extends Error {}
+/** What `notifications.ref` holds for an incentive: the scheme it was made on and the component. */
+const refOf = (schemeId: string, componentId: string) => `${schemeId}:${componentId}`;
 
 export const LABEL_MAX = 80;
 export const EXPLANATION_MAX = 500;
@@ -144,7 +150,8 @@ export async function createIncentive(ctx: Ctx, input: IncentiveInput): Promise<
   const expected = input.expectedVersion;
   if (!Number.isSafeInteger(expected) || expected < 0) return { ok: false, error: "stale" };
 
-  return ctx.db.transaction(async (t) => {
+  try {
+  return await ctx.db.transaction(async (t) => {
     const tx = t as unknown as Db;
     const [row] = await tx
       .select()
@@ -166,12 +173,21 @@ export async function createIncentive(ctx: Ctx, input: IncentiveInput): Promise<
       endsOn: input.endsOn,
     };
     const components = [...row.components, bonus];
-    const refs = await loadSchemeRefs(tx, ctx, period, { lock: components });
+    // An open draft takes the same bonus (once), so publishing it later keeps the incentive.
+    const draft = row.draft === null ? null : row.draft.some((c) => c.id === componentId) ? row.draft : [...row.draft, bonus];
+    const refs = await loadSchemeRefs(tx, ctx, period, { lock: draft === null ? components : [...components, ...draft] });
     const checked = validateComponents(components, refs);
     if (!checked.ok) return { ok: false as const, issues: checked.issues };
+    const checkedDraft = draft === null ? null : validateComponents(draft, refs);
+    if (checkedDraft && !checkedDraft.ok) return { ok: false as const, issues: checkedDraft.issues };
 
     const published = await publishComponents(tx, ctx, row.id, checked.components, expected);
     if (!published.ok) return { ok: false as const, error: "stale" as const };
+    if (checkedDraft?.ok) {
+      // Conditional on the draft_rev read above; the editor that has the old one goes stale.
+      const saved = await updateDraftRow(tx, ctx, row.id, checkedDraft.components, published.version, row.draftRev);
+      if (!saved) throw new StaleIncentive();
+    }
 
     const recipients = await recipientsOf(tx, ctx, input.condition, period);
     if (recipients.length > 0) {
@@ -183,12 +199,16 @@ export async function createIncentive(ctx: Ctx, input: IncentiveInput): Promise<
           kind: "incentive" as const,
           title: label,
           body: explanation,
-          ref: componentId,
+          ref: refOf(row.id, componentId),
         })),
       );
     }
     return { ok: true as const, componentId, notified: recipients.length };
   });
+  } catch (e) {
+    if (e instanceof StaleIncentive) return { ok: false, error: "stale" };
+    throw e;
+  }
 }
 
 /** The month's mid-month incentives (bonuses made here) with how many reps were told and how many have opened it. */
@@ -197,7 +217,7 @@ export async function listIncentives(ctx: Ctx, input: { year: number; month: num
   const period = periodOf(input.year, input.month);
   if (!period) return [];
   const [row] = await ctx.db
-    .select({ components: s.schemes.components })
+    .select({ id: s.schemes.id, components: s.schemes.components })
     .from(s.schemes)
     .where(
       and(
@@ -221,7 +241,7 @@ export async function listIncentives(ctx: Ctx, input: { year: number; month: num
         eq(s.notifications.companyId, ctx.companyId),
         eq(s.notifications.kind, "incentive"),
         isNotNull(s.notifications.ref),
-        inArray(s.notifications.ref, made.map((c) => c.id)),
+        inArray(s.notifications.ref, made.map((c) => refOf(row!.id, c.id))),
       ),
     )
     .groupBy(s.notifications.ref);
@@ -236,8 +256,8 @@ export async function listIncentives(ctx: Ctx, input: { year: number; month: num
             amount: c.amount,
             startsOn: c.startsOn as ISODate,
             endsOn: c.endsOn as ISODate,
-            notified: byRef.get(c.id)?.notified ?? 0,
-            seen: byRef.get(c.id)?.seen ?? 0,
+            notified: byRef.get(refOf(row!.id, c.id))?.notified ?? 0,
+            seen: byRef.get(refOf(row!.id, c.id))?.seen ?? 0,
           },
         ],
   );

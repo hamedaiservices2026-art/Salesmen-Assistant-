@@ -352,5 +352,7 @@ export const notifications = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     readAt: timestamp("read_at", { withTimezone: true }),
   },
-  (t) => [index("notifications_user_created").on(t.userId, t.createdAt), index("notifications_company_ref").on(t.companyId, t.ref)],
+  (t) => [index("notifications_user_created").on(t.userId, t.createdAt), index("notifications_company_ref").on(t.companyId, t.ref),
+    index("notifications_unread").on(t.userId).where(sql`${t.readAt} is null`),
+  ],
 );

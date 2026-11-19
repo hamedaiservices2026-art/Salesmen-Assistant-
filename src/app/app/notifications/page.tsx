@@ -10,14 +10,15 @@ import { INTL_TAG } from "@/ui/intl-tag";
 
 /**
  * The rep's notifications, newest first. The list is read first and drawn as it was (unread ones
- * highlighted); the "mark all read" write runs after the response is sent, so the next visit and the
+ * highlighted); the write that marks exactly the rendered ones read runs after the response is sent, so the next visit and the
  * bell show everything read.
  */
 export default async function NotificationsPage() {
   const ctx = await requireCtx();
   const [t, home, locale] = await Promise.all([getTranslations("notifications"), getTranslations("home"), getLocale()]);
   const items = await listNotifications(ctx);
-  if (items.some((n) => !n.read)) after(() => markAllRead(ctx));
+  const unreadIds = items.filter((n) => !n.read).map((n) => n.id);
+  if (unreadIds.length > 0) after(() => markAllRead(ctx, unreadIds));
 
   const when = new Intl.DateTimeFormat(`${INTL_TAG[locale as Locale] ?? "ar-EG"}-u-nu-latn`, {
     day: "numeric",
@@ -29,7 +30,7 @@ export default async function NotificationsPage() {
 
   return (
     <>
-      <AppHeader greeting={t("title")} notificationsLabel={home("notifications")} />
+      <AppHeader greeting={t("title")} notificationsLabel={home("notifications")} unreadCount={0} />
       <main className="flex flex-1 flex-col gap-3 px-5 pb-4 pt-[18px]">
         {items.length === 0 && (
           <section aria-label={t("emptyTitle")} className="flex flex-col gap-1.5 rounded-xl bg-brand-tint px-4 py-3.5">

@@ -13,6 +13,7 @@ import { getCommissionView } from "@/server/repos/commission";
 import { listNotifications, markAllRead, unreadCount } from "@/server/repos/notifications";
 import { createIncentive, listIncentives, type IncentiveInput } from "./incentives";
 import { saveFocusItem } from "./focus";
+import { publishScheme, saveDraft } from "./schemes";
 import { repCtx } from "./rep-ctx";
 
 let db: Db;
@@ -205,7 +206,90 @@ describe("createIncentive", () => {
   });
 });
 
+describe("createIncentive with an open draft", () => {
+  const novRow = async () => (await db.select().from(s.schemes).where(and(eq(s.schemes.companyId, "demo-co"), eq(s.schemes.month, 11))))[0]!;
+  async function openDraft() {
+    const row = await novRow();
+    const r = await saveDraft(admin(), { ...NOV, components: row.components, expectedVersion: row.version, expectedDraftRev: row.draftRev });
+    if (!r.ok) throw new Error("draft");
+    return r.draftRev;
+  }
+
+  it("appends the incentive to the draft and advances draft_rev", async () => {
+    const rev = await openDraft();
+    const r = await createIncentive(admin(), input());
+    if (!r.ok) throw new Error(JSON.stringify(r));
+    const row = await novRow();
+    expect(row.draft!.map((c) => c.id)).toContain(r.componentId);
+    expect(row.draft!.filter((c) => c.id === r.componentId)).toHaveLength(1);
+    expect(row.draftRev).toBeGreaterThan(rev);
+  });
+
+  it("makes the editor's old draft save stale", async () => {
+    const rev = await openDraft();
+    const before = await novRow();
+    await createIncentive(admin(), input());
+    const r = await saveDraft(admin(), { ...NOV, components: before.components, expectedVersion: 1, expectedDraftRev: rev });
+    expect(r).toEqual({ ok: false, error: "stale" });
+  });
+
+  it("keeps the incentive when the reloaded draft is published", async () => {
+    await openDraft();
+    const made = await createIncentive(admin(), input());
+    if (!made.ok) throw new Error("create");
+    const row = await novRow();
+    const pub = await publishScheme(admin(), { ...NOV, expectedVersion: row.version, expectedDraftRev: row.draftRev });
+    expect(pub.ok).toBe(true);
+    expect((await novRow()).components.map((c) => c.id)).toContain(made.componentId);
+    const view = await getCommissionView(rep("ahmed"), { ...NOV, today: "2026-11-14" });
+    expect(view.actual.results.map((x) => x.componentId)).toContain(made.componentId);
+  });
+
+  it("leaves a null draft null", async () => {
+    await createIncentive(admin(), input());
+    const row = await novRow();
+    expect(row.draft).toBeNull();
+    expect(row.draftRev).toBe(0);
+  });
+
+  it("refuses the whole call when the draft cannot take the incentive", async () => {
+    const row = await novRow();
+    const full = Array.from({ length: 50 }, (_, i) => ({ ...row.components.find((c) => c.type === "bonus")!, id: `x${i}` }));
+    await db.update(s.schemes).set({ draft: full as never, draftRev: 1 }).where(eq(s.schemes.id, row.id));
+    const before = await snapshot();
+    const r = await createIncentive(admin(), input());
+    expect(r).toMatchObject({ ok: false, issues: expect.any(Array) });
+    expect(await snapshot()).toEqual(before);
+  });
+});
+
 describe("notifications of a rep", () => {
+  it("marks only the ids it is given", async () => {
+    await createIncentive(admin(), input());
+    await createIncentive(admin(), input({ label: { ar: "تاني" }, expectedVersion: 2 }));
+    const [newest, older] = await listNotifications(rep("ahmed"));
+    await markAllRead(rep("ahmed"), [older!.id]);
+    expect(await unreadCount(rep("ahmed"))).toBe(1);
+    expect((await listNotifications(rep("ahmed"))).find((n) => n.id === newest!.id)!.read).toBe(false);
+    await markAllRead(rep("ahmed"), []);
+    expect(await unreadCount(rep("ahmed"))).toBe(1);
+  });
+
+  it("does not mark another user's id", async () => {
+    await createIncentive(admin(), input());
+    const [k] = await listNotifications(rep("khaled"));
+    await markAllRead(rep("ahmed"), [k!.id]);
+    expect(await unreadCount(rep("khaled"))).toBe(1);
+  });
+
+  it("stores ref as schemeId:componentId", async () => {
+    const r = await createIncentive(admin(), input());
+    if (!r.ok) throw new Error("create");
+    const [scheme] = await db.select().from(s.schemes).where(and(eq(s.schemes.companyId, "demo-co"), eq(s.schemes.month, 11)));
+    const [n] = await db.select().from(s.notifications);
+    expect(n!.ref).toBe(`${scheme!.id}:${r.componentId}`);
+  });
+
   it("lists newest first, own rows only", async () => {
     await createIncentive(admin(), input());
     await createIncentive(admin(), input({ label: { ar: "تاني" }, expectedVersion: 2 }));
@@ -238,10 +322,10 @@ describe("incentive catalogs", () => {
   const keysOf = (o: unknown, p = ""): string[] =>
     typeof o === "object" && o !== null ? Object.entries(o).flatMap(([k, v]) => keysOf(v, `${p}${k}.`)) : [p];
   it("have the same keys in ar, en and ur", () => {
-    for (const ns of ["notifications", "admin.incentives"]) {
+    for (const ns of ["notifications", "admin.incentives", "admin.nav.incentives", "home.notificationsUnread"]) {
       const pick = (m: Record<string, unknown>) => ns.split(".").reduce<unknown>((o, k) => (o as Record<string, unknown>)[k], m);
       const a = keysOf(pick(ar)).sort();
-      expect(a.length).toBeGreaterThan(5);
+      expect(a.length).toBeGreaterThan(0);
       expect(keysOf(pick(en)).sort()).toEqual(a);
       expect(keysOf(pick(ur)).sort()).toEqual(a);
     }

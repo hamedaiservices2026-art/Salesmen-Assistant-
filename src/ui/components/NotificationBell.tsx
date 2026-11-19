@@ -5,9 +5,17 @@ import { currentCtx } from "@/server/auth/guard";
 import { unreadCount } from "@/server/repos/notifications";
 
 /** The bell in the app header: a link to the notifications page with the signed-in rep's unread count. */
-export async function NotificationBell({ label }: { label: string }) {
-  const ctx = await currentCtx();
-  const count = ctx ? await unreadCount(ctx) : 0;
+export async function NotificationBell({ label, count: given }: { label: string; count?: number }) {
+  let count = given ?? 0;
+  if (given === undefined) {
+    // A failing count must not take the page down: no badge instead.
+    try {
+      const ctx = await currentCtx();
+      count = ctx ? await unreadCount(ctx) : 0;
+    } catch {
+      count = 0;
+    }
+  }
   const t = await getTranslations("home");
   return (
     <Link

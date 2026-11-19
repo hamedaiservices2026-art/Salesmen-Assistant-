@@ -7,12 +7,15 @@ export function AppHeader({
   greeting,
   dateLine,
   notificationsLabel,
+  unreadCount,
   settingsLabel,
   children,
 }: {
   greeting: string;
   dateLine?: string;
   notificationsLabel: string;
+  /** Overrides the bell's own count (the notifications page passes 0 after marking). */
+  unreadCount?: number;
   /** When given, a gear link to the settings screen shows next to the bell. */
   settingsLabel?: string;
   children?: React.ReactNode;
@@ -34,7 +37,7 @@ export function AppHeader({
               <Settings aria-hidden="true" size={22} strokeWidth={1.8} />
             </Link>
           )}
-          <NotificationBell label={notificationsLabel} />
+          <NotificationBell label={notificationsLabel} count={unreadCount} />
         </div>
       </div>
       {children}

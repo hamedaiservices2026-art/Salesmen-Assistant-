@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getDb } from "@/db/client";
@@ -6,10 +7,10 @@ import { homeFor, signInPathFor, type Role } from "./roles";
 import { SESSION_COOKIE, getSessionUser } from "./sessions";
 
 /** The signed-in context from the session cookie, or null. Never redirects. */
-export async function currentCtx(): Promise<Ctx | null> {
+export const currentCtx = cache(async (): Promise<Ctx | null> => {
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   return token ? getSessionUser(await getDb(), token) : null;
-}
+});
 
 /**
  * For server components and actions: the signed-in context when its role is one of `roles`.
