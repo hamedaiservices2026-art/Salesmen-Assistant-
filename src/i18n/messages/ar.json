@@ -47,7 +47,7 @@
     "expected": "المفروض لحد النهارده {expected}",
     "daysLabel": "أيام الشهر",
     "calendarSummary": "أيام {month}: {hit} أيام حققت فيها معدل اليوم و{below} أيام أقل منه، والنهارده يوم {day}",
-    "calendarSummaryRecorded": "أيام {month}: سجّلت {recorded} أيام، والنهارده يوم {day}",
+    "calendarSummaryRecorded": "أيام {month}: سجّلت {recorded, plural, =0 {ولا يوم} =1 {يوم واحد} =2 {يومين} few {# أيام} other {# يوم}}، والنهارده يوم {day}",
     "calendarSummaryRequired": "، والمطلوب {required} {unit}",
     "today": "اليوم",
     "legendHit": "حققت معدل اليوم",
@@ -132,7 +132,7 @@
     },
     "submit": "تأكيد القفلة",
     "submitting": "بنحفظ…",
-    "optional": "اختياري",
+    "optionalLabel": "{label} (اختياري)",
     "fixErrors": "فيه أرقام محتاجة مراجعة",
     "errors": {
       "required": "اكتب الرقم",

@@ -7,8 +7,15 @@ function roundDiv(numerator: number, denominator: number): number {
   return Math.floor((2 * numerator + denominator) / (2 * denominator));
 }
 
-/** Integer division rounding up (non-negative numerator, positive denominator). */
+/**
+ * Integer division rounding up. Both arguments must be safe integers, the numerator at least 0 and
+ * the denominator at least 1 (so `numerator + denominator - 1` stays exact up to 2^53); anything
+ * else throws a RangeError instead of returning a rounded float result.
+ */
 export function ceilDiv(numerator: number, denominator: number): number {
+  if (!Number.isSafeInteger(numerator) || !Number.isSafeInteger(denominator) || numerator < 0 || denominator < 1) {
+    throw new RangeError("ceilDiv needs a non-negative integer numerator and a positive integer denominator");
+  }
   return Math.floor((numerator + denominator - 1) / denominator);
 }
 

@@ -132,7 +132,7 @@
     },
     "submit": "Confirm the day",
     "submitting": "Saving…",
-    "optional": "optional",
+    "optionalLabel": "{label} (optional)",
     "fixErrors": "Some numbers need a look",
     "errors": {
       "required": "Type the number",

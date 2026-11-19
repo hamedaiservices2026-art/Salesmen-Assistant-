@@ -7,7 +7,8 @@ import { saveClose } from "@/server/repos/closes";
 import { getMonthView } from "@/server/repos/month-view";
 import { currentDay } from "@/server/today";
 import { closeMonth, focusOn } from "./close-date";
-import { parseCloseForm, returnIndexes } from "./parse-form";
+import { isOptionalLine, parseCloseForm, returnIndexes, zeroEmptiedLines } from "./parse-form";
+import { getClose } from "@/server/repos/closes";
 
 export type CloseState = { errors: Record<string, string> };
 
@@ -34,12 +35,16 @@ export async function saveCloseAction(_prev: CloseState, data: FormData): Promis
     data,
     view.lines
       .filter(isDailyLine)
-      .map((l) => ({ lineId: l.lineId, unit: l.unit, kind: l.kind, optional: l.createdOn > date })),
+      .map((l) => ({ lineId: l.lineId, unit: l.unit, kind: l.kind, optional: isOptionalLine(l.createdOn, date) })),
     focusOn(view.focus, date).map((f) => ({ id: f.id, unit: f.unit })),
   );
   if (!parsed.ok) return { errors: parsed.errors };
 
-  const result = await saveClose(ctx, parsed.form, { today });
+  const optionalIds = view.lines
+    .filter((l) => isDailyLine(l) && isOptionalLine(l.createdOn, date))
+    .map((l) => l.lineId);
+  const form = zeroEmptiedLines(parsed.form, optionalIds, optionalIds.length ? await getClose(ctx, date) : null);
+  const result = await saveClose(ctx, form, { today });
   if (!result.ok) return { errors: formFieldErrors(result.errors, returnIndexes(data)) };
   redirect("/app");
 }

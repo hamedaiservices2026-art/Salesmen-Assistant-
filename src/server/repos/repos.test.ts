@@ -11,6 +11,7 @@ import { getClose, saveClose, type CloseForm } from "./closes";
 import { getCommissionView } from "./commission";
 import { getFirstCloseDate, getHistoryDays, getHistoryMonths } from "./history";
 import { loadLines } from "./month-data";
+import { isOptionalLine, parseCloseForm, zeroEmptiedLines } from "@/app/app/close/parse-form";
 import { getCompanyPrefs } from "./company";
 
 const TODAY = "2026-11-14";
@@ -403,8 +404,56 @@ describe("line createdOn and earlier-month closes", () => {
     expect((await getClose(ahmed(), "2026-10-29"))!.lines).toEqual({ bev: 40 });
   });
 
-  it("re-saving 12 Nov without a line created on 13 Nov succeeds", async () => {
-    expect(await saveClose(ahmed(), form("2026-11-12", { bev: 106, food: 790000 }), { today: TODAY })).toEqual({ ok: true });
+  it("a line created 13 Nov is optional on 12 Nov, required on 13 Nov, and 12 Nov re-saves without it", async () => {
+    await db
+      .update(s.targetLines)
+      .set({ createdAt: new Date("2026-11-12T21:30:00Z") }) // 13 Nov in Riyadh
+      .where(eq(s.targetLines.id, "coll"));
+    const lines = (await loadLines(ahmed())).filter(isDailyLine);
+    const inputs = (date: string) =>
+      lines.map((l) => ({ lineId: l.lineId, unit: l.unit, kind: l.kind, optional: isOptionalLine(l.createdOn, date) }));
+    expect(inputs("2026-11-12").find((l) => l.lineId === "coll")!.optional).toBe(true);
+    expect(inputs("2026-11-12").find((l) => l.lineId === "bev")!.optional).toBe(false);
+    expect(inputs("2026-11-13").find((l) => l.lineId === "coll")!.optional).toBe(false);
+
+    const data = new FormData();
+    data.set("date", "2026-11-12");
+    data.set("cashSales", "100");
+    data.set("line.bev", "106");
+    data.set("line.food", "7900");
+    data.set("line.coll", "");
+    const parsed = parseCloseForm(data, inputs("2026-11-12"), []);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(await saveClose(ahmed(), parsed.form, { today: TODAY })).toEqual({ ok: true });
     expect((await getClose(ahmed(), "2026-11-12"))!.lines).toMatchObject({ bev: 106, food: 790000 });
+
+    data.set("date", "2026-11-13");
+    expect(parseCloseForm(data, inputs("2026-11-13"), [])).toEqual({ ok: false, errors: { "line.coll": "required" } });
+  });
+
+  it("emptying an optional rep line that has a stored value replaces it with 0 and collections follow", async () => {
+    await db
+      .update(s.targetLines)
+      .set({ createdAt: new Date("2026-11-12T21:30:00Z") })
+      .where(eq(s.targetLines.id, "coll"));
+    const saved = await getClose(ahmed(), "2026-11-12");
+    expect(saved!.lines["coll"]).toBeGreaterThan(0);
+    const inputs = (await loadLines(ahmed()))
+      .filter(isDailyLine)
+      .map((l) => ({ lineId: l.lineId, unit: l.unit, kind: l.kind, optional: isOptionalLine(l.createdOn, "2026-11-12") }));
+    const data = new FormData();
+    data.set("date", "2026-11-12");
+    data.set("cashSales", "100");
+    data.set("line.bev", "106");
+    data.set("line.food", "7900");
+    data.set("line.coll", "");
+    const parsed = parseCloseForm(data, inputs, []);
+    if (!parsed.ok) throw new Error("parse");
+    const form = zeroEmptiedLines(parsed.form, inputs.filter((l) => l.optional).map((l) => l.lineId), saved);
+    expect(await saveClose(ahmed(), form, { today: TODAY })).toEqual({ ok: true });
+    const after = await getClose(ahmed(), "2026-11-12");
+    expect(after!.lines["coll"]).toBe(0);
+    expect(after!.collections).toBe(0);
   });
 });

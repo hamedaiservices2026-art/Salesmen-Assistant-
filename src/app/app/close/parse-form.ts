@@ -102,3 +102,26 @@ export function parseCloseForm(
     },
   };
 }
+
+/** A line created after the close's date did not exist that day, so the rep may leave it empty. */
+export function isOptionalLine(createdOn: string, date: string): boolean {
+  return createdOn > date;
+}
+
+/**
+ * An optional line emptied over a value the REP stored is replaced by 0 (so a collections figure
+ * stays the sum of the stored collection lines); a line an admin's upload set keeps its amount and
+ * stays out of the form; a line with nothing stored stays out.
+ */
+export function zeroEmptiedLines<F extends { lines: Record<string, number> }>(
+  form: F,
+  optionalIds: string[],
+  saved: { lines: Record<string, number>; admin: Record<string, unknown> } | null,
+): F {
+  if (!saved) return form;
+  for (const id of optionalIds) {
+    if (form.lines[id] !== undefined) continue;
+    if (saved.lines[id] !== undefined && saved.admin[id] === undefined) form.lines[id] = 0;
+  }
+  return form;
+}

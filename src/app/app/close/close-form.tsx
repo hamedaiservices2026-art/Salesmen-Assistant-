@@ -67,7 +67,7 @@ export function CloseForm({
     <AmountField
       key={it.name}
       name={it.name}
-      label={it.optional ? `${it.label} (${t("optional")})` : it.label}
+      label={it.optional ? t("optionalLabel", { label: it.label }) : it.label}
       unitLabel={unitLabel}
       mode={it.mode}
       value={values[it.name] ?? ""}

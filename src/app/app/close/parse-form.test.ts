@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseCloseForm } from "./parse-form";
+import { isOptionalLine, parseCloseForm, zeroEmptiedLines } from "./parse-form";
 
 const lines = [
   { lineId: "bev", unit: "cases" as const },
@@ -152,3 +152,30 @@ describe("parseCloseForm", () => {
     expect(r.ok && r.form.collections).toBe(0);
   });
 });
+
+describe("isOptionalLine", () => {
+  it("is optional only when created strictly after the close date", () => {
+    expect(isOptionalLine("2026-11-13", "2026-11-12")).toBe(true);
+    expect(isOptionalLine("2026-11-12", "2026-11-12")).toBe(false);
+    expect(isOptionalLine("2026-01-01", "2026-11-12")).toBe(false);
+  });
+});
+
+describe("zeroEmptiedLines", () => {
+  const form = { lines: { bev: 5 } } as { lines: Record<string, number> };
+  it("a rep-source optional line left empty over a stored value is replaced by 0", () => {
+    const f = zeroEmptiedLines({ ...form, lines: { ...form.lines } }, ["coll"], { lines: { coll: 500 }, admin: {} });
+    expect(f.lines).toEqual({ bev: 5, coll: 0 });
+  });
+  it("an admin-set line keeps its amount (left out), and a line with no stored value stays out", () => {
+    const f = zeroEmptiedLines({ ...form, lines: { ...form.lines } }, ["coll", "food"], {
+      lines: { coll: 500 },
+      admin: { coll: { amount: 500, repAmount: null } },
+    });
+    expect(f.lines).toEqual({ bev: 5 });
+  });
+  it("does nothing without a stored close", () => {
+    expect(zeroEmptiedLines({ lines: { bev: 5 } }, ["coll"], null).lines).toEqual({ bev: 5 });
+  });
+});
+

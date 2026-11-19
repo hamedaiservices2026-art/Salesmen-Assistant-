@@ -15,6 +15,7 @@ import type { ReturnRow } from "@/ui/components/ReturnsEditor";
 import { INTL_TAG } from "@/ui/intl-tag";
 import { closeMonth, focusOn, resolveCloseDate } from "./close-date";
 import { CloseForm, type FormItem } from "./close-form";
+import { isOptionalLine } from "./parse-form";
 
 /** The three ways to record the day; only typing exists so far. */
 function Methods({ labels }: { labels: { group: string; photo: string; voice: string; type: string; soon: string } }) {
@@ -105,7 +106,7 @@ export default async function ClosePage({ searchParams }: { searchParams: Promis
     unitLabel: label(l.unit),
     mode: l.unit === "cases" ? "numeric" : "decimal",
     collection: l.kind === "collection",
-    optional: l.createdOn > date,
+    optional: isOptionalLine(l.createdOn, date),
     notes: adminNotes(l.lineId, l.unit),
     adminAmount: saved?.admin[l.lineId]?.amount,
   }));

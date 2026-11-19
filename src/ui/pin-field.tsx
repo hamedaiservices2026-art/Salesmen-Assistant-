@@ -18,7 +18,6 @@ export function PinField({
         name={name}
         type="password"
         inputMode="numeric"
-        pattern="[0-9]*"
         autoComplete={autoComplete}
         maxLength={6}
         required

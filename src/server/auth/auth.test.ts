@@ -388,6 +388,33 @@ describe("changePin", () => {
     expect(vi.mocked(pin.verifySecret)).toHaveBeenCalledTimes(1);
   });
 
+  it("two concurrent changes with the same current PIN: exactly one wins and its kept session survives", async () => {
+    const [a, b] = await Promise.all([
+      changePin(ctxOf(), { currentPin: "482915", newPin: "739164", keepToken: keep }),
+      changePin(ctxOf(), { currentPin: "482915", newPin: "580273", keepToken: other }),
+    ]);
+    const results = [a, b];
+    expect(results.filter((r) => r.ok)).toHaveLength(1);
+    expect(results.filter((r) => !r.ok)).toEqual([{ ok: false, error: "invalid" }]);
+    const winnerKeep = a.ok ? keep : other;
+    const loserKeep = a.ok ? other : keep;
+    expect(await getSessionUser(db, winnerKeep)).not.toBeNull();
+    expect(await getSessionUser(db, loserKeep)).toBeNull();
+  });
+
+  it("a PIN reset between verify and update is not overwritten and nothing else changes", async () => {
+    const adminHash = await hashSecret("580273");
+    vi.mocked(pin.verifySecret).mockImplementationOnce(async (secret, hash) => {
+      const ok = await (await vi.importActual<typeof import("./pin")>("./pin")).verifySecret(secret, hash);
+      await db.update(s.users).set({ pinHash: adminHash }).where(eq(s.users.id, "ahmed"));
+      return ok;
+    });
+    expect(await changePin(ctxOf(), { currentPin: "482915", newPin: "739164", keepToken: keep })).toEqual({ ok: false, error: "invalid" });
+    const [u] = await db.select().from(s.users).where(eq(s.users.id, "ahmed"));
+    expect(u!.pinHash).toBe(adminHash);
+    expect(await sessionsLeft()).toContain(hashToken(other));
+  });
+
   it("refuses a read-only acting-for context and admin accounts", async () => {
     await expect(changePin(ctxOf({ actingFor: "admin" }), { currentPin: "482915", newPin: "739164", keepToken: keep })).rejects.toThrow();
     const r = await changePin(ctxOf({ userId: seed.adminId, role: "admin" }), { currentPin: "482915", newPin: "739164", keepToken: keep });

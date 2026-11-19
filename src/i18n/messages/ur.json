@@ -47,7 +47,7 @@
     "expected": "آج تک متوقع {expected}",
     "daysLabel": "مہینے کے دن",
     "calendarSummary": "{month}: {hit} دن روزانہ رفتار کے برابر یا اوپر، {below} دن اس سے کم، آج {day} تاریخ ہے",
-    "calendarSummaryRecorded": "{month}: {recorded} دن کا حساب درج ہوا، آج {day} تاریخ ہے",
+    "calendarSummaryRecorded": "{month}: {recorded, plural, =0 {کوئی دن درج نہیں ہوا} one {# دن کا حساب درج ہوا} other {# دن کا حساب درج ہوا}}، آج {day} تاریخ ہے",
     "calendarSummaryRequired": "، اور {required} {unit} درکار ہیں",
     "today": "آج",
     "legendHit": "روزانہ رفتار پوری",
@@ -132,7 +132,7 @@
     },
     "submit": "دن کا حساب پکا کریں",
     "submitting": "محفوظ ہو رہا ہے…",
-    "optional": "اختیاری",
+    "optionalLabel": "{label} (اختیاری)",
     "fixErrors": "کچھ اعداد دیکھنے ہیں",
     "errors": {
       "required": "عدد لکھیں",

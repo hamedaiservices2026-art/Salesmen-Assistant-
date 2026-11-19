@@ -44,14 +44,25 @@ export async function changePin(
 
   const newHash = await hashSecret(next);
   const keep = hashToken(input.keepToken);
-  await ctx.db.transaction(async (tx) => {
-    await tx
+  return ctx.db.transaction(async (tx): Promise<ChangePinResult> => {
+    // Compare-and-set on the hash that was verified: a concurrent change or an admin's reset in
+    // between leaves the row alone, deletes no session and answers `invalid`.
+    const updated = await tx
       .update(s.users)
       .set({ pinHash: newHash, failedAttempts: 0, failedAt: null, lockedUntil: null, updatedAt: now })
-      .where(and(eq(s.users.id, user.id), eq(s.users.companyId, ctx.companyId)));
+      .where(
+        and(
+          eq(s.users.id, user.id),
+          eq(s.users.companyId, ctx.companyId),
+          eq(s.users.pinHash, hash),
+          eq(s.users.active, true),
+        ),
+      )
+      .returning({ id: s.users.id });
+    if (updated.length === 0) return { ok: false, error: "invalid" };
     await tx
       .delete(s.sessions)
       .where(and(eq(s.sessions.userId, user.id), eq(s.sessions.companyId, ctx.companyId), ne(s.sessions.tokenHash, keep)));
+    return { ok: true };
   });
-  return { ok: true };
 }
