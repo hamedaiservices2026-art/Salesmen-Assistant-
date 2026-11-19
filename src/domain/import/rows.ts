@@ -1,6 +1,7 @@
 import type { ISODate } from "@/domain/calendar";
 import type { LineKind } from "@/domain/lines";
 import { parseAmount, type Unit } from "@/domain/money";
+import { normalizeText, westernDigits } from "./text";
 
 /** One data row of an uploaded sheet; `row` is the spreadsheet row number, keys are canonical column names. */
 export type RawRow = { row: number; cells: Record<string, unknown> };
@@ -33,14 +34,14 @@ const MAX_CELL_TEXT = 200;
 const YEAR_MIN = 2020;
 const YEAR_MAX = 2100;
 
-const isBlank = (v: unknown): boolean => v === null || v === undefined || (typeof v === "string" && v.trim() === "");
+const isBlank = (v: unknown): boolean => v === null || v === undefined || (typeof v === "string" && normalizeText(v) === "");
 
 /**
  * A cell as text, or null when it cannot be read as one (boolean, object, error cell, NaN, too long).
  * Numbers go through `String(n)` so the amount parser sees exactly what Excel stored.
  */
 function cellText(v: unknown): string | null {
-  if (typeof v === "string") return v.length > MAX_CELL_TEXT ? null : v;
+  if (typeof v === "string") return v.length > MAX_CELL_TEXT ? null : normalizeText(v);
   if (typeof v === "number") return Number.isFinite(v) ? String(v) : null;
   return null;
 }
@@ -62,20 +63,22 @@ function isRealDate(iso: string): boolean {
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === iso;
 }
 
+const inWindow = (iso: string): boolean => /^\d{4}-/.test(iso) && Number(iso.slice(0, 4)) >= YEAR_MIN && Number(iso.slice(0, 4)) <= YEAR_MAX;
+
 function dateOf(v: unknown): ISODate | null {
   if (v instanceof Date) {
     if (Number.isNaN(v.getTime())) return null;
     const iso = v.toISOString().slice(0, 10);
-    return /^\d{4}-/.test(iso) ? iso : null;
+    return inWindow(iso) ? iso : null;
   }
   if (typeof v !== "string" || v.length > MAX_CELL_TEXT) return null;
-  const t = v.trim();
-  return isRealDate(t) ? t : null;
+  const t = westernDigits(normalizeText(v));
+  return isRealDate(t) && inWindow(t) ? t : null;
 }
 
 function key(v: unknown): string | null {
   const text = cellText(v);
-  return text === null ? null : text.trim().toLowerCase();
+  return text === null ? null : text.toLowerCase();
 }
 
 type Resolved = { userId: string; line: { id: string; unit: Unit } };

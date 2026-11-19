@@ -62,11 +62,28 @@ describe("GET /admin/uploads/template/[kind]", () => {
     for (const kind of ["other", "TARGETS", "targets.xlsx", "..%2f"]) expect((await call(kind)).status).toBe(404);
   });
 
-  it("no session and a rep session get no file", async () => {
-    await expect(call("targets")).rejects.toBeInstanceOf(h.Redirect);
+  it("targets: content type and fixed filename", async () => {
+    h.jar.set("session", await createSession(db, seed.adminId));
+    const res = await call("targets");
+    expect(res.headers.get("Content-Type")).toBe("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    expect(res.headers.get("Content-Disposition")).toBe('attachment; filename="targets-template.xlsx"');
+  });
+
+  it("no session, rep, supervisor and owner get no file: a redirect, never a body", async () => {
+    const redirectOf = async (kind: string) => {
+      try {
+        const res = await call(kind);
+        return { leaked: await res.text() };
+      } catch (e) {
+        return e instanceof h.Redirect ? e.url : e;
+      }
+    };
+    expect(await redirectOf("targets")).toMatch(/^\/admin\/signin/);
     h.jar.set("session", await createSession(db, "ahmed"));
-    await expect(call("targets")).rejects.toBeInstanceOf(h.Redirect);
+    expect(await redirectOf("targets")).toMatch(/^\/app/);
+    h.jar.set("session", await createSession(db, seed.supervisorId));
+    expect(await redirectOf("daily")).toMatch(/^\/app/);
     h.jar.set("session", await createSession(db, seed.ownerId));
-    await expect(call("targets")).rejects.toBeInstanceOf(h.Redirect);
+    expect(await redirectOf("daily")).toMatch(/^\/admin/);
   });
 });

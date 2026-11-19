@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { sellingDays, type ISODate } from "@/domain/calendar";
+import { normalizeText } from "./text";
 import { validateDailyRows, validateTargetRows, type ImportLookup, type RawRow } from "./rows";
 
 const lookup: ImportLookup = {
@@ -189,5 +190,70 @@ describe("validateDailyRows", () => {
   it("5,001 rows give a single too_many_rows", () => {
     const rows = Array.from({ length: 5001 }, (_, i) => r(i + 2, { login: "ahmed", date: "2026-11-12", line: "bev", amount: i }));
     expect(validateDailyRows(rows, daily).errors).toEqual([{ row: 0, code: "too_many_rows" }]);
+  });
+});
+
+describe("text normalisation (invisible marks and odd spaces)", () => {
+  it("strips bidi and zero-width marks, maps Unicode spaces, collapses and trims", () => {
+    expect(normalizeText("\u200Fah\u200Bmed\uFEFF")).toBe("ahmed");
+    expect(normalizeText("\u00A0 a\u2003\u202F b \t")).toBe("a b");
+    expect(normalizeText("\u202Aab\u202E\u2060c")).toBe("abc");
+  });
+
+  it("logins, line codes, dates and amounts survive RLM, LRM, ZWSP, NBSP and BOM", () => {
+    const out = validateDailyRows(
+      [
+        r(2, { login: "\u200Fahmed\u200E\u00A0", date: "\uFEFF2026-11-12\u200B", line: "\u00A0bev\u200F", amount: "\u200F1\u00A0140\u200E" }),
+        r(3, { login: "khaled", date: "2026-11-11", line: "food", amount: "\u00A0\u200B" }),
+      ],
+      daily,
+    );
+    expect(out.ops).toEqual([{ userId: "u-ahmed", lineId: "l-bev", date: "2026-11-12", amount: 1140 }]);
+    expect(out.errors).toEqual([{ row: 3, column: "amount", code: "missing" }]);
+  });
+
+  it("a row of only invisible characters is blank", () => {
+    expect(validateTargetRows([r(2, { login: "\u200B", amount: "\u00A0" })], lookup)).toEqual({ ops: [], errors: [] });
+  });
+});
+
+describe("daily date window and digits", () => {
+  it("rejects dates outside 2020-2100 as invalid_date, including the epoch of a serial 0", () => {
+    const out = validateDailyRows(
+      [
+        r(2, { login: "ahmed", date: "0001-01-01", line: "bev", amount: 1 }),
+        r(3, { login: "ahmed", date: new Date(Date.UTC(1899, 11, 30)), line: "bev", amount: 1 }),
+        r(4, { login: "ahmed", date: "2019-12-31", line: "bev", amount: 1 }),
+      ],
+      daily,
+    );
+    expect(out.errors).toEqual([
+      { row: 2, column: "date", code: "invalid_date" },
+      { row: 3, column: "date", code: "invalid_date" },
+      { row: 4, column: "date", code: "invalid_date" },
+    ]);
+  });
+
+  it("reads Arabic-Indic and Persian digits in date text", () => {
+    const out = validateDailyRows(
+      [
+        r(2, { login: "ahmed", date: "٢٠٢٦-١١-١٢", line: "bev", amount: 1 }),
+        r(3, { login: "ahmed", date: "۲۰۲۶-۱۱-۱۱", line: "bev", amount: 1 }),
+      ],
+      daily,
+    );
+    expect(out.errors).toEqual([]);
+    expect(out.ops.map((o) => o.date)).toEqual(["2026-11-12", "2026-11-11"]);
+  });
+
+  it("a Date cell with a time part keeps its UTC date", () => {
+    const out = validateDailyRows(
+      [
+        r(2, { login: "ahmed", date: new Date(Date.UTC(2026, 10, 12, 23, 59, 30)), line: "bev", amount: 1 }),
+        r(3, { login: "khaled", date: new Date(Date.UTC(2026, 10, 12, 0, 1)), line: "bev", amount: 1 }),
+      ],
+      daily,
+    );
+    expect(out.ops.map((o) => o.date)).toEqual(["2026-11-12", "2026-11-12"]);
   });
 });

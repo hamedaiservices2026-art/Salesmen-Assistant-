@@ -1,7 +1,7 @@
 import ExcelJS from "exceljs";
 import { describe, expect, it } from "vitest";
 import { validateDailyRows, validateTargetRows, type ImportLookup } from "@/domain/import/rows";
-import { LIMITS, buildTemplate, checkZip, readSheet } from "./xlsx";
+import { LIMITS, buildTemplate, readSheet } from "./xlsx";
 
 type Cell = ExcelJS.CellValue;
 
@@ -116,7 +116,7 @@ describe("readSheet with hostile input", () => {
     expect(await readSheet(new ArrayBuffer(LIMITS.fileBytes + 1), "daily")).toEqual({ ok: false, error: "too_large" });
   });
 
-  it("a zip declaring a huge uncompressed size is too_large", async () => {
+  it("a zip declaring a huge uncompressed size is rejected", async () => {
     const data = await book((s) => {
       s.addRow(["login", "date", "line", "amount"]);
     });
@@ -125,7 +125,6 @@ describe("readSheet with hostile input", () => {
     const eocd = endRecord(view);
     const cd = view.getUint32(eocd + 16, true);
     view.setUint32(cd + 24, 0x7fffffff, true);
-    expect(checkZip(bytes)).toBe("too_large");
     expect(await readSheet(toArrayBuffer(bytes), "daily")).toEqual({ ok: false, error: "too_large" });
   });
 
@@ -165,13 +164,37 @@ describe("readSheet with hostile input", () => {
     expect(r.ok).toBe(false);
   });
 
-  it("duplicate headers: the first, leftmost column wins", async () => {
-    const data = await book((s) => {
-      s.addRow(["login", "username", "date", "line", "amount", "login"]);
-      s.addRow(["ahmed", "other", "2026-11-12", "bev", 5, "third"]);
+  it("duplicate headers, including aliases of one name, are rejected as duplicate_columns", async () => {
+    const same = await book((s) => {
+      s.addRow(["login", "date", "line", "amount", "login"]);
+      s.addRow(["ahmed", "2026-11-12", "bev", 5, "third"]);
     });
-    const rows = await rowsOf(data);
-    expect(rows[0]!.cells).toEqual({ login: "ahmed", date: "2026-11-12", line: "bev", amount: 5 });
+    expect(await readSheet(same, "daily")).toEqual({ ok: false, error: "duplicate_columns", duplicates: ["login"] });
+    const alias = await book((s) => {
+      s.addRow(["login", "اسم المستخدم", "date", "line", "amount", "المبلغ"]);
+    });
+    expect(await readSheet(alias, "daily")).toEqual({ ok: false, error: "duplicate_columns", duplicates: ["login", "amount"] });
+  });
+
+  it("headers with RLM, ZWSP, NBSP and a BOM still match", async () => {
+    const data = await book((s) => {
+      s.addRow(["\uFEFFاسم\u200F\u00A0المستخدم", "\u200Bالتاريخ", "الخط\u200E", "\u00A0المبلغ\u00A0"]);
+      s.addRow(["ahmed", "2026-11-12", "bev", 5]);
+    });
+    expect(await rowsOf(data)).toHaveLength(1);
+  });
+
+  it("a date1904 workbook and Date cells with a time part read as their UTC date", async () => {
+    const wb = new ExcelJS.Workbook();
+    wb.properties.date1904 = true;
+    const sh = wb.addWorksheet("data");
+    sh.addRow(["login", "date", "line", "amount"]);
+    sh.addRow(["ahmed", new Date(Date.UTC(2026, 10, 12, 23, 59, 30)), "bev", 1]);
+    sh.addRow(["ahmed", new Date(Date.UTC(2026, 10, 13, 0, 1)), "bev", 1]);
+    const buf = Buffer.from(await wb.xlsx.writeBuffer());
+    const rows = await rowsOf(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer);
+    const iso = rows.map((r) => (r.cells.date as Date).toISOString().slice(0, 10));
+    expect(iso).toEqual(["2026-11-12", "2026-11-13"]);
   });
 
   it("formulas give their cached result, rich text and hyperlinks their text, errors become error values", async () => {
@@ -221,5 +244,24 @@ describe("readSheet with hostile input", () => {
     const out = validateTargetRows(rows, lookup);
     expect(out.ops).toEqual([]);
     expect(out.errors.map((e) => e.code)).toEqual(["invalid_amount", "invalid_amount", "unknown_rep", expect.stringMatching(/invalid_amount|missing/)]);
+  });
+});
+
+describe("readSheet with drawings and hyperlinks in the file", () => {
+  it("a workbook with an embedded image and a hyperlink cell still reads", async () => {
+    const wb = new ExcelJS.Workbook();
+    const sh = wb.addWorksheet("data");
+    sh.addRow(["login", "date", "line", "amount"]);
+    const r = sh.addRow(["x", "2026-11-12", "bev", 5]);
+    r.getCell(1).value = { text: "ahmed", hyperlink: "mailto:ahmed@example.com" } as ExcelJS.CellValue;
+    const png = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+      "base64",
+    );
+    const id = wb.addImage({ buffer: png as unknown as ExcelJS.Buffer, extension: "png" });
+    sh.addImage(id, "F2:G4");
+    const buf = Buffer.from(await wb.xlsx.writeBuffer());
+    const rows = await rowsOf(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer);
+    expect(rows[0]!.cells.login).toBe("ahmed");
   });
 });
