@@ -20,19 +20,21 @@ export function codePointLength(text: string): number {
   return n;
 }
 
+/** Cuts to `max` code points; a cut label ends with "…" (counted in the max) so it is visibly clipped. */
 function clip(text: string, max: number): string {
   if (text.length <= max) return text;
-  let out = "";
-  let n = 0;
+  const chars: string[] = [];
   for (const ch of text) {
-    if (n === max) break;
-    out += ch;
-    n++;
+    if (chars.length > max) break;
+    chars.push(ch);
   }
-  return out;
+  if (chars.length <= max) return text;
+  return chars.slice(0, max - 1).join("") + "…";
 }
 
-const isDigit = (c: string | undefined): boolean => c !== undefined && c >= "0" && c <= "9";
+/** ASCII, Arabic-Indic (٠-٩) and Persian (۰-۹) digits. */
+const isDigit = (c: string | undefined): boolean =>
+  c !== undefined && ((c >= "0" && c <= "9") || (c >= "\u0660" && c <= "\u0669") || (c >= "\u06f0" && c <= "\u06f9"));
 const isSpace = (c: string | undefined): boolean => c !== undefined && /\s/.test(c);
 
 /** `^\d+(\.\d+)*[.)]\s+`, scanned by hand so that no input can make it backtrack. */
@@ -62,17 +64,20 @@ function hashLabel(line: string): string | null {
 
 /**
  * Splits a policy into sections at `#` headings and numbered lines. Text before the first heading is
- * a section with label `""`. Sections with no text are dropped. CRLF and lone CR are line breaks.
- * Linear in the input; labels are cut at LABEL_MAX characters and at most SECTIONS_MAX sections are
+ * a section with label `""`. A heading with no text under it is kept with its own line as text; an empty preamble is dropped. CRLF and lone CR are line breaks.
+ * Linear in the input; labels are cut at LABEL_MAX characters (with a closing …) and at most SECTIONS_MAX sections are
  * made (what follows the last one stays in its text).
  */
 export function splitSections(body: string): PolicySection[] {
   const lines = body.replace(/\r\n?/g, "\n").split("\n");
   const out: PolicySection[] = [];
   let label = "";
+  let full = "";
   let buf: string[] = [];
   const flush = () => {
-    const text = buf.join("\n").trim();
+    let text = buf.join("\n").trim();
+    // A heading with nothing under it is kept: its own line is its text.
+    if (text === "") text = full;
     if (text !== "") out.push({ label, text });
     buf = [];
   };
@@ -80,6 +85,7 @@ export function splitSections(body: string): PolicySection[] {
     const found = out.length < SECTIONS_MAX - 1 ? (hashLabel(line) ?? (isNumbered(line) ? line.trim() : null)) : null;
     if (found !== null) {
       flush();
+      full = found;
       label = clip(found, LABEL_MAX);
     } else {
       buf.push(line);

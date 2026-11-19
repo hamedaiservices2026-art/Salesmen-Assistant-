@@ -956,11 +956,12 @@
           "too_big": "The file is larger than 1 MB",
           "bad_encoding": "The file is not UTF-8 text. Save it as UTF-8 and try again",
           "read_failed": "The file could not be read"
-        }
+        },
+        "replaced": "The text was replaced with the contents of the file"
       },
       "counter": "{count} of {max} characters",
       "sections": {
-        "title": "Sections found: {count}",
+        "title": "Sections found",
         "empty": "No sections yet. A line starting with # or a number such as 1) or 2.1. starts a new section.",
         "preamble": "Before the first heading",
         "chars": "{count} characters",

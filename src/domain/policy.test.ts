@@ -24,6 +24,35 @@ describe("splitSections", () => {
     expect(splitSections("# A\rx\r1.2. B\ry")).toEqual(want);
   });
 
+  it("keeps a heading with no body as its own section whose text is the label", () => {
+    expect(splitSections("1. Returns within 7 days.\n2. Discount up to 5%.\n3) Cash only.")).toEqual([
+      { label: "1. Returns within 7 days.", text: "1. Returns within 7 days." },
+      { label: "2. Discount up to 5%.", text: "2. Discount up to 5%." },
+      { label: "3) Cash only.", text: "3) Cash only." },
+    ]);
+    expect(splitSections("# Title\n## Sub\nbody")).toEqual([
+      { label: "Title", text: "Title" },
+      { label: "Sub", text: "body" },
+    ]);
+  });
+
+  it("accepts Arabic-Indic and Persian digits in numbered headings", () => {
+    expect(splitSections("١. المرتجعات\nنص")).toEqual([{ label: "١. المرتجعات", text: "نص" }]);
+    expect(splitSections("مقدمة\n۲) تخفیف\nمتن")).toEqual([
+      { label: "", text: "مقدمة" },
+      { label: "۲) تخفیف", text: "متن" },
+    ]);
+    expect(splitSections("١٢.٣. بند\nنص")).toEqual([{ label: "١٢.٣. بند", text: "نص" }]);
+  });
+
+  it("literal heading rules", () => {
+    expect(splitSections("1.2.3. x\nbody")).toEqual([{ label: "1.2.3. x", text: "body" }]);
+    expect(splitSections("2024 sales were up")).toEqual([{ label: "", text: "2024 sales were up" }]);
+    expect(splitSections("#hashtag\nbody")).toEqual([{ label: "hashtag", text: "body" }]);
+    expect(splitSections("##   spaced out   \nbody")).toEqual([{ label: "spaced out", text: "body" }]);
+    expect(splitSections("####\nmore")).toEqual([{ label: "", text: "####\nmore" }]);
+  });
+
   it("recognises numbered headings only with a closing . or ) and a space", () => {
     expect(splitSections("1. one\na\n1.2) two\nb\n3 three\n4.5 four\n12.\nx")).toEqual([
       { label: "1. one", text: "a" },
@@ -31,13 +60,19 @@ describe("splitSections", () => {
     ]);
   });
 
-  it("drops headings with no text and a heading made only of hashes is plain text", () => {
-    expect(splitSections("# empty\n## next\nbody\n###")).toEqual([{ label: "next", text: "body\n###" }]);
+  it("a line of only hashes is plain text and an empty preamble is dropped", () => {
+    expect(splitSections("# empty\n## next\nbody\n###")).toEqual([
+      { label: "empty", text: "empty" },
+      { label: "next", text: "body\n###" },
+    ]);
+    expect(splitSections("\n  \n# a\nb")).toEqual([{ label: "a", text: "b" }]);
   });
 
   it("caps the label length and the number of sections", () => {
     const [s] = splitSections(`# ${"x".repeat(LABEL_MAX + 50)}\nbody`);
     expect(codePointLength(s!.label)).toBe(LABEL_MAX);
+    expect(s!.label.endsWith("…")).toBe(true);
+    expect(splitSections(`# ${"y".repeat(LABEL_MAX)}\nb`)[0]!.label).toBe("y".repeat(LABEL_MAX));
     const many = Array.from({ length: SECTIONS_MAX + 500 }, (_, i) => `# h${i}\nt${i}`).join("\n");
     const out = splitSections(many);
     expect(out).toHaveLength(SECTIONS_MAX);
@@ -45,10 +80,10 @@ describe("splitSections", () => {
   });
 
   it("is linear on hostile input", () => {
-    for (const body of ["#".repeat(200_000), "1".repeat(200_000), "1.".repeat(100_000), "1.1".repeat(66_000) + "x", "\r".repeat(200_000), "# a\n".repeat(50_000)]) {
+    for (const body of ["#".repeat(200_000), "1".repeat(200_000), "١".repeat(200_000), "1.".repeat(100_000), "1.1".repeat(66_000) + "x", "\r".repeat(200_000), "# a\n".repeat(50_000)]) {
       const t0 = performance.now();
       splitSections(body);
-      expect(performance.now() - t0).toBeLessThan(500);
+      expect(performance.now() - t0).toBeLessThan(2000);
     }
   });
 

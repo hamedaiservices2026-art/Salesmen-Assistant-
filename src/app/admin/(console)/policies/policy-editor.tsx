@@ -20,6 +20,7 @@ export function PolicyEditor({ item, justSaved, defaultLocale }: { item: PolicyI
   const v = state.values ?? {};
   const [body, setBody] = useState(v.body ?? item?.body ?? "");
   const [fileError, setFileError] = useState<string | null>(null);
+  const [replaced, setReplaced] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const deferred = useDeferredValue(body);
   const sections = useMemo(() => splitSections(deferred), [deferred]);
@@ -40,6 +41,7 @@ export function PolicyEditor({ item, justSaved, defaultLocale }: { item: PolicyI
 
   async function onFile(file: File | undefined) {
     setFileError(null);
+    setReplaced(false);
     if (!file) return;
     // Name, type and size are checked before a byte is read.
     const bad = checkPolicyFile(file);
@@ -47,6 +49,7 @@ export function PolicyEditor({ item, justSaved, defaultLocale }: { item: PolicyI
     try {
       const decoded = decodePolicyBytes(await file.arrayBuffer());
       if (!decoded.ok) return reject(decoded.error);
+      setReplaced(body.trim() !== "");
       setBody(decoded.text);
     } catch {
       reject("read_failed");
@@ -109,6 +112,11 @@ export function PolicyEditor({ item, justSaved, defaultLocale }: { item: PolicyI
         <p id="file-hint" className="m-0 mt-1 text-[13px] text-ink-2">
           {t("file.hint")}
         </p>
+        {replaced && !fileError && (
+          <p role="status" className="m-0 mt-1 text-[13px] text-ink-2">
+            {t("file.replaced")}
+          </p>
+        )}
         {fileError && (
           <p role="alert" className="m-0 mt-1 text-[13px] text-alert">
             {t(`file.errors.${fileError}`)}
@@ -134,8 +142,9 @@ export function PolicyEditor({ item, justSaved, defaultLocale }: { item: PolicyI
       </label>
 
       <section aria-labelledby="sections-title" className="rounded-lg border border-line">
-        <h3 id="sections-title" className="m-0 border-b border-line bg-canvas px-4 py-2.5 text-[14px] font-bold text-ink">
-          {t("sections.title", { count: num.format(sections.length) })}
+        <h3 id="sections-title" className="m-0 flex items-baseline justify-between gap-2 border-b border-line bg-canvas px-4 py-2.5 text-[14px] font-bold text-ink">
+          <span>{t("sections.title")}</span>
+          <bdi className="tabular-nums">{num.format(sections.length)}</bdi>
         </h3>
         {sections.length === 0 ? (
           <p className="m-0 px-4 py-3 text-[14px] text-ink-2">{t("sections.empty")}</p>

@@ -64,6 +64,8 @@ describe("savePolicy", () => {
     expect(got.policy.body.startsWith("<script>alert(1)</script>\n# <b>x</b>\n")).toBe(true);
     expect(got.policy.sections[1]!.label).toBe("<b>x</b>");
     expect(got.policy.body).not.toContain("\u0000");
+    // A lone surrogate is replaced with U+FFFD (toWellFormed), not removed; NUL is removed.
+    expect(got.policy.body.endsWith("a\ufffdb")).toBe(true);
   });
 
   it("edits with the version it read; a second save with the old version is stale", async () => {
