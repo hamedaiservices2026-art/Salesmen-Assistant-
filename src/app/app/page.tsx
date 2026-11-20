@@ -1,3 +1,4 @@
+import { sellingDayNumber } from "@/domain/calendar";
 import { getLocale, getTranslations } from "next-intl/server";
 import { requireCtx } from "@/server/auth/guard";
 import { getCompanyPrefs } from "@/server/repos/company";
@@ -54,7 +55,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
     weekday: fmt({ weekday: "long" }).format(todayDate),
     day: todayDate.getUTCDate(),
     month: fmt({ month: "long" }).format(todayDate),
-    n: Math.min(view.counts.elapsed + 1, view.counts.total),
+    n: sellingDayNumber(view.counts),
     total: view.counts.total,
   });
 

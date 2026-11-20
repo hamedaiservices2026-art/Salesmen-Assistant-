@@ -11,7 +11,7 @@ import { isStrongPassword } from "./password";
 import { attemptWithLockout } from "./lockout";
 import { Forbidden, assertRole, homeFor, signInPathFor } from "./roles";
 import { acceptAdminInvite, acceptInvite, createInvite, peekAdminInvite, peekInvite } from "./invites";
-import { ADMIN_SESSION_TTL_MS, ADMIN_SESSION_COOKIE_MAX_AGE_S, SESSION_COOKIE_MAX_AGE_S, createSession, sessionCookieMaxAgeS, getSessionUser, signIn, signInWithPassword } from "./sessions";
+import { ADMIN_SESSION_TTL_MS, SESSION_COOKIE_MAX_AGE_S, createSession, getSessionUser, signIn, signInWithPassword } from "./sessions";
 import { requireRole } from "./guard";
 import { acceptInviteAction, signInAction, signOutAction } from "@/app/(auth-actions)/actions";
 import { acceptAdminInviteAction, adminSignInAction, adminSignOutAction } from "@/app/admin/actions";
@@ -250,8 +250,8 @@ describe("secret hashes", () => {
     expect(await hashSecret("x-y-z-1-2-3")).toMatch(/^scrypt\$16384\$/);
   });
 
-  it("still refuses a cost above 2^20", async () => {
-    expect(await verifySecret("x", "scrypt$2097152$8$1$00$00")).toBe(false);
+  it("still refuses a cost above 2^18", async () => {
+    expect(await verifySecret("x", "scrypt$524288$8$1$00$00")).toBe(false);
   });
 
   it("rejects malformed hashes", async () => {
@@ -514,11 +514,23 @@ describe("R24: session lifetime by role", () => {
     expect(await expiryOf(seed.adminId)).toBe(day4.getTime() + 7 * DAY);
   });
 
-  it("the cookie lives 7 days for an admin and a year for a rep", () => {
-    expect(sessionCookieMaxAgeS("admin")).toBe(ADMIN_SESSION_COOKIE_MAX_AGE_S);
-    expect(sessionCookieMaxAgeS("owner")).toBe(7 * 24 * 60 * 60);
-    expect(sessionCookieMaxAgeS("rep")).toBe(SESSION_COOKIE_MAX_AGE_S);
-    expect(sessionCookieMaxAgeS("supervisor")).toBe(365 * 24 * 60 * 60);
+  it("the cookie max-age is the same long value for every role; the database expiry decides (R25)", () => {
+    expect(SESSION_COOKIE_MAX_AGE_S).toBe(365 * 24 * 60 * 60);
+  });
+
+  it("an admin session stored with a 90-day expiry is clamped to 7 days on first use and then expires 7 days after last activity", async () => {
+    const token = await createSession(db, seed.adminId, t0);
+    await db.update(s.sessions).set({ expiresAt: new Date(t0.getTime() + 90 * DAY) }).where(eq(s.sessions.userId, seed.adminId));
+    const day10 = new Date(t0.getTime() + 10 * DAY);
+    expect(await getSessionUser(db, token, day10)).not.toBeNull();
+    expect(await expiryOf(seed.adminId)).toBe(day10.getTime() + 7 * DAY);
+    expect(await getSessionUser(db, token, new Date(day10.getTime() + 7 * DAY))).toBeNull();
+  });
+
+  it("a rep session is not clamped", async () => {
+    const token = await createSession(db, seed.repId, t0);
+    await getSessionUser(db, token, new Date(t0.getTime() + DAY));
+    expect(await expiryOf(seed.repId)).toBe(t0.getTime() + 90 * DAY);
   });
 });
 

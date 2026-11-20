@@ -9,7 +9,7 @@ const P = 1;
 function derive(secret: string, salt: Buffer, n: number, r: number, p: number): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     // maxmem: scrypt needs about 128 * N * r bytes (plus 128 * r * p); allow 130 * N * r so any cost
-    // `parseHash` admits (up to 2^20 x 8 = about 1.1 GB) runs, and nothing beyond it can.
+    // `parseHash` admits (up to 2^18 x 8 = about 270 MB) runs, and nothing beyond it can.
     scrypt(secret, salt, KEY_LEN, { N: n, r, p, maxmem: 130 * n * r + 128 * r * p }, (err, key) => (err ? reject(err) : resolve(key)));
   });
 }
@@ -35,9 +35,9 @@ function parseHash(hash: string): { n: number; r: number; p: number; salt: Buffe
     if (parts.length !== 6) return null;
     [n, r, p] = [Number(parts[1]), Number(parts[2]), Number(parts[3])];
     [saltHex, keyHex] = [parts[4], parts[5]];
-    // Bounded cost (N a power of two up to 2^20, r up to 8, p up to 4) so a bad row cannot exhaust memory.
+    // Bounded cost (N a power of two up to 2^18, r up to 8, p up to 4) so a bad row cannot exhaust memory.
     // The cap is on what is verified; new hashes keep using N (see above).
-    const powerOfTwo = Number.isInteger(n) && n >= 1024 && n <= 1_048_576 && (n & (n - 1)) === 0;
+    const powerOfTwo = Number.isInteger(n) && n >= 1024 && n <= 262_144 && (n & (n - 1)) === 0;
     if (!powerOfTwo || !Number.isInteger(r) || r < 1 || r > 8 || !Number.isInteger(p) || p < 1 || p > 4) return null;
   } else {
     [saltHex, keyHex] = hash.split(":");

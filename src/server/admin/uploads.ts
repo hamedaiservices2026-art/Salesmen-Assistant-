@@ -216,7 +216,7 @@ export async function processUpload(ctx: Ctx, input: UploadInput, opts?: { today
       if (kind === "targets") {
         const data = dataRows(read.rows);
         const rowOf = new Map((again.ops as TargetOp[]).map((op, i) => [op, data[i]?.row ?? 0]));
-        await applyTargetOps(ctx, tx, again.ops as TargetOp[], uploadId, rowOf);
+        await applyTargetOps(ctx, tx, again.ops as TargetOp[], uploadId, rowOf, again.lookup);
       }
       else await applyDailyOps(ctx, tx, again.ops as DailyOp[], again.lookup);
       await tx
@@ -245,7 +245,7 @@ class Rejected extends Error {
 }
 
 /** One `applyTargets` per month, earliest first, so two uploads always take the month locks in the same order. */
-async function applyTargetOps(ctx: Ctx, tx: Db, ops: TargetOp[], uploadId: string, rowOf: Map<TargetOp, number>): Promise<void> {
+async function applyTargetOps(ctx: Ctx, tx: Db, ops: TargetOp[], uploadId: string, rowOf: Map<TargetOp, number>, lookup: ImportLookup): Promise<void> {
   const months = new Map<string, TargetOp[]>();
   for (const op of ops) {
     const key = `${op.year}-${String(op.month).padStart(2, "0")}`;
@@ -264,7 +264,7 @@ async function applyTargetOps(ctx: Ctx, tx: Db, ops: TargetOp[], uploadId: strin
       },
       tx,
     );
-    if (!result.ok) throw new Rejected(refusalRows(group, result.errors, rowOf));
+    if (!result.ok) throw new Rejected(refusalRows(group, result.errors, rowOf, lookup));
   }
 }
 
@@ -274,13 +274,26 @@ const REFUSAL_CODE: Record<string, { code: RowError["code"]; column: string }> =
   invalid: { code: "invalid_amount", column: "amount" },
 };
 
-/** `applyTargets` refusals (keyed `userId|lineId`) as row errors of the sheet, never a bare throw. */
-function refusalRows(group: TargetOp[], errors: Record<string, string>, rowOf: Map<TargetOp, number>): RowError[] {
+/**
+ * `applyTargets` refusals (keyed `userId|lineId`) as row errors of the sheet, never a bare throw.
+ * `not_found` names a rep or a line; the lookup says which (a rep missing from it is `unknown_rep` on
+ * the login column, otherwise the line is `unknown_line` on the line column).
+ */
+export function refusalRows(
+  group: TargetOp[],
+  errors: Record<string, string>,
+  rowOf: Map<TargetOp, number>,
+  lookup: ImportLookup,
+): RowError[] {
+  const repIds = new Set(lookup.reps.values());
   const out: RowError[] = [];
   for (const op of group) {
     const code = errors[`${op.userId}|${op.lineId}`];
     if (code === undefined) continue;
-    const mapped = REFUSAL_CODE[code] ?? { code: "invalid_amount" as const, column: "amount" };
+    const mapped =
+      code === "not_found" && repIds.has(op.userId)
+        ? { code: "unknown_line" as const, column: "line" }
+        : (REFUSAL_CODE[code] ?? { code: "invalid_amount" as const, column: "amount" });
     out.push({ row: rowOf.get(op) ?? 0, column: mapped.column, code: mapped.code });
   }
   return out.length > 0 ? out : [{ row: 0, code: "invalid_amount" }];

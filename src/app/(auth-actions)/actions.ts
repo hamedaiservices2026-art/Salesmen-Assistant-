@@ -22,7 +22,7 @@ function text(form: FormData, name: string): string {
 async function startSession(sessionToken: string, login: string): Promise<void> {
   const ctx = await getSessionUser(await getDb(), sessionToken);
   if (!ctx) return;
-  await startSessionCookies(sessionToken, { locale: ctx.locale, role: ctx.role, lastLogin: login });
+  await startSessionCookies(sessionToken, { locale: ctx.locale, lastLogin: login });
 }
 
 export async function acceptInviteAction(_prev: AuthFormState, form: FormData): Promise<AuthFormState> {

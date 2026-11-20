@@ -214,9 +214,14 @@ describe("applyTargets: zero, cap, transactions, concurrency", () => {
     expect(await apply([{ userId: "ahmed", lineId: "bev", amount: 0 }])).toEqual({ ok: true, changed: 0 });
   });
 
-  it("caps an amount at 100,000,000,000", async () => {
-    expect(await apply([{ userId: "ahmed", lineId: "bev", amount: AMOUNT_MAX }])).toEqual({ ok: true, changed: 1 });
-    expect(await apply([{ userId: "ahmed", lineId: "bev", amount: AMOUNT_MAX + 1 }])).toEqual({
+  it("caps a value amount at 100,000,000,000 and a case count at 100,000,000 (R26)", async () => {
+    expect(await apply([{ userId: "ahmed", lineId: "food", amount: AMOUNT_MAX }])).toEqual({ ok: true, changed: 1 });
+    expect(await apply([{ userId: "ahmed", lineId: "food", amount: AMOUNT_MAX + 1 }])).toEqual({
+      ok: false,
+      errors: { "ahmed|food": "invalid" },
+    });
+    expect(await apply([{ userId: "ahmed", lineId: "bev", amount: 100_000_000 }])).toEqual({ ok: true, changed: 1 });
+    expect(await apply([{ userId: "ahmed", lineId: "bev", amount: 100_000_001 }])).toEqual({
       ok: false,
       errors: { "ahmed|bev": "invalid" },
     });

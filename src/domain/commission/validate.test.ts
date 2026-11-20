@@ -260,7 +260,8 @@ describe("amount caps", () => {
     expectOnly([tiered({ tiers: [{ minPct: 90, pay: { kind: "fixed", amount: 100_000_000_001 } }] })], "bad_amount", "components.0.tiers.0.pay.amount");
   });
   it("per_case up to 1 000 000 000 is accepted, one more is bad_amount", () => {
-    expect(issuesOf([perUnit({ lineId: "bev", rate: { kind: "per_case", amount: 1_000_000_000 } })])).toEqual([]);
+    expect(issuesOf([perUnit({ lineId: "bev", rate: { kind: "per_case", amount: 1_000_000 } })])).toEqual([]);
+    expect(issuesOf([perUnit({ lineId: "bev", rate: { kind: "per_case", amount: 1_000_001 } })])).toEqual([{ path: "components.0.rate.amount", code: "bad_amount" }]);
     expectOnly([perUnit({ lineId: "bev", rate: { kind: "per_case", amount: 1_000_000_001 } })], "bad_amount", "components.0.rate.amount");
   });
 });

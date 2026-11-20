@@ -1,3 +1,4 @@
+import { sellingDayNumber } from "@/domain/calendar";
 import { getLocale, getTranslations } from "next-intl/server";
 import { requireCtx } from "@/server/auth/guard";
 import { getCompanyPrefs } from "@/server/repos/company";
@@ -48,13 +49,26 @@ export default async function CommissionPage() {
   }).format(new Date(`${today}T00:00:00Z`));
   const dateLine = t("dateLine", {
     month: monthName,
-    n: Math.min(view.counts.elapsed + 1, view.counts.total),
-    total: view.counts.total,
+    n: sellingDayNumber(monthView.counts),
+    total: monthView.counts.total,
   });
 
   const currency = label("value");
   const lineName = (l: { nameAr: string; nameEn: string; nameUr: string }) => localLineName(l, locale as Locale);
   const { scheme } = view;
+
+  if (view.tooLarge) {
+    return (
+      <>
+        <AppHeader greeting={t("title")} dateLine={dateLine} notificationsLabel={tHome("notifications")} />
+        <main className="flex flex-1 flex-col gap-2 px-5 pb-4 pt-[18px]">
+          <section role="alert" className="rounded-xl bg-alert-tint px-4 py-3.5">
+            <p className="m-0 text-sm font-medium text-alert">{t("tooLarge")}</p>
+          </section>
+        </main>
+      </>
+    );
+  }
 
   if (!scheme) {
     return (
@@ -182,6 +196,7 @@ export default async function CommissionPage() {
           scheme={scheme}
           input={view.input}
           counts={view.counts}
+          today={today}
           lines={whatIfLines}
           unitLabels={unitLabels}
           currencyLabel={currency}

@@ -304,3 +304,22 @@ describe("number cells with float noise (B1)", () => {
     expect(out.ops[0]).toMatchObject({ year: 2026, month: 11 });
   });
 });
+
+describe("relative tolerance for large figures (L2)", () => {
+  const food = (amount: unknown) =>
+    validateTargetRows([r(2, { login: "ahmed", year: 2026, month: 11, line: "food", amount })], lookup);
+  it("342718963.15 SAR as a double is accepted", () => {
+    expect(food(342718963.15).ops[0]!.amount).toBe(34271896315);
+  });
+  it("0.001 SAR is still refused", () => {
+    expect(food(0.001).errors).toEqual([{ row: 2, column: "amount", code: "invalid_amount" }]);
+  });
+});
+
+describe("case counts are capped at 1e8 (R26)", () => {
+  it("a daily 1e8 + 1 cases is refused, 1e8 passes", () => {
+    const d = (amount: number) => validateDailyRows([r(2, { login: "ahmed", date: "2026-11-10", line: "bev", amount })], daily);
+    expect(d(100_000_000).errors).toEqual([]);
+    expect(d(100_000_001).errors).toEqual([{ row: 2, column: "amount", code: "invalid_amount" }]);
+  });
+});

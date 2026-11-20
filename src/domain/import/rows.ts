@@ -1,6 +1,6 @@
 import type { ISODate } from "@/domain/calendar";
 import type { LineKind } from "@/domain/lines";
-import { AMOUNT_MAX, parseAmount, type Unit } from "@/domain/money";
+import { maxAmountFor, parseAmount, type Unit } from "@/domain/money";
 import { normalizeText, westernDigits } from "./text";
 
 /** One data row of an uploaded sheet; `row` is the spreadsheet row number, keys are canonical column names. */
@@ -49,14 +49,14 @@ function cellText(v: unknown): string | null {
 /**
  * A number cell as a whole stored figure, or null. Excel stores 8250.30 as a double that may print as
  * 8250.300000000001, and a formula's cached result carries the same noise: the value is scaled
- * (100 for money, 1 for counts), rounded, and refused only when it is further than 1e-6 from a whole
+ * (100 for money, 1 for counts), rounded, and refused only when it is further than 1e-6 (or 8 ulps of the value, for large figures) from a whole
  * number of stored units (a third decimal, for instance).
  */
 function numberCell(v: number, scale: number): number | null {
   if (!Number.isFinite(v)) return null;
   const scaled = v * scale;
   const whole = Math.round(scaled);
-  if (Math.abs(scaled - whole) > 1e-6 || whole < 0 || !Number.isSafeInteger(whole)) return null;
+  if (Math.abs(scaled - whole) > Math.max(1e-6, Math.abs(scaled) * 8 * Number.EPSILON) || whole < 0 || !Number.isSafeInteger(whole)) return null;
   return whole;
 }
 
@@ -67,7 +67,7 @@ function amountOf(v: unknown, unit: Unit): number | null {
     const text = cellText(v);
     amount = text === null ? null : parseAmount(text, unit);
   }
-  return amount !== null && amount > AMOUNT_MAX ? null : amount;
+  return amount !== null && amount > maxAmountFor(unit) ? null : amount;
 }
 
 function intOf(v: unknown): number | null {

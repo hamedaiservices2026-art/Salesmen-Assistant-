@@ -192,7 +192,9 @@
       "part": "{name} {pct}% of {minPct}%",
       "partCount": "{name} {achieved} of {needed}"
     },
-    "unnamed": "this item"
+    "unnamed": "this item",
+    "tooLarge": "One of the numbers is too large to calculate the commission. Ask your admin to check the figures.",
+    "whatIfNoDays": "No selling days are left this month, so there is nothing to try out."
   },
   "history": {
     "title": "History",
@@ -210,7 +212,8 @@
     "gap": "Not recorded · record it now",
     "unknownLine": "Old target line",
     "adminNote": "Admin recorded {amount}",
-    "repNote": "You typed {amount}"
+    "repNote": "You typed {amount}",
+    "tooLarge": "Too large to calculate"
   },
   "settings": {
     "title": "Settings",

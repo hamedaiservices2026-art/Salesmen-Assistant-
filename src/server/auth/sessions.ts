@@ -14,17 +14,13 @@ export const SESSION_COOKIE = "session";
 export const SESSION_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 /** Admin and owner sessions: 7 days, sliding (a password role can change money and people). */
 export const ADMIN_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-/** Browser cookie lifetime of a rep or supervisor; the stored expiry is the authority and is renewed while he keeps using the app. */
+/** Browser cookie lifetime, the same for every role: the stored expiry (7 days for a password role) is the authority. */
 export const SESSION_COOKIE_MAX_AGE_S = 365 * 24 * 60 * 60;
-export const ADMIN_SESSION_COOKIE_MAX_AGE_S = 7 * 24 * 60 * 60;
 
 const isPasswordRole = (role: Role): boolean => (PASSWORD_ROLES as readonly Role[]).includes(role);
 
 /** How long a session of `role` lives, and is renewed to, in milliseconds. */
 export const sessionTtlMs = (role: Role): number => (isPasswordRole(role) ? ADMIN_SESSION_TTL_MS : SESSION_TTL_MS);
-/** The cookie max-age for a session of `role`, in seconds. */
-export const sessionCookieMaxAgeS = (role: Role): number =>
-  isPasswordRole(role) ? ADMIN_SESSION_COOKIE_MAX_AGE_S : SESSION_COOKIE_MAX_AGE_S;
 /**
  * Stored hash used to spend equal time when the login does not exist or may not use this path.
  * Precomputed (a hash of a throwaway string at the current cost), so the first unknown login of a
@@ -65,7 +61,15 @@ export async function getSessionUser(db: Db, token: string, now: Date = new Date
     .where(eq(s.sessions.tokenHash, hashToken(token)));
   if (!row || !row.active || row.expiresAt.getTime() <= now.getTime()) return null;
   const ttl = sessionTtlMs(row.role);
-  if (row.expiresAt.getTime() - now.getTime() < ttl / 2) {
+  const latest = now.getTime() + ttl;
+  if (row.expiresAt.getTime() > latest) {
+    // Longer than the role allows (a session made before the 7-day rule): clamped down on first use.
+    row.expiresAt = new Date(latest);
+    await db
+      .update(s.sessions)
+      .set({ expiresAt: row.expiresAt, updatedAt: now })
+      .where(eq(s.sessions.tokenHash, hashToken(token)));
+  } else if (row.expiresAt.getTime() - now.getTime() < ttl / 2) {
     // Sliding expiry: renewed once less than half the lifetime remains.
     await db
       .update(s.sessions)

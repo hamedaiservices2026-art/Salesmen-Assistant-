@@ -192,7 +192,9 @@
       "part": "{name} {pct}% من {minPct}%",
       "partCount": "{name} {achieved} من {needed}"
     },
-    "unnamed": "البند"
+    "unnamed": "البند",
+    "tooLarge": "في رقم كبير أوي ومقدرناش نحسب العمولة. اطلب من الأدمن يراجع الأرقام.",
+    "whatIfNoDays": "مفيش أيام بيع باقية في الشهر، فمفيش حاجة تجربها."
   },
   "history": {
     "title": "السجل",
@@ -210,7 +212,8 @@
     "gap": "ما اتسجّلش · سجّله دلوقتي",
     "unknownLine": "خط تارجت قديم",
     "adminNote": "الإدارة سجّلت {amount}",
-    "repNote": "إنت كتبت {amount}"
+    "repNote": "إنت كتبت {amount}",
+    "tooLarge": "كبير أوي مقدرناش نحسبه"
   },
   "settings": {
     "title": "الإعدادات",

@@ -14,6 +14,7 @@ export function WhatIf({
   scheme,
   input,
   counts,
+  today,
   lines,
   unitLabels,
   currencyLabel,
@@ -21,6 +22,7 @@ export function WhatIf({
   scheme: Scheme;
   input: SchemeInput;
   counts: { total: number; elapsed: number; left: number };
+  today: string;
   lines: WhatIfLine[];
   unitLabels: Record<Unit, string>;
   currencyLabel: string;
@@ -31,8 +33,17 @@ export function WhatIf({
   const line = lines.find((l) => l.lineId === lineId);
   if (!line) return null;
 
+  if (counts.left === 0) {
+    return (
+      <section aria-label={t("whatIfTitle")} className="flex flex-col gap-3 rounded-[14px] border border-line bg-white p-4">
+        <h2 className="m-0 text-base font-bold">{t("whatIfTitle")}</h2>
+        <p className="m-0 text-[13px] text-ink-2">{t("whatIfNoDays")}</p>
+      </section>
+    );
+  }
+
   const n = steps[line.lineId] ?? 0;
-  const r = whatIfAt(scheme, input, counts, line, n);
+  const r = whatIfAt(scheme, input, counts, line, n, today);
   const unitWord = unitLabels[line.unit];
   const move = (d: number) => setSteps((s) => ({ ...s, [line.lineId]: (s[line.lineId] ?? 0) + d }));
 

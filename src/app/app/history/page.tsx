@@ -109,6 +109,8 @@ export default async function HistoryPage() {
                               {currency}
                             </span>
                           </>
+                        ) : m.tooLarge ? (
+                          <span className="text-[13px] font-medium text-alert">{t("tooLarge")}</span>
                         ) : (
                           "—"
                         )}

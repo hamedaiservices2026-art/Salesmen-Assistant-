@@ -28,7 +28,10 @@ export function whatIfAt(
   counts: Counts,
   line: { lineId: string; unit: Unit },
   steps: number,
+  /** Today, passed to the engine exactly as the headline does, so a bonus outside its window pays the same here. */
+  asOf?: string,
 ): WhatIfResult {
+  const opts = asOf === undefined ? {} : { asOf };
   const step = STEP[line.unit];
   const metric = input.lines[line.lineId] ?? { target: 0, achieved: 0 };
   const base = projectInput(input, counts);
@@ -47,7 +50,7 @@ export function whatIfAt(
       step,
       endAchieved: baseEnd.achieved,
       target: baseEnd.target,
-      total: evaluateScheme(scheme, base).total,
+      total: evaluateScheme(scheme, base, opts).total,
       canDecrease,
     };
   }
@@ -58,7 +61,7 @@ export function whatIfAt(
     step,
     endAchieved: end.achieved,
     target: end.target,
-    total: evaluateScheme(scheme, projected).total,
+    total: evaluateScheme(scheme, projected, opts).total,
     canDecrease,
   };
 }

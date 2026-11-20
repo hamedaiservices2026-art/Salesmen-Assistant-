@@ -24,6 +24,8 @@ export type CommissionView = {
   projected: Evaluation;
   atFullTarget: Evaluation;
   nearest: NearestWin;
+  /** The evaluator refused a figure too large to compute exactly; every evaluation is empty and the page says so. */
+  tooLarge: boolean;
   lines: { lineId: string; nameAr: string; nameEn: string; nameUr: string; unit: Unit; kind: LineKind }[];
 };
 
@@ -72,18 +74,24 @@ export async function commissionViewWith(
   const lines = totals.lines.map(({ lineId, nameAr, nameEn, nameUr, unit, kind }) => ({ lineId, nameAr, nameEn, nameUr, unit, kind }));
 
   if (!scheme) {
-    return { scheme, input, counts, actual: empty(), projected: empty(), atFullTarget: empty(), nearest: null, lines };
+    return { scheme, input, counts, actual: empty(), projected: empty(), atFullTarget: empty(), nearest: null, tooLarge: false, lines };
   }
   const asOf = { asOf: today };
-  const projectedInput = projectInput(input, counts);
-  return {
-    scheme,
-    input,
-    counts,
-    actual: evaluateScheme(scheme, input, asOf),
-    projected: evaluateScheme(scheme, projectedInput, asOf),
-    atFullTarget: evaluateScheme(scheme, inputAtFullTarget(scheme, input, asOf), asOf),
-    nearest: nearestWin(scheme, projectedInput, asOf),
-    lines,
-  };
+  try {
+    const projectedInput = projectInput(input, counts);
+    return {
+      scheme,
+      input,
+      counts,
+      actual: evaluateScheme(scheme, input, asOf),
+      projected: evaluateScheme(scheme, projectedInput, asOf),
+      atFullTarget: evaluateScheme(scheme, inputAtFullTarget(scheme, input, asOf), asOf),
+      nearest: nearestWin(scheme, projectedInput, asOf),
+      tooLarge: false,
+      lines,
+    };
+  } catch (e) {
+    if (!(e instanceof RangeError)) throw e;
+    return { scheme, input, counts, actual: empty(), projected: empty(), atFullTarget: empty(), nearest: null, tooLarge: true, lines };
+  }
 }

@@ -4,7 +4,7 @@ import type { ISODate } from "@/domain/calendar";
 import * as s from "@/db/schema";
 import type { Db } from "@/db/client";
 import { assertOwnContext } from "@/server/auth/roles";
-import { AMOUNT_MAX } from "@/domain/money";
+import { AMOUNT_MAX, maxAmountFor, type Unit } from "@/domain/money";
 import type { Ctx } from "@/server/ctx";
 import { currentDay } from "@/server/today";
 import { isDailyLine } from "@/domain/lines";
@@ -73,9 +73,9 @@ export async function getClose(ctx: Ctx, date: ISODate): Promise<SavedClose | nu
   };
 }
 
-function amountError(n: unknown): string | null {
+function amountError(n: unknown, max: number = AMOUNT_MAX): string | null {
   if (typeof n !== "number" || !Number.isSafeInteger(n)) return "invalid";
-  if (n > AMOUNT_MAX) return "invalid";
+  if (n > max) return "invalid";
   return n < 0 ? "negative" : null;
 }
 
@@ -96,9 +96,10 @@ async function validate(ctx: Ctx, form: CloseForm, today: ISODate): Promise<Reco
     if (!cal.selling.includes(form.date)) errors.date = "not_selling_day";
   }
 
-  const lineIds = new Set((await loadLines(ctx)).filter(isDailyLine).map((l) => l.lineId));
+  const lineUnits = new Map<string, Unit>((await loadLines(ctx)).filter(isDailyLine).map((l) => [l.lineId, l.unit]));
   for (const [id, n] of Object.entries(form.lines)) {
-    const e = lineIds.has(id) ? amountError(n) : "unknown";
+    const unit = lineUnits.get(id);
+    const e = unit ? amountError(n, maxAmountFor(unit)) : "unknown";
     if (e) errors[`lines.${id}`] = e;
   }
 

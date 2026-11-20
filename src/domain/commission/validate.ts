@@ -47,9 +47,9 @@ const MAX_ID = 64;
 const PCT_MIN = 1;
 const PCT_MAX = 1000;
 const BPS_MAX = 10_000;
-/** Sanity caps in minor units (halalas): a fixed pay up to 1e11, a per-carton rate up to 1e9. */
+/** Sanity caps in minor units (halalas): a fixed pay up to 1e11, a per-carton rate up to 1e6 (with CASES_MAX 1e8 cases and 26 days, rate x cases x 26 stays below 2^53). */
 const FIXED_MAX = 100_000_000_000;
-const PER_CASE_MAX = 1_000_000_000;
+const PER_CASE_MAX = 1_000_000;
 /** At most this many issues are returned; a final `too_many_issues` marks a truncated list. */
 const MAX_ISSUES = 100;
 
@@ -137,7 +137,7 @@ function leavesOf(c: Condition): LeafCondition[] {
  * - every line and focus item named exists in `refs` (a deactivated line is not there);
  * - tiers non-empty with unique whole `minPct` in 1–1000 (also `abovePct` and condition `minPct`);
  *   fixed amounts and focus minimums safe whole numbers (≥ 0; a focus minimum ≥ 1; fixed pay ≤ 1e11,
- *   a per-carton rate ≤ 1e9); bps 0–10 000; a percentage pay (`pct_of_value`, `pct_of_achieved`) only on a `value` line;
+ *   a per-carton rate ≤ 1e6); bps 0–10 000; a percentage pay (`pct_of_value`, `pct_of_achieved`) only on a `value` line;
  * - `per_case` only on a `cases` or `outlets` line;
  * - a bonus window is ordered and inside the month; a bonus whose condition names a line (also
  *   inside `all`) spans the whole month, and one naming a focus item has exactly that item's window,

@@ -284,13 +284,18 @@ describe("history after a line is deactivated (R23a)", () => {
 });
 
 describe("amount cap (A4)", () => {
-  it("saveClose refuses a line amount above AMOUNT_MAX and accepts AMOUNT_MAX", async () => {
+  it("saveClose refuses 1e8 + 1 cases and accepts 1e8 (R26); a value line keeps AMOUNT_MAX", async () => {
     const day = "2026-11-15";
-    expect(await saveClose(ahmed(), form(day, { bev: 100_000_000_001 }), { today: "2026-11-16" })).toEqual({
+    expect(await saveClose(ahmed(), form(day, { bev: 100_000_001 }), { today: "2026-11-16" })).toEqual({
       ok: false,
       errors: { "lines.bev": "invalid" },
     });
-    expect(await saveClose(ahmed(), form(day, { bev: 100_000_000_000 }), { today: "2026-11-16" })).toEqual({ ok: true });
+    expect(await saveClose(ahmed(), form(day, { bev: 100_000_000 }), { today: "2026-11-16" })).toEqual({ ok: true });
+    expect(await saveClose(ahmed(), form(day, { food: 100_000_000_001 }), { today: "2026-11-16" })).toEqual({
+      ok: false,
+      errors: { "lines.food": "invalid" },
+    });
+    expect(await saveClose(ahmed(), form(day, { food: 100_000_000_000 }), { today: "2026-11-16" })).toEqual({ ok: true });
   });
 });
 
@@ -327,6 +332,7 @@ describe("history", () => {
           { lineId: "coll", pct: 42 },
         ],
         commission: 41400,
+        tooLarge: false,
       },
     ]);
   });

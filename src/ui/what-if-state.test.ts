@@ -72,3 +72,11 @@ describe("whatIfAt", () => {
     expect(last.rate).toBe(0);
   });
 });
+
+describe("whatIfAt with asOf (L3)", () => {
+  it("at step 0 the total equals the headline projected total, also when a bonus window has ended", () => {
+    const asOf = "2026-12-01"; // the mango bonus ended on 2026-11-20
+    const headline = evaluateScheme(sampleScheme, projected, { asOf }).total;
+    for (const l of lines) expect(whatIfAt(sampleScheme, input, counts, l, 0, asOf).total).toBe(headline);
+  });
+});

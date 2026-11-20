@@ -4,7 +4,7 @@ import { alias } from "drizzle-orm/pg-core";
 import type { Db } from "@/db/client";
 import * as s from "@/db/schema";
 import { lineName } from "@/domain/lines";
-import { AMOUNT_MAX, type Unit } from "@/domain/money";
+import { AMOUNT_MAX, maxAmountFor, type Unit } from "@/domain/money";
 import { assertRole } from "@/server/auth/roles";
 import type { Ctx } from "@/server/ctx";
 import { loadLines, type LineInfo } from "@/server/repos/month-data";
@@ -122,19 +122,20 @@ async function applyIn(db: Db, ctx: Ctx, input: ApplyTargetsInput): Promise<Appl
       .orderBy(asc(s.users.id))
       .for("key share");
   const lines = await db
-      .select({ id: s.targetLines.id, kind: s.targetLines.kind })
+      .select({ id: s.targetLines.id, kind: s.targetLines.kind, unit: s.targetLines.unit })
       .from(s.targetLines)
       .where(and(eq(s.targetLines.companyId, ctx.companyId), eq(s.targetLines.active, true), inArray(s.targetLines.id, lineIds)))
       .orderBy(asc(s.targetLines.id))
       .for("key share");
   const userOk = new Set(users.map((u) => u.id));
   const kindOf = new Map(lines.map((l) => [l.id, l.kind]));
+  const unitOf = new Map(lines.map((l) => [l.id, l.unit]));
 
   const errors: Record<string, string> = {};
   for (const [key, e] of wanted) {
     if (!userOk.has(e.userId) || !kindOf.has(e.lineId)) errors[key] = "not_found";
     else if (kindOf.get(e.lineId) === "coverage") errors[key] = "coverage_line";
-    else if (e.amount !== null && (typeof e.amount !== "number" || !Number.isSafeInteger(e.amount) || e.amount < 0 || e.amount > AMOUNT_MAX)) errors[key] = "invalid";
+    else if (e.amount !== null && (typeof e.amount !== "number" || !Number.isSafeInteger(e.amount) || e.amount < 0 || e.amount > maxAmountFor(unitOf.get(e.lineId) ?? "value"))) errors[key] = "invalid";
   }
   if (Object.keys(errors).length > 0) return { ok: false, errors };
 

@@ -21,6 +21,8 @@ export type HistoryMonth = {
     pct: number | null;
   }[]; /** Null when the company has no published scheme for the month. */
   commission: number | null;
+  /** The month's figure is too large to compute exactly (the commission is then null). */
+  tooLarge: boolean;
 };
 export type HistoryDay = {
   date: ISODate;
@@ -92,10 +94,17 @@ export async function getHistoryMonths(
         };
       });
       const asOf = past ? monthBounds(year, month).end : today;
-      const commission = scheme
-        ? evaluateScheme(scheme, schemeInput(allTotals ?? totals), { asOf }).total
-        : null;
-      return { year, month, lines, commission };
+      let commission: number | null = null;
+      let tooLarge = false;
+      if (scheme) {
+        try {
+          commission = evaluateScheme(scheme, schemeInput(allTotals ?? totals), { asOf }).total;
+        } catch (e) {
+          if (!(e instanceof RangeError)) throw e;
+          tooLarge = true;
+        }
+      }
+      return { year, month, lines, commission, tooLarge };
     }),
   );
 }

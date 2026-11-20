@@ -11,7 +11,7 @@ import { getMonthView } from "@/server/repos/month-view";
 import { getClose, saveClose, type CloseForm } from "@/server/repos/closes";
 import { getHistoryDays } from "@/server/repos/history";
 import { reconcile } from "@/domain/reconciliation";
-import { UPLOAD_MAX_BYTES, listUploads, processUpload, readUploadFile, rejectUpload, singleFlight } from "./uploads";
+import { UPLOAD_MAX_BYTES, refusalRows, listUploads, processUpload, readUploadFile, rejectUpload, singleFlight } from "./uploads";
 
 const TODAY = "2026-11-14";
 let db: Db;
@@ -467,5 +467,29 @@ describe("float noise in an uploaded workbook (B1)", () => {
     const by = Object.fromEntries(rows.map((x) => [x.userId, x.amount]));
     expect(by.ahmed).toBe(825030);
     expect(by.khaled).toBe(30);
+  });
+});
+
+describe("refusalRows (L6)", () => {
+  const op = (userId: string, lineId: string) => ({ userId, lineId, year: 2026, month: 11, amount: 5 });
+  const lookup = { reps: new Map([["ahmed", "u-ahmed"]]), lines: new Map() };
+  it("maps each refusal to a row error on the right column", () => {
+    const [a, b, c, d, e] = [op("u-ahmed", "l-gone"), op("u-gone", "l-1"), op("u-ahmed", "l-cov"), op("u-ahmed", "l-big"), op("u-ahmed", "l-ok")];
+    const rowOf = new Map([[a, 2], [b, 3], [c, 4], [d, 5], [e, 6]]);
+    const errors = {
+      "u-ahmed|l-gone": "not_found",
+      "u-gone|l-1": "not_found",
+      "u-ahmed|l-cov": "coverage_line",
+      "u-ahmed|l-big": "invalid",
+    };
+    expect(refusalRows([a, b, c, d, e], errors, rowOf, lookup)).toEqual([
+      { row: 2, column: "line", code: "unknown_line" },
+      { row: 3, column: "login", code: "unknown_rep" },
+      { row: 4, column: "line", code: "coverage_line" },
+      { row: 5, column: "amount", code: "invalid_amount" },
+    ]);
+  });
+  it("never returns an empty list", () => {
+    expect(refusalRows([], {}, new Map(), lookup)).toEqual([{ row: 0, code: "invalid_amount" }]);
   });
 });

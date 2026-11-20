@@ -47,6 +47,11 @@ export function dayCounts(
   return { total: days.length, elapsed, left: days.length - elapsed };
 }
 
+/** "Selling day N of T" shown on the home and commission pages: selling days before today, plus one, capped at the total. Always fed the days-before-today counts (`dayCounts`), never the commission view's counts, which count a closed today as elapsed. */
+export function sellingDayNumber(counts: { total: number; elapsed: number }): number {
+  return Math.min(counts.elapsed + 1, counts.total);
+}
+
 /** Calendar date in the given IANA time zone. */
 export function todayIn(timeZone: string, now: Date = new Date()): ISODate {
   const parts = new Intl.DateTimeFormat("en-CA", {

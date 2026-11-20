@@ -2,6 +2,13 @@ export type Unit = "cases" | "value" | "outlets";
 
 /** Sanity cap in the stored unit (cases, or halalas for value lines) for any entered amount or target. */
 export const AMOUNT_MAX = 100_000_000_000;
+/** Sanity cap for case and outlet counts. With the per-case rate cap (1e6) and 26 days, rate x cases x 26 stays below 2^53. */
+export const CASES_MAX = 100_000_000;
+
+/** The largest amount a line of `unit` may hold: money up to AMOUNT_MAX, counts up to CASES_MAX. */
+export function maxAmountFor(unit: Unit): number {
+  return unit === "value" ? AMOUNT_MAX : CASES_MAX;
+}
 
 /** Two-decimal currencies only, matching the 100-minor-unit rule. */
 export const CURRENCIES = ["SAR", "AED", "QAR", "EGP", "USD"] as const;

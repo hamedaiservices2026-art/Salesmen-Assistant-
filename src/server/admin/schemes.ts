@@ -322,5 +322,7 @@ export async function previewScheme(
     { ...period, today: input.today },
     { id: "preview", name: "preview", components: checked.components },
   );
+  // A figure too large to compute exactly: the preview cannot show it, so it is reported as a bad amount.
+  if (view.tooLarge) return { ok: false, issues: [{ path: "components", code: "bad_amount" }] };
   return { ok: true, actual: view.actual, projected: view.projected, atFullTarget: view.atFullTarget, nearest: view.nearest };
 }

@@ -192,7 +192,9 @@
       "part": "{name} {pct}% از {minPct}%",
       "partCount": "{name} {achieved} از {needed}"
     },
-    "unnamed": "یہ مد"
+    "unnamed": "یہ مد",
+    "tooLarge": "ایک عدد اتنا بڑا ہے کہ کمیشن کا حساب نہیں ہو سکا۔ اپنے ایڈمن سے اعداد چیک کرنے کو کہیں۔",
+    "whatIfNoDays": "اس مہینے فروخت کے دن باقی نہیں، اس لیے آزمانے کو کچھ نہیں۔"
   },
   "history": {
     "title": "ریکارڈ",
@@ -210,7 +212,8 @@
     "gap": "درج نہیں ہوا · ابھی درج کریں",
     "unknownLine": "پرانی ٹارگٹ لائن",
     "adminNote": "ایڈمن نے درج کیا {amount}",
-    "repNote": "آپ نے لکھا {amount}"
+    "repNote": "آپ نے لکھا {amount}",
+    "tooLarge": "حساب کے لیے بہت بڑا"
   },
   "settings": {
     "title": "ترتیبات",
