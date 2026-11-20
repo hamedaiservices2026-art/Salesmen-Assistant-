@@ -25,7 +25,7 @@ async function startAdminSession(sessionToken: string): Promise<string> {
   const ctx = await getSessionUser(await getDb(), sessionToken);
   if (!ctx) return "/admin/signin";
   // No last_login cookie: the rep sign-in page reads it, and an email does not belong there.
-  await startSessionCookies(sessionToken, { locale: ctx.locale });
+  await startSessionCookies(sessionToken, { locale: ctx.locale, role: ctx.role });
   return homeFor(ctx.role);
 }
 

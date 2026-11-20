@@ -244,3 +244,20 @@ describe("a context read through repCtx", () => {
   });
 });
 
+
+describe("C1: addCoverageUpdate guards", () => {
+  it("refuses a context made by repCtx (it only reads on someone's behalf)", async () => {
+    const acting = (await repCtx(sami(), "ahmed"))!;
+    await expect(addCoverageUpdate(acting, upd("ahmed", 5, 10, "2026-11-10"), opts)).rejects.toBeInstanceOf(Forbidden);
+    expect(await rows()).toEqual([]);
+  });
+
+  it("an inactive rep or supervisor is not_found, for the admin and for his supervisor", async () => {
+    await db.update(s.users).set({ active: false }).where(eq(s.users.id, "ahmed"));
+    expect(await addCoverageUpdate(admin(), upd("ahmed", 5, 10, "2026-11-10"), opts)).toEqual({ ok: false, errors: { repId: "not_found" } });
+    expect(await addCoverageUpdate(sami(), upd("ahmed", 5, 10, "2026-11-10"), opts)).toEqual({ ok: false, errors: { repId: "not_found" } });
+    await db.update(s.users).set({ active: false }).where(eq(s.users.id, "sami"));
+    expect(await addCoverageUpdate(admin(), upd("sami", 5, 10, "2026-11-10"), opts)).toEqual({ ok: false, errors: { repId: "not_found" } });
+    expect(await rows()).toEqual([]);
+  });
+});

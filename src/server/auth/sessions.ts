@@ -10,9 +10,21 @@ import { PASSWORD_ROLES, PIN_ROLES, type Role } from "./roles";
 import { hashToken, newToken } from "./token";
 
 export const SESSION_COOKIE = "session";
+/** Rep and supervisor sessions: 90 days, sliding. */
 export const SESSION_TTL_MS = 90 * 24 * 60 * 60 * 1000;
-/** Browser cookie lifetime; the stored expiry is the authority and is renewed while the rep keeps using the app. */
+/** Admin and owner sessions: 7 days, sliding (a password role can change money and people). */
+export const ADMIN_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+/** Browser cookie lifetime of a rep or supervisor; the stored expiry is the authority and is renewed while he keeps using the app. */
 export const SESSION_COOKIE_MAX_AGE_S = 365 * 24 * 60 * 60;
+export const ADMIN_SESSION_COOKIE_MAX_AGE_S = 7 * 24 * 60 * 60;
+
+const isPasswordRole = (role: Role): boolean => (PASSWORD_ROLES as readonly Role[]).includes(role);
+
+/** How long a session of `role` lives, and is renewed to, in milliseconds. */
+export const sessionTtlMs = (role: Role): number => (isPasswordRole(role) ? ADMIN_SESSION_TTL_MS : SESSION_TTL_MS);
+/** The cookie max-age for a session of `role`, in seconds. */
+export const sessionCookieMaxAgeS = (role: Role): number =>
+  isPasswordRole(role) ? ADMIN_SESSION_COOKIE_MAX_AGE_S : SESSION_COOKIE_MAX_AGE_S;
 /**
  * Stored hash used to spend equal time when the login does not exist or may not use this path.
  * Precomputed (a hash of a throwaway string at the current cost), so the first unknown login of a
@@ -22,7 +34,7 @@ export const DECOY_HASH =
   "scrypt$16384$8$1$8b536842b92f706bb3498ed8198087e9$014a7e8457a3b494c532e208798ab9e8eb0a67ba9ac33744a2ef173396005d88";
 
 export async function createSession(db: Db, userId: string, now: Date = new Date()): Promise<string> {
-  const [user] = await db.select({ companyId: s.users.companyId }).from(s.users).where(eq(s.users.id, userId));
+  const [user] = await db.select({ companyId: s.users.companyId, role: s.users.role }).from(s.users).where(eq(s.users.id, userId));
   if (!user) throw new Error("Unknown user");
   const token = newToken();
   await db.insert(s.sessions).values({
@@ -30,7 +42,7 @@ export async function createSession(db: Db, userId: string, now: Date = new Date
     companyId: user.companyId,
     userId,
     tokenHash: hashToken(token),
-    expiresAt: new Date(now.getTime() + SESSION_TTL_MS),
+    expiresAt: new Date(now.getTime() + sessionTtlMs(user.role)),
   });
   return token;
 }
@@ -52,11 +64,12 @@ export async function getSessionUser(db: Db, token: string, now: Date = new Date
     .innerJoin(s.companies, eq(s.companies.id, s.users.companyId))
     .where(eq(s.sessions.tokenHash, hashToken(token)));
   if (!row || !row.active || row.expiresAt.getTime() <= now.getTime()) return null;
-  if (row.expiresAt.getTime() - now.getTime() < SESSION_TTL_MS / 2) {
+  const ttl = sessionTtlMs(row.role);
+  if (row.expiresAt.getTime() - now.getTime() < ttl / 2) {
     // Sliding expiry: renewed once less than half the lifetime remains.
     await db
       .update(s.sessions)
-      .set({ expiresAt: new Date(now.getTime() + SESSION_TTL_MS), updatedAt: now })
+      .set({ expiresAt: new Date(now.getTime() + ttl), updatedAt: now })
       // Only while still valid: a session that expires meanwhile is not brought back.
       .where(and(eq(s.sessions.tokenHash, hashToken(token)), gt(s.sessions.expiresAt, now)));
   }

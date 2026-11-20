@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import * as s from "@/db/schema";
 import { createInvite } from "@/server/auth/invites";
@@ -21,7 +21,16 @@ export async function createOwner(db: Db, input: { email: string; name: string }
     .where(eq(s.users.login, email));
   if (existing) {
     if (existing.role !== "owner") throw new Error(`${email} already belongs to a user who is not an owner`);
-    return { inviteToken: await createInvite(db, existing.id) };
+    // Recovery: any invite still unused is voided in the same transaction that issues the new one, so
+    // a link that leaked earlier cannot be opened after the owner asked for a fresh one.
+    return db.transaction(async (tx) => {
+      const now = new Date();
+      await tx
+        .update(s.invites)
+        .set({ usedAt: now, updatedAt: now })
+        .where(and(eq(s.invites.userId, existing.id), isNull(s.invites.usedAt)));
+      return { inviteToken: await createInvite(tx as unknown as Db, existing.id, now) };
+    });
   }
   const ownerId = randomUUID();
   const inviteToken = await db.transaction(async (tx) => {

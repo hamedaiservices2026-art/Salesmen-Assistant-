@@ -12,9 +12,10 @@ async function main() {
   console.log("Note: the seed does not update rows that already exist; for a clean demo run `rm -rf .data` first.");
   const deployed = Boolean(process.env.DATABASE_URL);
   const r = await seedDemo(await getDb(), { deployed });
-  console.log(`Ahmed (rep):   /invite/${r.inviteToken}`);
-  console.log(`Other company: /invite/${r.otherInviteToken}`);
-  console.log(`Sami (supervisor): /invite/${r.supervisorInviteToken}`);
+  // An empty token means the account already has its PIN (deployed re-seed): nothing to print.
+  if (r.inviteToken) console.log(`Ahmed (rep):   /invite/${r.inviteToken}`);
+  if (r.otherInviteToken) console.log(`Other company: /invite/${r.otherInviteToken}`);
+  if (r.supervisorInviteToken) console.log(`Sami (supervisor): /invite/${r.supervisorInviteToken}`);
   if (deployed) {
     // No demo password exists on a deployed database; each link sets the account's own.
     if (r.adminInviteToken) console.log(`Admin (demo):  ${invitePath("admin", r.adminInviteToken)}`);

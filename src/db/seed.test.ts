@@ -150,6 +150,31 @@ describe("seedDemo", () => {
       expect((await db.select().from(s.users).where(eq(s.users.id, again.adminId)))[0]!.passwordHash).toMatch(/^scrypt\$/);
     });
 
+    it("a deployed re-seed does not reissue a rep or supervisor invite once his PIN is set (C5)", async () => {
+      const db = await createTestDb();
+      const first = await seedDemo(db, { deployed: true });
+      const { acceptInvite, peekInvite } = await import("@/server/auth/invites");
+      expect((await acceptInvite(db, first.inviteToken, "482915")).ok).toBe(true);
+      expect((await acceptInvite(db, first.supervisorInviteToken, "593716")).ok).toBe(true);
+      const again = await seedDemo(db, { deployed: true });
+      expect(again.inviteToken).toBe("");
+      expect(again.supervisorInviteToken).toBe("");
+      expect(await peekInvite(db, first.inviteToken)).toBeNull();
+      // The one who has not chosen a PIN yet still gets a working link.
+      expect(again.otherInviteToken).toBeTruthy();
+      expect(await peekInvite(db, again.otherInviteToken)).not.toBeNull();
+      const [ahmed] = await db.select().from(s.invites).where(eq(s.invites.id, "invite-ahmed"));
+      expect(ahmed!.usedAt).not.toBeNull();
+    });
+
+    it("local mode re-issues every rep invite as before", async () => {
+      const db = await createTestDb();
+      const first = await seedDemo(db);
+      const { acceptInvite } = await import("@/server/auth/invites");
+      await acceptInvite(db, first.inviteToken, "482915");
+      expect((await seedDemo(db)).inviteToken).toBeTruthy();
+    });
+
     it("local mode keeps the demo hashes and returns no admin invites", async () => {
       const db = await createTestDb();
       const r = await seedDemo(db, { deployed: false });

@@ -4,7 +4,7 @@ import * as s from "@/db/schema";
 import type { ISODate } from "@/domain/calendar";
 import { coverageErrors } from "@/domain/coverage";
 import { repCtx } from "@/server/admin/rep-ctx";
-import { assertRole, type Role } from "@/server/auth/roles";
+import { assertOwnContext, assertRole, type Role } from "@/server/auth/roles";
 import type { Ctx } from "@/server/ctx";
 import { currentDay } from "@/server/today";
 
@@ -39,8 +39,15 @@ export async function addCoverageUpdate(
   input: CoverageInput,
   opts?: { today?: ISODate },
 ): Promise<AddCoverageResult> {
+  assertOwnContext(ctx);
   const target = await repCtx(ctx, String(input.repId ?? ""));
   if (!target) return { ok: false, errors: { repId: "not_found" } };
+  // A deactivated rep or supervisor takes no new figures.
+  const [live] = await ctx.db
+    .select({ id: s.users.id })
+    .from(s.users)
+    .where(and(eq(s.users.id, target.userId), eq(s.users.companyId, ctx.companyId), eq(s.users.active, true)));
+  if (!live) return { ok: false, errors: { repId: "not_found" } };
 
   const errors = coverageErrors({
     covered: input.covered,

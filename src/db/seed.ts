@@ -291,9 +291,16 @@ export async function seedDemo(db: Db, options: SeedOptions = { deployed: false 
       .onConflictDoUpdate({ target: s.invites.id, set: values });
     return token;
   };
-  const inviteToken = await issue("invite-ahmed", companyId, repId);
-  const otherInviteToken = await issue("invite-other-rep", otherCompanyId, otherRepId);
-  const supervisorInviteToken = await issue("invite-sami", companyId, supervisorId);
+  // On a deployed database a re-seed must not reopen a rep or supervisor who already chose a PIN, the
+  // same rule as for the owner and admin below: his invite is only (re)issued while he has no PIN.
+  // A withheld token comes back as an empty string.
+  const hasPin = async (userId: string) =>
+    (await db.select({ hash: s.users.pinHash }).from(s.users).where(eq(s.users.id, userId)))[0]?.hash != null;
+  const issueUnlessSetUp = async (id: string, cid: string, userId: string) =>
+    deployed && (await hasPin(userId)) ? "" : issue(id, cid, userId);
+  const inviteToken = await issueUnlessSetUp("invite-ahmed", companyId, repId);
+  const otherInviteToken = await issueUnlessSetUp("invite-other-rep", otherCompanyId, otherRepId);
+  const supervisorInviteToken = await issueUnlessSetUp("invite-sami", companyId, supervisorId);
 
   const result: SeedResult = {
     companyId,

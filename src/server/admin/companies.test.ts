@@ -174,6 +174,15 @@ describe("createOwner", () => {
     expect(await peekAdminInvite(db, second.inviteToken)).toMatchObject({ login: "owner@platform.test" });
   });
 
+  it("recovery voids the owner's unused invites, so only the new link opens (C2)", async () => {
+    const first = await createOwner(db, { email: "owner@platform.test", name: "Platform Owner" });
+    const second = await createOwner(db, { email: "owner@platform.test", name: "Platform Owner" });
+    expect(await peekAdminInvite(db, first.inviteToken)).toBeNull();
+    expect((await acceptAdminInvite(db, first.inviteToken, "a-long-password-1")).ok).toBe(false);
+    expect(await peekAdminInvite(db, second.inviteToken)).toMatchObject({ login: "owner@platform.test" });
+    expect((await acceptAdminInvite(db, second.inviteToken, "a-long-password-1")).ok).toBe(true);
+  });
+
   it("refuses an email that belongs to a user who is not an owner", async () => {
     await expect(createOwner(db, { email: "admin@demo.test", name: "x" })).rejects.toThrow();
   });

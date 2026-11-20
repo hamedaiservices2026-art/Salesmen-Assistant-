@@ -11,7 +11,7 @@ import { isStrongPassword } from "./password";
 import { attemptWithLockout } from "./lockout";
 import { Forbidden, assertRole, homeFor, signInPathFor } from "./roles";
 import { acceptAdminInvite, acceptInvite, createInvite, peekAdminInvite, peekInvite } from "./invites";
-import { SESSION_TTL_MS, createSession, getSessionUser, signIn, signInWithPassword } from "./sessions";
+import { ADMIN_SESSION_TTL_MS, ADMIN_SESSION_COOKIE_MAX_AGE_S, SESSION_COOKIE_MAX_AGE_S, createSession, sessionCookieMaxAgeS, getSessionUser, signIn, signInWithPassword } from "./sessions";
 import { requireRole } from "./guard";
 import { acceptInviteAction, signInAction, signOutAction } from "@/app/(auth-actions)/actions";
 import { acceptAdminInviteAction, adminSignInAction, adminSignOutAction } from "@/app/admin/actions";
@@ -241,6 +241,19 @@ describe("secret hashes", () => {
     expect(await verifySecret("482916", legacy)).toBe(false);
   });
 
+  it("verifies a hash made at N=2^17 (C3), and new hashes still use 2^14", async () => {
+    const salt = randomBytes(16);
+    const key = scryptSync("pilot-2026!", salt, 32, { N: 131072, r: 8, p: 1, maxmem: 256 * 131072 * 8 });
+    const hash = ["scrypt", 131072, 8, 1, salt.toString("hex"), key.toString("hex")].join("$");
+    expect(await verifySecret("pilot-2026!", hash)).toBe(true);
+    expect(await verifySecret("pilot-2026?", hash)).toBe(false);
+    expect(await hashSecret("x-y-z-1-2-3")).toMatch(/^scrypt\$16384\$/);
+  });
+
+  it("still refuses a cost above 2^20", async () => {
+    expect(await verifySecret("x", "scrypt$2097152$8$1$00$00")).toBe(false);
+  });
+
   it("rejects malformed hashes", async () => {
     for (const bad of ["", "scrypt$1$8$1$00$00", "scrypt$16384$8$1$zz$zz", "abc", "scrypt$99999999$8$1$00$00"]) {
       expect(await verifySecret("x", bad)).toBe(false);
@@ -463,10 +476,49 @@ describe("sessions at the expiry instant", () => {
   it("a session whose expires_at equals now is neither returned nor renewed", async () => {
     const t0 = new Date("2026-11-14T10:00:00Z");
     const token = await createSession(db, seed.adminId, t0);
-    const at = new Date(t0.getTime() + SESSION_TTL_MS);
+    const at = new Date(t0.getTime() + ADMIN_SESSION_TTL_MS);
     expect(await getSessionUser(db, token, at)).toBeNull();
     const [row] = await db.select().from(s.sessions).where(and(eq(s.sessions.userId, seed.adminId)));
     expect(row!.expiresAt.getTime()).toBe(at.getTime());
+  });
+});
+
+describe("R24: session lifetime by role", () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  const t0 = new Date("2026-11-14T10:00:00Z");
+  const expiryOf = async (userId: string) =>
+    (await db.select().from(s.sessions).where(eq(s.sessions.userId, userId)))[0]!.expiresAt.getTime();
+
+  it("an admin session lasts 7 days, a rep session 90", async () => {
+    const adminToken = await createSession(db, seed.adminId, t0);
+    const repToken = await createSession(db, seed.repId, t0);
+    expect(await expiryOf(seed.adminId)).toBe(t0.getTime() + 7 * DAY);
+    expect(await expiryOf(seed.repId)).toBe(t0.getTime() + 90 * DAY);
+    expect(await getSessionUser(db, adminToken, new Date(t0.getTime() + 7 * DAY))).toBeNull();
+    expect(await getSessionUser(db, repToken, new Date(t0.getTime() + 7 * DAY))).not.toBeNull();
+    expect(await getSessionUser(db, repToken, new Date(t0.getTime() + 90 * DAY))).toBeNull();
+  });
+
+  it("the owner is a password role too", async () => {
+    await createSession(db, seed.ownerId, t0);
+    expect(await expiryOf(seed.ownerId)).toBe(t0.getTime() + 7 * DAY);
+  });
+
+  it("an admin session slides: used after 4 days it is renewed to 7 days from then", async () => {
+    const token = await createSession(db, seed.adminId, t0);
+    const day2 = new Date(t0.getTime() + 2 * DAY);
+    await getSessionUser(db, token, day2); // 5 days left of 7: not yet renewed
+    expect(await expiryOf(seed.adminId)).toBe(t0.getTime() + 7 * DAY);
+    const day4 = new Date(t0.getTime() + 4 * DAY);
+    await getSessionUser(db, token, day4); // 3 days left, under half: renewed
+    expect(await expiryOf(seed.adminId)).toBe(day4.getTime() + 7 * DAY);
+  });
+
+  it("the cookie lives 7 days for an admin and a year for a rep", () => {
+    expect(sessionCookieMaxAgeS("admin")).toBe(ADMIN_SESSION_COOKIE_MAX_AGE_S);
+    expect(sessionCookieMaxAgeS("owner")).toBe(7 * 24 * 60 * 60);
+    expect(sessionCookieMaxAgeS("rep")).toBe(SESSION_COOKIE_MAX_AGE_S);
+    expect(sessionCookieMaxAgeS("supervisor")).toBe(365 * 24 * 60 * 60);
   });
 });
 
