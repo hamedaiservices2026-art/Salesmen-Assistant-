@@ -6,7 +6,8 @@ describe("loading the provider layer", () => {
     vi.resetModules();
     vi.doMock("sharp", () => {
       loaded = true;
-      return { default: () => ({ metadata: async () => ({ width: 640 }) }) };
+      const sharp = Object.assign(() => ({ metadata: async () => ({ width: 640, height: 40 }) }), { cache: () => {}, block: () => {} });
+      return { default: sharp };
     });
     try {
       const { getProviders } = await import("./providers");
@@ -16,7 +17,7 @@ describe("loading the provider layer", () => {
       expect(loaded).toBe(false);
 
       await fake!.vision(
-        { image: new Uint8Array([1]), system: "s", prompt: "p", maxOutputTokens: 10 },
+        { image: new Uint8Array([0xff, 0xd8, 0xff, 0xe0]), system: "s", prompt: "p", maxOutputTokens: 10 },
         new AbortController().signal,
       );
       expect(loaded).toBe(true);

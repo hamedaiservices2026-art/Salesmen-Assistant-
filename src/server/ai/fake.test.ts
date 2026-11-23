@@ -116,8 +116,8 @@ describe("fakeProvider: vision", () => {
     expect((await vision(300)).text).toBe((await vision(640)).text);
   });
 
-  it("refuses an image over 40 000 000 pixels as a bad request, reading only its header", async () => {
-    // A tiny PNG that declares 8 000 x 8 000 pixels (64 000 000, over our limit but under sharp's
+  it("refuses an image over 24 000 000 pixels as a bad request, reading only its header", async () => {
+    // A tiny PNG that declares 8 000 x 8 000 pixels (64 000 000, over our 24 000 000 limit but under sharp's
     // own default) and carries no real pixel data: cheap to build, and only our limitInputPixels
     // makes sharp refuse it.
     const ihdr = Buffer.alloc(13);
@@ -138,6 +138,31 @@ describe("fakeProvider: vision", () => {
     expect((await sharp(png, { failOn: "error" }).metadata()).width).toBe(8_000);
     await expect(
       fakeProvider().vision({ image: new Uint8Array(png), system: "s", prompt: "p", maxOutputTokens: 10 }, signal()),
+    ).rejects.toMatchObject({ code: "bad_request", provider: "fake" });
+  });
+
+  it("refuses an extreme aspect ratio (a side over 10 000) from the header", async () => {
+    const ihdr = Buffer.alloc(13);
+    ihdr.writeUInt32BE(20_000_000, 0);
+    ihdr.writeUInt32BE(1, 4);
+    ihdr.set([8, 2, 0, 0, 0], 8);
+    const chunk = (type: string, data: Buffer) => {
+      const head = Buffer.concat([Buffer.from(type, "ascii"), data]);
+      const len = Buffer.alloc(4);
+      len.writeUInt32BE(data.length);
+      const crc = Buffer.alloc(4);
+      crc.writeUInt32BE(crc32(head) >>> 0);
+      return Buffer.concat([len, head, crc]);
+    };
+    const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", ihdr), chunk("IDAT", deflateSync(Buffer.from([0]))), chunk("IEND", Buffer.alloc(0))]);
+    await expect(
+      fakeProvider().vision({ image: new Uint8Array(png), system: "s", prompt: "p", maxOutputTokens: 10 }, signal()),
+    ).rejects.toMatchObject({ code: "bad_request", provider: "fake" });
+  });
+
+  it("refuses a GIF by its bytes before any decoder sees it", async () => {
+    await expect(
+      fakeProvider().vision({ image: ascii("GIF89a\x01\x00\x01\x00"), system: "s", prompt: "p", maxOutputTokens: 10 }, signal()),
     ).rejects.toMatchObject({ code: "bad_request", provider: "fake" });
   });
 

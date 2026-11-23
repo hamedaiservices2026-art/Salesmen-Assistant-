@@ -2,8 +2,10 @@ import type { ISODate } from "./calendar";
 
 /** Largest upload accepted, in bytes (Vercel refuses bodies over 4.5 MB). */
 export const PHOTO_MAX_BYTES = 4_000_000;
-/** Largest decoded image accepted, in pixels (width x height). */
-export const PHOTO_MAX_PIXELS = 40_000_000;
+/** Largest decoded image accepted, in pixels (width x height; R69). */
+export const PHOTO_MAX_PIXELS = 24_000_000;
+/** Longest side of an image accepted, in pixels; stops extreme aspect ratios (R69). */
+export const PHOTO_MAX_SIDE = 10_000;
 /** Longest edge of a stored photo, in pixels. */
 export const PHOTO_MAX_EDGE = 1600;
 

@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readdir, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { link, mkdtemp, mkdir, readdir, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -86,6 +86,30 @@ describe("localStore", () => {
     await expect(store.put(KEY, JPEG)).rejects.toThrow();
     expect(await readdir(outside)).toEqual([]);
     await expect(store.get(KEY)).rejects.toThrow();
+  });
+
+  it("refuses a hard-linked file", async () => {
+    const files = path.join(root, "files");
+    const secret = path.join(root, "secret.jpg");
+    await writeFile(secret, JPEG);
+    await mkdir(path.join(files, "demo-co/ahmed/2026-11-14"), { recursive: true });
+    await link(secret, path.join(files, KEY));
+    await expect(localStore(files).get(KEY)).rejects.toThrow();
+  });
+
+  it("makes the directories it creates exactly 0700, whatever the umask", async () => {
+    // A umask that strips write bits would leave mkdir's 0700 as 0500; the store sets the mode itself.
+    const old = process.umask(0o222);
+    try {
+      const files = path.join(root, "loose", "files");
+      await localStore(files).put(KEY, JPEG);
+      for (const dir of ["loose", "loose/files", "loose/files/demo-co", "loose/files/demo-co/ahmed", "loose/files/demo-co/ahmed/2026-11-14"]) {
+        expect((await stat(path.join(root, dir))).mode & 0o777).toBe(0o700);
+      }
+      expect((await stat(path.join(files, KEY))).mode & 0o777).toBe(0o600);
+    } finally {
+      process.umask(old);
+    }
   });
 
   it("does not read through a symlinked file", async () => {
@@ -216,9 +240,40 @@ describe("supabaseStore", () => {
     expect(await store.get(missing)).toBeNull();
   });
 
-  it("treats a 400 whose body says not found as missing", async () => {
+  it("treats a 400 whose body says the object is not found as missing", async () => {
     const { fetchImpl } = recorder(() => new Response(JSON.stringify({ statusCode: "404", error: "not_found", message: "Object not found" }), { status: 400 }));
     expect(await make(fetchImpl).get(KEY)).toBeNull();
+    await expect(make(fetchImpl).remove(KEY)).resolves.toBeUndefined();
+    const byMessage = recorder(() => new Response(JSON.stringify({ statusCode: "404", error: "Not Found", message: "Object not found" }), { status: 400 }));
+    expect(await make(byMessage.fetchImpl).get(KEY)).toBeNull();
+  });
+
+  it("a missing bucket is an error, not a missing object", async () => {
+    const body = JSON.stringify({ statusCode: "404", error: "Bucket not found", message: "Bucket not found" });
+    for (const status of [400, 404]) {
+      const { fetchImpl } = recorder(() => new Response(body, { status }));
+      await expect(make(fetchImpl).get(KEY)).rejects.toThrow();
+      await expect(make(fetchImpl).remove(KEY)).rejects.toThrow();
+    }
+  });
+
+  it("a 400 whose body says 409 is the duplicate error", async () => {
+    const { fetchImpl } = recorder(() => new Response(JSON.stringify({ statusCode: "409", error: "Duplicate", message: "The resource already exists" }), { status: 400 }));
+    await expect(make(fetchImpl).put(KEY, JPEG)).rejects.toThrow(/exists/);
+  });
+
+  it("an empty 200 body on get is an error", async () => {
+    const { fetchImpl } = recorder(() => new Response(null, { status: 200 }));
+    await expect(make(fetchImpl).get(KEY)).rejects.toThrow();
+    const empty = recorder(() => new Response(new Uint8Array(0), { status: 200 }));
+    await expect(make(empty.fetchImpl).get(KEY)).rejects.toThrow();
+  });
+
+  it("returns bytes it owns, not a view into a shared buffer", async () => {
+    const { fetchImpl } = recorder(() => new Response(JPEG, { status: 200 }));
+    const got = await make(fetchImpl).get(KEY);
+    expect(got).toEqual(JPEG);
+    expect([got?.byteOffset, got?.buffer.byteLength]).toEqual([0, JPEG.byteLength]);
   });
 
   it("refuses a body over 5 000 000 bytes, declared or streamed", async () => {
@@ -265,9 +320,9 @@ describe("supabaseStore", () => {
     expect((err as Error).message).not.toContain(KEY);
   });
 
-  it("an existing object is refused (no overwrite)", async () => {
+  it("an existing object (HTTP 409) is refused (no overwrite)", async () => {
     const { fetchImpl } = recorder(() => new Response(JSON.stringify({ statusCode: "409", error: "Duplicate" }), { status: 409 }));
-    await expect(make(fetchImpl).put(KEY, JPEG)).rejects.toThrow();
+    await expect(make(fetchImpl).put(KEY, JPEG)).rejects.toThrow(/exists/);
   });
 
   it("a redirect is never followed", async () => {

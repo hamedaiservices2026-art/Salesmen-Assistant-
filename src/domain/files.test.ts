@@ -3,6 +3,7 @@ import {
   PHOTO_MAX_BYTES,
   PHOTO_MAX_EDGE,
   PHOTO_MAX_PIXELS,
+  PHOTO_MAX_SIDE,
   fitWithin,
   isFileId,
   isStorageKey,
@@ -16,7 +17,8 @@ const ID = "0123456789abcdef0123456789abcdef";
 describe("photo limits", () => {
   it("are the plan's exact values", () => {
     expect(PHOTO_MAX_BYTES).toBe(4_000_000);
-    expect(PHOTO_MAX_PIXELS).toBe(40_000_000);
+    expect(PHOTO_MAX_PIXELS).toBe(24_000_000);
+    expect(PHOTO_MAX_SIDE).toBe(10_000);
     expect(PHOTO_MAX_EDGE).toBe(1600);
   });
 });

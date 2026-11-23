@@ -1,4 +1,6 @@
 import { normaliseArabic } from "@/domain/ai/normalise";
+import { PHOTO_MAX_PIXELS, PHOTO_MAX_SIDE, sniffImage } from "@/domain/files";
+import { loadSharp } from "@/server/files/sharp";
 import { AiError, type AiProvider, type ChatRequest, type TextResult } from "./types";
 
 // The deterministic, offline provider used by every test and end-to-end run. A pure function of its
@@ -196,19 +198,23 @@ function sttReply(audio: Uint8Array): string {
   return name !== undefined && Object.hasOwn(TRANSCRIPTS, name) ? (TRANSCRIPTS[name] ?? TRANSCRIPT_V1) : TRANSCRIPT_V1;
 }
 
-/** Same decode limits as the upload path (Global Constraints: at most 40 000 000 pixels). */
-const MAX_INPUT_PIXELS = 40_000_000;
-
 async function visionReply(image: Uint8Array): Promise<string> {
+  // Same checks as the upload path (R69): the type from the bytes first, so nothing else ever
+  // reaches the decoder; then the header's size, before any pixel is decoded.
+  if (sniffImage(image.subarray(0, 16)) === null) throw new AiError("bad_request", "fake");
   let width: number | undefined;
   try {
-    // Loaded here, not at module scope, so importing the provider layer never loads the native
-    // image library (chat and speech-to-text paths do not need it).
-    const { default: sharp } = await import("sharp");
-    width = (await sharp(image, { limitInputPixels: MAX_INPUT_PIXELS, failOn: "error" }).metadata()).width;
+    // Loaded on first use, not at module scope, so chat and speech-to-text never load the native
+    // image library; `loadSharp` also turns its cache off and blocks the unused decoders.
+    const sharp = await loadSharp();
+    const meta = await sharp(image, { limitInputPixels: PHOTO_MAX_PIXELS, failOn: "error" }).metadata();
+    width = meta.width;
+    const height = meta.height;
+    if (!width || !height || width > PHOTO_MAX_SIDE || height > PHOTO_MAX_SIDE || width * height > PHOTO_MAX_PIXELS) width = undefined;
   } catch {
-    throw new AiError("bad_request", "fake");
+    width = undefined;
   }
+  if (width === undefined) throw new AiError("bad_request", "fake");
   if (width === 641) return REPORT_B;
   if (width === 642) return NOT_JSON_REPORT;
   return REPORT_A;

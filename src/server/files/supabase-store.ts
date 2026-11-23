@@ -40,10 +40,17 @@ export class SupabaseStoreError extends Error {
   }
 }
 
-/** Reads at most `MAX_ERROR_PEEK` bytes and says whether the body reports a missing object. */
-async function saysNotFound(res: Response): Promise<boolean> {
+type ErrorKind = "object_missing" | "bucket_missing" | "duplicate" | "other";
+
+/**
+ * Reads at most `MAX_ERROR_PEEK` bytes of an error body and classifies it. Only these fields are
+ * inspected; the body is never kept, logged or passed on. (UNVERIFIED body shape: the storage API
+ * has answered `{ statusCode, error, message }`, e.g. `"404"`/`"not_found"`/`"Object not found"`,
+ * `"404"`/`"Bucket not found"`, `"409"`/`"Duplicate"`.)
+ */
+async function classifyError(res: Response): Promise<ErrorKind> {
   try {
-    if (res.body === null) return false;
+    if (res.body === null) return "other";
     const reader = res.body.getReader();
     const chunks: Uint8Array[] = [];
     let total = 0;
@@ -53,16 +60,19 @@ async function saysNotFound(res: Response): Promise<boolean> {
       total += value.byteLength;
       if (total > MAX_ERROR_PEEK) {
         await reader.cancel().catch(() => {});
-        return false;
+        return "other";
       }
       chunks.push(value);
     }
     const parsed: unknown = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-    if (parsed === null || typeof parsed !== "object") return false;
-    const { statusCode, error } = parsed as { statusCode?: unknown; error?: unknown };
-    return String(statusCode) === "404" || error === "not_found";
+    if (parsed === null || typeof parsed !== "object") return "other";
+    const { statusCode, error, message } = parsed as { statusCode?: unknown; error?: unknown; message?: unknown };
+    if (/bucket/i.test(`${String(error)} ${String(message)}`)) return "bucket_missing";
+    if (error === "not_found" || message === "Object not found") return "object_missing";
+    if (String(statusCode) === "409" || error === "Duplicate") return "duplicate";
+    return "other";
   } catch {
-    return false;
+    return "other";
   }
 }
 
@@ -76,7 +86,7 @@ async function readCapped(res: Response): Promise<Uint8Array> {
     await discard(res);
     throw new SupabaseStoreError("object too large");
   }
-  if (res.body === null) return new Uint8Array(0);
+  if (res.body === null) throw new SupabaseStoreError("empty object");
   const reader = res.body.getReader();
   const chunks: Uint8Array[] = [];
   let total = 0;
@@ -95,8 +105,15 @@ async function readCapped(res: Response): Promise<Uint8Array> {
     }
     chunks.push(step.value);
   }
-  const out = Buffer.concat(chunks);
-  return new Uint8Array(out.buffer, out.byteOffset, out.byteLength);
+  if (total === 0) throw new SupabaseStoreError("empty object");
+  // A fresh array the caller owns (never a view into a pooled or larger buffer).
+  const out = new Uint8Array(total);
+  let at = 0;
+  for (const c of chunks) {
+    out.set(c, at);
+    at += c.byteLength;
+  }
+  return out;
 }
 
 /**
@@ -152,19 +169,26 @@ export function supabaseStore(opts: { url: string; key: Secret; bucket: string }
         headers: headers({ "content-type": CONTENT_TYPE, [UPSERT_HEADER]: UPSERT_VALUE }),
         body: jpeg as Uint8Array<ArrayBuffer>,
       });
+      if (res.status >= 200 && res.status < 300) {
+        await discard(res);
+        return;
+      }
+      const kind = res.status === 409 ? "duplicate" : res.status === 400 ? await classifyError(res) : "other";
       await discard(res);
-      if (res.status === 409) throw new SupabaseStoreError("object exists", res.status);
-      if (res.status < 200 || res.status >= 300) throw new SupabaseStoreError("upload failed", res.status);
+      if (kind === "duplicate") throw new SupabaseStoreError("object exists", res.status);
+      throw new SupabaseStoreError("upload failed", res.status);
     },
 
     async get(storageKey) {
       const url = objectUrl(storageKey);
       const res = await send("download", url, { method: "GET", headers: headers() });
-      if (res.status === 404) {
+      if (res.status === 404 || res.status === 400) {
+        const kind = await classifyError(res);
         await discard(res);
-        return null;
+        // A bare 404 is a missing object; a body naming the bucket is a configuration error.
+        if (kind === "object_missing" || (res.status === 404 && kind !== "bucket_missing")) return null;
+        throw new SupabaseStoreError("download failed", res.status);
       }
-      if (res.status === 400 && (await saysNotFound(res))) return null;
       if (res.status < 200 || res.status >= 300) {
         await discard(res);
         throw new SupabaseStoreError("download failed", res.status);
@@ -175,9 +199,11 @@ export function supabaseStore(opts: { url: string; key: Secret; bucket: string }
     async remove(storageKey) {
       const url = objectUrl(storageKey);
       const res = await send("delete", url, { method: "DELETE", headers: headers() });
-      if (res.status === 404 || (res.status === 400 && (await saysNotFound(res)))) {
+      if (res.status === 404 || res.status === 400) {
+        const kind = await classifyError(res);
         await discard(res);
-        return;
+        if (kind === "object_missing" || (res.status === 404 && kind !== "bucket_missing")) return;
+        throw new SupabaseStoreError("delete failed", res.status);
       }
       await discard(res);
       if (res.status < 200 || res.status >= 300) throw new SupabaseStoreError("delete failed", res.status);
