@@ -5,6 +5,9 @@ import { AiError, type AiProvider, type ChatRequest, type TextResult, type Visio
 
 // Request shape UNVERIFIED (docs/ai-providers.md); every constant is in this block. The model ids
 // are configuration (null until an operator picks a free model).
+// Deliberately NOT sent: `response_format` (free models may not support it; the reply is parsed
+// strictly anyway) and `provider.data_collection` (UNVERIFIED how it interacts with free models;
+// set the data policy on the account instead, see docs/ai-providers.md).
 const BASE = "https://openrouter.ai";
 const CHAT_PATH = "/api/v1/chat/completions";
 const AUTH_HEADER = "authorization";

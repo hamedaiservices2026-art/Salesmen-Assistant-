@@ -3,8 +3,7 @@ import type { Ctx } from "@/server/ctx";
 import { aiAvailability, type AiUnavailable } from "./availability";
 import { readAiConfig, type AiConfig } from "./config";
 import { getProviders } from "./providers";
-import { DEFAULT_LIMITS } from "./limits";
-import { quotaToday, reserveAi, type QuotaResult } from "./quota";
+import { reserveAi, type QuotaResult } from "./quota";
 import { runAi, type RunDeps } from "./run";
 import type { AiKind, AiProvider, AudioMime, TextResult } from "./types";
 import { logUsage, type AiFeature, type UsageRow } from "./usage";
@@ -36,9 +35,8 @@ const NO_USAGE = { tokensIn: null, tokensOut: null };
 
 /**
  * Logs a quota refusal as `rejected`, at most once per user, kind, day and reason (deterministic
- * id, conflicts ignored; R67), and not at all when the user's own day counter is already at its
- * limit: a rep who keeps pressing the button must not grow the log. Those refusals are visible
- * in the counters.
+ * id, conflicts ignored; R67), and not at all for `user_quota` (his own day counter is at its
+ * limit): a rep who keeps pressing the button must not grow the log.
  */
 async function logRejection(
   ctx: Ctx,
@@ -48,12 +46,8 @@ async function logRejection(
   reason: Exclude<QuotaResult, "ok" | "rate_limited">,
   now: Date,
 ): Promise<void> {
-  try {
-    const today = await quotaToday(ctx, now);
-    if (today[kind].user >= DEFAULT_LIMITS.userDay[kind]) return;
-  } catch {
-    return;
-  }
+  // The user-day step refuses first, so his counter is at its limit: the counters show it.
+  if (reason === "user_quota") return;
   await logUsage(ctx, {
     id: `rej:${ctx.userId}:${kind}:${todayIn(ctx.timeZone, now)}:${reason}`,
     kind,
@@ -96,7 +90,6 @@ export async function aiCall<T>(
   }
 
   // From here the slot is spent: whatever happens, exactly one row is written.
-  const providers = opts.providers ?? getProviders(kind, config);
   let row: UsageRow = {
     kind,
     feature,
@@ -111,6 +104,7 @@ export async function aiCall<T>(
   };
   let r: Awaited<ReturnType<typeof runAi<T>>>;
   try {
+    const providers = opts.providers ?? getProviders(kind, config);
     r = await runAi(
       { kind, providers, call: spec.call, parse: spec.parse, deadlineAt: opts.deadlineAt, audioMime: spec.audioMime },
       opts.deps,

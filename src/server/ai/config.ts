@@ -5,7 +5,7 @@ export type ProviderName = "gemini" | "groq" | "openrouter" | "fake";
 
 export type AiConfig = {
   mode: "live" | "fake" | "off";
-  gemini: { key: Secret | null; visionModel: string; chatModel: string; audioModel: string };
+  gemini: { key: Secret | null; visionModel: string; chatModel: string; audioModel: string; thinking: string };
   groq: { key: Secret | null; sttModel: string };
   openrouter: { key: Secret | null; visionModel: string | null; chatModel: string | null };
   globalDay: Record<AiKind, number>;
@@ -35,6 +35,11 @@ function intIn(raw: string | undefined, min: number, max: number): number | null
   if (raw === undefined || !/^\d{1,9}$/.test(raw)) return null;
   const n = Number(raw);
   return n >= min && n <= max ? n : null;
+}
+
+/** `AI_GEMINI_THINKING`: "off" | "low" | "default" | a whole token budget; anything else is "off". */
+function thinking(raw: string | undefined): string {
+  return raw !== undefined && /^(off|low|default|\d{1,6})$/.test(raw) ? raw : "off";
 }
 
 function key(raw: string | undefined): Secret | null {
@@ -69,6 +74,7 @@ export function readAiConfig(env: Env): AiConfig {
       visionModel: modelId(env.AI_GEMINI_VISION_MODEL, DEFAULT_GEMINI_MODEL),
       chatModel: modelId(env.AI_GEMINI_CHAT_MODEL, DEFAULT_GEMINI_MODEL),
       audioModel: modelId(env.AI_GEMINI_AUDIO_MODEL, DEFAULT_GEMINI_MODEL),
+      thinking: thinking(env.AI_GEMINI_THINKING),
     },
     groq: {
       key: key(env.GROQ_API_KEY),

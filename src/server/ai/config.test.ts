@@ -67,3 +67,11 @@ describe("providerOrder", () => {
     expect(providerOrder("chat")).toEqual(["gemini", "openrouter"]);
   });
 });
+
+describe("AI_GEMINI_THINKING", () => {
+  it("defaults to off; accepts off, low, default and a whole budget; anything else is off", () => {
+    expect(readAiConfig({}).gemini.thinking).toBe("off");
+    for (const v of ["off", "low", "default", "0", "2048"]) expect(readAiConfig({ AI_GEMINI_THINKING: v }).gemini.thinking).toBe(v);
+    for (const v of ["", "high", "-1", "1.5", "1e3", "9999999", "off; drop"]) expect(readAiConfig({ AI_GEMINI_THINKING: v }).gemini.thinking).toBe("off");
+  });
+});

@@ -332,11 +332,14 @@ describe("quota refusals are logged at most once per user, kind, day and reason 
     await aiCall(ahmed(), ask(QUESTION), { now: T0, config: FAKE, providers: [fake] });
     await aiCall(ahmed(), visionJob, { now: T0, config, providers: [fake] });
     await aiCall(ctxOf("khaled"), ask(QUESTION), { now: T0, config: FAKE, providers: [fake] });
-    await aiCall(ahmed(), ask(QUESTION), { now: new Date("2026-11-15T07:00:00Z"), config: FAKE, providers: [fake] }).catch(() => {});
+    await setCounter("company:demo-co", 500, "chat", "2026-11-15");
+    await aiCall(ahmed(), ask(QUESTION), { now: new Date("2026-11-15T07:00:00Z"), config: FAKE, providers: [fake] });
     const ids = (await usageRows()).map((r) => r.id).sort();
     expect(ids).toContain("rej:ahmed:chat:2026-11-14:company_quota");
     expect(ids).toContain("rej:ahmed:vision:2026-11-14:global_quota");
     expect(ids).toContain("rej:khaled:chat:2026-11-14:company_quota");
+    expect(ids).toContain("rej:ahmed:chat:2026-11-15:company_quota");
+    expect(ids).toHaveLength(4);
   });
 
   it("writes no row when the user's day counter is already at its limit", async () => {

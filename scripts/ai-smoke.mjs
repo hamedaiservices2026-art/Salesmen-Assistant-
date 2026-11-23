@@ -45,14 +45,38 @@ const signal = () => AbortSignal.timeout(LIMIT_MS);
 const rows = [];
 const say = (s = "") => console.log(s);
 
+const LIST_CAP = 5_000_000;
+/** Reads at most `cap` bytes of a body as text; null when longer. */
+async function readCapped(res, cap) {
+  const reader = res.body?.getReader();
+  if (!reader) return "";
+  const chunks = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > cap) {
+      await reader.cancel().catch(() => {});
+      return null;
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
+/** Ids come from the provider: keep printable ASCII only before printing. */
+const printable = (s) => String(s).replace(/[^\x20-\x7e]/g, "?").slice(0, 120);
+
 async function listModels(name) {
   const { url, header, prefix } = LISTS[name];
   try {
     const res = await fetch(url, { headers: { [header]: prefix + config[name].key.reveal() }, redirect: "error", signal: signal() });
     if (!res.ok) return { error: `HTTP ${res.status}` };
-    const text = await res.text();
-    if (text.length > 5_000_000) return { error: "list too large" };
-    return { json: JSON.parse(text) };
+    const text = await readCapped(res, LIST_CAP);
+    if (text === null) return { error: "list too large" };
+    const json = JSON.parse(text);
+    if (json === null || typeof json !== "object") return { error: "unexpected reply" };
+    return { json };
   } catch {
     return { error: "request failed" };
   }
@@ -60,15 +84,15 @@ async function listModels(name) {
 
 function modelIds(name, json) {
   if (name === "gemini") {
-    return (json.models ?? [])
+    return (Array.isArray(json.models) ? json.models : [])
       .filter((m) => (m.supportedGenerationMethods ?? []).includes("generateContent"))
-      .map((m) => String(m.name ?? "").replace(/^models\//, ""));
+      .map((m) => printable(String(m.name ?? "").replace(/^models\//, "")));
   }
-  if (name === "groq") return (json.data ?? []).map((m) => String(m.id));
+  if (name === "groq") return (Array.isArray(json.data) ? json.data : []).map((m) => printable(m.id));
   // OpenRouter: only the free ones.
-  return (json.data ?? [])
+  return (Array.isArray(json.data) ? json.data : [])
     .filter((m) => String(m.id).endsWith(":free") || (m.pricing && Number(m.pricing.prompt) === 0 && Number(m.pricing.completion) === 0))
-    .map((m) => String(m.id) + (m.architecture?.input_modalities?.includes("image") ? " [image]" : ""));
+    .map((m) => printable(m.id) + (m.architecture?.input_modalities?.includes("image") ? " [image]" : ""));
 }
 
 say("== Models available to each key ==");
@@ -126,6 +150,8 @@ const okReply = (text) => {
 
 async function timed(provider, job, model, fn, parsed) {
   const t0 = Date.now();
+  last.status = null;
+  last.finish = null;
   let outcome = "ok";
   let ok = false;
   let reply = false;
@@ -136,15 +162,36 @@ async function timed(provider, job, model, fn, parsed) {
   } catch (e) {
     outcome = typeof e?.code === "string" ? e.code : "error";
   }
-  rows.push({ provider, job, model: model ?? "-", outcome, latencyMs: Date.now() - t0, parsed: ok ? (reply ? "yes" : "no") : "-", pass: ok && reply });
+  rows.push({ provider, job, model: model ?? "-", outcome, http: last.status === null ? "-" : String(last.status), finish: last.finish ?? "-", latencyMs: Date.now() - t0, parsed: ok ? (reply ? "yes" : "no") : "-", pass: ok && reply });
 }
+
+// Records the HTTP status of the last adapter request (and, for Gemini, the finishReason, read
+// from a clone with a size cap) so a failure says which kind it was: 400 (request shape), 401/403
+// (key), 404 (model id), 429 (limit). No body is printed.
+const last = { status: null, finish: null };
+const recordingFetch = async (url, init) => {
+  last.status = null;
+  last.finish = null;
+  const res = await fetch(url, init);
+  last.status = res.status;
+  if (res.ok && String(url).startsWith("https://generativelanguage.googleapis.com/")) {
+    try {
+      const text = await readCapped(res.clone(), 1_000_000);
+      const reason = text === null ? null : JSON.parse(text)?.candidates?.[0]?.finishReason;
+      last.finish = typeof reason === "string" ? printable(reason) : null;
+    } catch {
+      last.finish = null;
+    }
+  }
+  return res;
+};
 
 const question = 'Reply with the JSON {"ok":true}';
 const jpeg = await makeJpeg();
 
 for (const [name, make] of [
-  ["gemini", () => geminiProvider(config.gemini)],
-  ["openrouter", () => openrouterProvider(config.openrouter)],
+  ["gemini", () => geminiProvider(config.gemini, recordingFetch)],
+  ["openrouter", () => openrouterProvider(config.openrouter, recordingFetch)],
 ]) {
   if (config[name].key === null) continue;
   const p = make();
@@ -177,6 +224,7 @@ if (config.groq.key !== null) {
       method: "POST", redirect: "error", signal: signal(), body: form,
       headers: { authorization: `Bearer ${config.groq.key.reveal()}` },
     });
+    last.status = res.status;
     if (!res.ok) throw Object.assign(new Error("http"), { code: `http_${res.status}` });
     const j = await res.json();
     if (typeof j?.text !== "string") throw Object.assign(new Error("shape"), { code: "invalid_output" });
@@ -189,8 +237,9 @@ if (config.gemini.key !== null) {
     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
       method: "POST", redirect: "error", signal: signal(),
       headers: { "x-goog-api-key": config.gemini.key.reveal(), "content-type": "application/json" },
-      body: JSON.stringify({ contents: [{ role: "user", parts: [{ inlineData: { mimeType: "audio/wav", data: Buffer.from(wav).toString("base64") } }, { text: "Transcribe this recording verbatim. Reply with the transcript only." }] }], generationConfig: { temperature: 0, maxOutputTokens: 100 } }),
+      body: JSON.stringify({ contents: [{ role: "user", parts: [{ inlineData: { mimeType: "audio/wav", data: Buffer.from(wav).toString("base64") } }, { text: "Transcribe this recording verbatim. Reply with the transcript only." }] }], generationConfig: { temperature: 0, maxOutputTokens: 1024, ...(config.gemini.thinking === "off" ? { thinkingConfig: { thinkingBudget: 0 } } : {}) } }),
     });
+    last.status = res.status;
     if (!res.ok) throw Object.assign(new Error("http"), { code: `http_${res.status}` });
     const j = await res.json();
     if (!Array.isArray(j?.candidates)) throw Object.assign(new Error("shape"), { code: "invalid_output" });
@@ -202,8 +251,8 @@ say();
 say("== Results ==");
 if (rows.length === 0) say("No provider has a key (set GEMINI_API_KEY, GROQ_API_KEY or OPENROUTER_API_KEY, or AI_SMOKE_PROXY_AUTH=1).");
 else {
-  const cols = ["provider", "job", "model", "outcome", "latencyMs", "parsed", "result"];
-  const table = rows.map((r) => [r.provider, r.job, r.model, r.outcome, String(r.latencyMs), r.parsed, r.pass ? "PASS" : "FAIL"]);
+  const cols = ["provider", "job", "model", "http", "outcome", "finish", "latencyMs", "parsed", "result"];
+  const table = rows.map((r) => [r.provider, r.job, r.model, r.http, r.outcome, r.finish, String(r.latencyMs), r.parsed, r.pass ? "PASS" : "FAIL"]);
   const w = cols.map((c, i) => Math.max(c.length, ...table.map((r) => r[i].length)));
   const line = (r) => r.map((c, i) => c.padEnd(w[i])).join("  ");
   say(line(cols));

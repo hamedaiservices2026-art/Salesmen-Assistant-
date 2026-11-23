@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { readAiConfig } from "./config";
 import { MAX_RESPONSE_BYTES, postForm, postJson } from "./http";
 import { geminiProvider } from "./gemini";
@@ -6,6 +6,10 @@ import { groqProvider } from "./groq";
 import { getProviders } from "./providers";
 import { openrouterProvider } from "./openrouter";
 import { AiError, type AiProvider } from "./types";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 const KEY = "k-123-SECRET";
 const CFG = readAiConfig({ GEMINI_API_KEY: KEY, GROQ_API_KEY: KEY, OPENROUTER_API_KEY: KEY, AI_OPENROUTER_VISION_MODEL: "vendor/free-vision:free", AI_OPENROUTER_CHAT_MODEL: "vendor/free-chat:free" });
@@ -64,7 +68,7 @@ describe("gemini adapter", () => {
     expect(JSON.stringify(body)).not.toContain(KEY);
     expect(body.contents[0].parts[0].inlineData).toEqual({ mimeType: "image/jpeg", data: Buffer.from(JPEG).toString("base64") });
     expect(body.systemInstruction.parts[0].text).toBe("sys");
-    expect(body.generationConfig).toMatchObject({ temperature: 0, maxOutputTokens: 500, responseMimeType: "application/json" });
+    expect(body.generationConfig).toMatchObject({ temperature: 0, maxOutputTokens: 1024, responseMimeType: "application/json" });
     expect(body).not.toHaveProperty("tools");
     expect(body).not.toHaveProperty("toolConfig");
   });
@@ -120,6 +124,49 @@ describe("gemini adapter", () => {
     expect((await code(geminiProvider(CFG.gemini, empty.fetchImpl).chat(chatReq, signal()))).code).toBe("invalid_output");
     const noUsage = recorder(() => json({ candidates: [{ content: { parts: [{ text: "hi" }] } }] }));
     expect((await geminiProvider(CFG.gemini, noUsage.fetchImpl).chat(chatReq, signal())).usage).toEqual({ tokensIn: null, tokensOut: null });
+  });
+
+  it("thinking: off by default (budget 0); the setting is switchable without code", async () => {
+    const cases: [string | undefined, unknown][] = [
+      [undefined, { thinkingBudget: 0 }],
+      ["off", { thinkingBudget: 0 }],
+      ["low", { thinkingLevel: "low" }],
+      ["default", undefined],
+      ["2048", { thinkingBudget: 2048 }],
+    ];
+    for (const [setting, expected] of cases) {
+      const { calls, fetchImpl } = recorder();
+      const cfg = setting === undefined ? CFG.gemini : readAiConfig({ GEMINI_API_KEY: KEY, AI_GEMINI_THINKING: setting }).gemini;
+      await geminiProvider(cfg, fetchImpl).chat(chatReq, signal());
+      const body = JSON.parse(calls[0]!.init.body as string);
+      expect(body.generationConfig.thinkingConfig).toEqual(expected);
+    }
+  });
+
+  it("vision and chat ask for at least 1024 output tokens, stt 2048; a larger request is kept", async () => {
+    const { calls, fetchImpl } = recorder();
+    const p = geminiProvider(CFG.gemini, fetchImpl);
+    await p.vision({ ...visionReq, maxOutputTokens: 100 }, signal());
+    await p.chat({ ...chatReq, maxOutputTokens: 5000 }, signal());
+    await p.stt({ audio: AUDIO, mime: "audio/webm", language: "ar" }, signal());
+    const max = calls.map((c) => JSON.parse(c.init.body as string).generationConfig.maxOutputTokens);
+    expect(max).toEqual([1024, 5000, 2048]);
+  });
+
+  it("output tokens include thinking tokens", async () => {
+    const withThoughts = recorder(() =>
+      json({ candidates: [{ content: { parts: [{ text: "hi" }] } }], usageMetadata: { promptTokenCount: 4, candidatesTokenCount: 5, thoughtsTokenCount: 30 } }),
+    );
+    expect((await geminiProvider(CFG.gemini, withThoughts.fetchImpl).chat(chatReq, signal())).usage).toEqual({ tokensIn: 4, tokensOut: 35 });
+    const onlyThoughts = recorder(() => json({ candidates: [{ content: { parts: [{ text: "hi" }] } }], usageMetadata: { thoughtsTokenCount: 9 } }));
+    expect((await geminiProvider(CFG.gemini, onlyThoughts.fetchImpl).chat(chatReq, signal())).usage).toEqual({ tokensIn: null, tokensOut: 9 });
+  });
+
+  it("a MAX_TOKENS reply with no text (thinking ate the budget) → invalid_output", async () => {
+    const { fetchImpl } = recorder(() =>
+      json({ candidates: [{ content: { role: "model" }, finishReason: "MAX_TOKENS" }], usageMetadata: { promptTokenCount: 4, thoughtsTokenCount: 1020 } }),
+    );
+    expect((await code(geminiProvider(CFG.gemini, fetchImpl).chat(chatReq, signal()))).code).toBe("invalid_output");
   });
 
   it("without a key it has no model for any job", () => {
@@ -219,6 +266,18 @@ describe("openrouter adapter", () => {
   });
 });
 
+describe("hostile usage numbers become null in every adapter", () => {
+  const bad = [-1, 1.5, 1e300, "12", {}, null, Number.NaN];
+  it.each(bad.map((v) => [JSON.stringify(v) ?? String(v), v]))("%s", async (_n, v) => {
+    const g = recorder(() => json({ candidates: [{ content: { parts: [{ text: "x" }] } }], usageMetadata: { promptTokenCount: v, candidatesTokenCount: v, thoughtsTokenCount: v } }));
+    expect((await geminiProvider(CFG.gemini, g.fetchImpl).chat(chatReq, signal())).usage).toEqual({ tokensIn: null, tokensOut: null });
+    const o = recorder(() => json({ choices: [{ message: { content: "x" } }], usage: { prompt_tokens: v, completion_tokens: v } }));
+    expect((await openrouterProvider(CFG.openrouter, o.fetchImpl).chat(chatReq, signal())).usage).toEqual({ tokensIn: null, tokensOut: null });
+    const q = recorder(() => json({ text: "x", usage: { prompt_tokens: v } }));
+    expect((await groqProvider(CFG.groq, q.fetchImpl).stt({ audio: AUDIO, mime: "audio/webm", language: "ar" }, signal())).usage).toEqual({ tokensIn: null, tokensOut: null });
+  });
+});
+
 describe("the http layer", () => {
   const post = (r: () => Response | Promise<Response>, sig = signal()) => {
     const { fetchImpl } = recorder(r);
@@ -228,6 +287,21 @@ describe("the http layer", () => {
   it("a 429 with Retry-After: 2 → rate_limited, retryAfterMs 2000", async () => {
     const e = await code(post(() => new Response("{}", { status: 429, headers: { "retry-after": "2" } })));
     expect(e).toMatchObject({ code: "rate_limited", provider: "gemini", retryAfterMs: 2000 });
+  });
+
+  it("Retry-After is capped at an hour", async () => {
+    const e = await code(post(() => new Response("{}", { status: 429, headers: { "retry-after": "9999999" } })));
+    expect(e.retryAfterMs).toBe(3_600_000);
+  });
+
+  it("an explicit Content-Length over the cap is refused without reading the body", async () => {
+    let pulls = 0;
+    let cancelled = false;
+    const body = new ReadableStream({ pull(c) { pulls++; c.enqueue(new Uint8Array(10)); }, cancel() { cancelled = true; } });
+    const e = await code(post(() => new Response(body, { status: 200, headers: { "content-length": "2000000" } })));
+    expect(e.code).toBe("provider_error");
+    expect(cancelled).toBe(true);
+    expect(pulls).toBeLessThanOrEqual(1); // the stream's own eager first pull; we read none
   });
 
   it("a 429 without a numeric Retry-After has no retryAfterMs", async () => {
@@ -324,7 +398,6 @@ describe("the http layer", () => {
     await code(post(() => new Response("bad k-123", { status: 500 })));
     await post(() => json({ ok: 1 }));
     for (const s of spies) expect(s).not.toHaveBeenCalled();
-    vi.restoreAllMocks();
   });
 });
 
