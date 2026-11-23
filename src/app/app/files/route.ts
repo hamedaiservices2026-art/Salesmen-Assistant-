@@ -1,6 +1,6 @@
 import { after } from "next/server";
 import { currentCtx } from "@/server/auth/guard";
-import { handleFilePost } from "@/server/files/http";
+import { claimSweepSlot, handleFilePost } from "@/server/files/http";
 import { sweepFiles } from "@/server/files/files";
 import { getFileStore } from "@/server/files/store";
 
@@ -10,8 +10,9 @@ export const maxDuration = 30;
 export async function POST(request: Request): Promise<Response> {
   const ctx = await currentCtx();
   const response = await handleFilePost(request, ctx);
-  if (ctx) {
-    // Old and removed photos are cleared after the reply is sent, in a small batch (R38).
+  if (ctx && response.status === 200 && claimSweepSlot(Date.now())) {
+    // Old and removed photos are cleared after the reply is sent, in a small batch, at most once a
+    // minute per instance (R38, R70).
     after(async () => {
       try {
         await sweepFiles(ctx.db, getFileStore(), new Date());

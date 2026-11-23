@@ -255,13 +255,13 @@ async function main() {
     upBody = JSON.parse(up.text);
   } catch {}
   check("POST /app/files stores a return photo (200)", up.status === 200 && /^[0-9a-f]{32}$/.test(upBody?.id ?? ""), "200 with an id", `${up.status} ${up.text}`);
-  check("the stored photo is 800x600", upBody.width === 800 && upBody.height === 600, "800x600", `${upBody.width}x${upBody.height}`);
+  check("the stored photo is 800x600", upBody?.width === 800 && upBody?.height === 600, "800x600", `${upBody?.width}x${upBody?.height}`);
   const report = await postPhoto(page, "report");
   check("POST /app/files refuses kind=report (400)", report.status === 400, "400", `${report.status} ${report.text}`);
   const noHeader = await postPhoto(page, "return", {});
   check("POST /app/files without the custom header is refused (403)", noHeader.status === 403, "403", `${noHeader.status} ${noHeader.text}`);
 
-  const photoUrl = `${base}/files/${upBody.id}`;
+  const photoUrl = `${base}/files/${upBody?.id}`;
   const got = await inPage(page, { url: photoUrl, method: "GET" });
   check("GET /files/<id> serves Ahmed's photo (200)", got.status === 200, "200", got.status);
   check("the served bytes are a JPEG", got.head.join(",") === "255,216,255", "FF D8 FF", got.head.join(","));
@@ -271,7 +271,7 @@ async function main() {
     check(`photo header ${name} is exactly "${value}"`, values.length === 1 && values[0] === value, value, JSON.stringify(values));
   };
   expectOne("content-type", "image/jpeg");
-  expectOne("content-security-policy", "default-src 'none'; sandbox");
+  expectOne("content-security-policy", "default-src 'none'; frame-ancestors 'none'; sandbox");
   expectOne("referrer-policy", "no-referrer");
   expectOne("cache-control", "private, no-store");
   expectOne("x-content-type-options", "nosniff");
@@ -286,7 +286,7 @@ async function main() {
   check("a malformed photo id is an empty 404", malformed.status === 404 && malformed.length === 0, "404, empty", malformed.status);
   // The route sets no policy on a 404, so these values come from next.config.ts's /files rule (R50).
   const policy = (r, name) => r.headers.filter(([k]) => k === name).map(([, v]) => v);
-  check("next.config gives /files the strict CSP", JSON.stringify(policy(malformed, "content-security-policy")) === JSON.stringify(["default-src 'none'; sandbox"]), "[\"default-src 'none'; sandbox\"]", JSON.stringify(policy(malformed, "content-security-policy")));
+  check("next.config gives /files the strict CSP", JSON.stringify(policy(malformed, "content-security-policy")) === JSON.stringify(["default-src 'none'; frame-ancestors 'none'; sandbox"]), "[\"default-src 'none'; frame-ancestors 'none'; sandbox\"]", JSON.stringify(policy(malformed, "content-security-policy")));
   check("next.config gives /files no-referrer", JSON.stringify(policy(malformed, "referrer-policy")) === JSON.stringify(["no-referrer"]), '["no-referrer"]', JSON.stringify(policy(malformed, "referrer-policy")));
 }
 

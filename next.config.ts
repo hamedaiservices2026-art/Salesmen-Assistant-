@@ -19,7 +19,7 @@ const nextConfig: NextConfig = {
     // Private photos: the strict policy the route also sets, listed after the global rule so these
     // values replace its CSP and Referrer-Policy and the response carries one consistent policy (R50).
     const photo = [
-      { key: "Content-Security-Policy", value: "default-src 'none'; sandbox" },
+      { key: "Content-Security-Policy", value: "default-src 'none'; frame-ancestors 'none'; sandbox" },
       { key: "Referrer-Policy", value: "no-referrer" },
     ];
     return [

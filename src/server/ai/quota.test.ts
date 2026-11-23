@@ -7,7 +7,7 @@ import * as s from "@/db/schema";
 import type { Ctx } from "@/server/ctx";
 import { Forbidden, type Role } from "@/server/auth/roles";
 import { DEFAULT_LIMITS, USER_DAY, USER_MINUTE, COMPANY_DAY, UPLOADS_USER_DAY } from "./limits";
-import { quotaToday, reserve, reserveAi, reserveStatement, sweepCounters } from "./quota";
+import { quotaToday, release, releaseStatement, reserve, reserveAi, reserveStatement, sweepCounters } from "./quota";
 
 let db: Db;
 
@@ -45,6 +45,28 @@ describe("limits", () => {
     expect(COMPANY_DAY).toEqual({ vision: 200, stt: 300, chat: 500 });
     expect(UPLOADS_USER_DAY).toBe(40);
     expect(DEFAULT_LIMITS).toEqual({ userMinute: USER_MINUTE, userDay: USER_DAY, companyDay: COMPANY_DAY });
+  });
+});
+
+describe("release (R70.5)", () => {
+  it("gives one slot back, never below 0, and touches no other counter", async () => {
+    await reserve(db, "user:ahmed", "2026-11-14", "upload", 40, "demo-co");
+    await reserve(db, "user:ahmed", "2026-11-14", "upload", 40, "demo-co");
+    await reserve(db, "user:khaled", "2026-11-14", "upload", 40, "demo-co");
+    await release(db, "user:ahmed", "2026-11-14", "upload");
+    expect(await counter("user:ahmed", "2026-11-14", "upload")).toBe(1);
+    await release(db, "user:ahmed", "2026-11-14", "upload");
+    await release(db, "user:ahmed", "2026-11-14", "upload");
+    expect(await counter("user:ahmed", "2026-11-14", "upload")).toBe(0);
+    expect(await counter("user:khaled", "2026-11-14", "upload")).toBe(1);
+    await release(db, "user:nobody", "2026-11-14", "upload");
+    expect(await counter("user:nobody", "2026-11-14", "upload")).toBeNull();
+  });
+
+  it("is one UPDATE statement with a floor of 0", () => {
+    const text = releaseStatement(db, "user:ahmed", "2026-11-14", "upload").toSQL().sql.toLowerCase();
+    expect(text).toMatch(/^update "ai_counters" set "count" = greatest\("ai_counters"\."count" - 1, 0\)/);
+    expect(text).not.toContain("select");
   });
 });
 

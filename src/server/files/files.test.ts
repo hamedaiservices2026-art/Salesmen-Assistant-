@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import sharp from "sharp";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { createTestDb } from "@/db/testing";
 import { seedDemo } from "@/db/seed";
 import type { Db } from "@/db/client";
@@ -18,7 +18,9 @@ import {
   CLOSE_PHOTOS_MAX,
   FILE_RETENTION_DAYS,
   RETURN_PHOTOS_MAX,
+  SWEEP_MAX_ATTEMPTS,
   UNATTACHED_HOURS,
+  attachFiles,
   canView,
   readFile,
   removeOwnFile,
@@ -68,6 +70,14 @@ async function upload(ctx = ahmed(), kind: FileKind = "return", extra: Partial<{
   return r.id;
 }
 const row = async (id: string) => (await db.select().from(s.files).where(eq(s.files.id, id)))[0];
+/** The rep's upload counter for 14 Nov (0 when it has no row). */
+const uploadCount = async (userId = "ahmed") =>
+  (
+    await db
+      .select({ c: s.aiCounters.count })
+      .from(s.aiCounters)
+      .where(and(eq(s.aiCounters.scope, `user:${userId}`), eq(s.aiCounters.bucket, "2026-11-14"), eq(s.aiCounters.kind, "upload")))
+  )[0]?.c ?? 0;
 const fileCount = async () => (await db.select({ id: s.files.id }).from(s.files)).length;
 /** Every object under the store root (a recursive listing). */
 async function storedObjects(): Promise<string[]> {
@@ -149,17 +159,47 @@ describe("saveUpload", () => {
       error: "storage_failed",
     });
     expect(await fileCount()).toBe(0);
+    // The upload slot is given back (R70.5).
+    expect(await uploadCount()).toBe(0);
   });
 
-  it("an insert that fails removes the stored object", async () => {
+  it("the row is written before the object: an insert that fails never stores an object (R70.4)", async () => {
     // A user id that passes every key check but has no users row: the insert fails on its foreign key.
     const ghost = ctxOf("ghost");
-    const removed = vi.spyOn(store, "remove");
+    const put = vi.spyOn(store, "put");
     const r = await saveUpload(ghost, { kind: "return", date: "2026-11-14", bytes: jpeg800 }, deps());
     expect(r).toEqual({ ok: false, error: "storage_failed" });
-    expect(removed).toHaveBeenCalledTimes(1);
+    expect(put).not.toHaveBeenCalled();
     expect(await storedObjects()).toEqual([]);
     expect(await fileCount()).toBe(0);
+    expect(await uploadCount("ghost")).toBe(0);
+  });
+
+  it("every stored object has its row: while the object is written, the row already exists (R70.4)", async () => {
+    let rowsDuringPut = -1;
+    const watching: FileStore = {
+      ...store,
+      put: async (key, bytes) => {
+        rowsDuringPut = await fileCount();
+        return store.put(key, bytes);
+      },
+    };
+    expect((await saveUpload(ahmed(), { kind: "return", date: "2026-11-14", bytes: jpeg800 }, { ...deps(), store: watching })).ok).toBe(true);
+    expect(rowsDuringPut).toBe(1);
+  });
+
+  it("a refused photo still spends its upload slot (R70.5)", async () => {
+    const svg = new TextEncoder().encode("<svg/>");
+    await saveUpload(ahmed(), { kind: "return", date: "2026-11-14", bytes: svg }, deps());
+    await saveUpload(ahmed(), { kind: "return", date: "2026-11-14", bytes: new Uint8Array([0xff, 0xd8, 0xff, 1, 2, 3]) }, deps());
+    expect(await uploadCount()).toBe(2);
+  });
+
+  it("a report photo may be at most 30 days old, a return photo 62 (R70.1)", async () => {
+    const at = async (kind: FileKind, date: string) => (await saveUpload(ahmed(), { kind, date, bytes: jpeg800 }, deps())).ok;
+    expect(await at("report", "2026-10-14")).toBe(false); // 31 days back
+    expect(await at("report", "2026-10-15")).toBe(true); // 30 days back
+    expect(await at("return", "2026-09-13")).toBe(true); // 62 days back
   });
 
   it("refuses a context made by repCtx and an admin or owner", async () => {
@@ -226,6 +266,16 @@ describe("readFile", () => {
     expect(await readFile(ahmed(), "f".repeat(32), { store: spy })).toBeNull();
     expect(await readFile(ctxOf("khaled"), id, { store: spy })).toBeNull();
     expect(get).not.toHaveBeenCalled();
+  });
+
+  it("a photo past its retention is not readable even before the sweep (R70.6)", async () => {
+    const report = await upload(ahmed(), "report");
+    const ret = await upload(ahmed(), "return");
+    const at = (days: number) => ({ store, now: new Date(Date.parse("2026-11-14T07:00:00Z") + days * DAY) });
+    expect(await readFile(ahmed(), report, at(30))).not.toBeNull();
+    expect(await readFile(ahmed(), report, at(31))).toBeNull();
+    expect(await readFile(ahmed(), ret, at(180))).not.toBeNull();
+    expect(await readFile(ahmed(), ret, at(181))).toBeNull();
   });
 
   it("a soft-deleted photo is null", async () => {
@@ -335,6 +385,44 @@ describe("sweepFiles", () => {
     expect(await exists(id)).toBe(false);
   });
 
+  it("a row whose remove keeps failing is skipped after 5 attempts and does not starve others (R70.3)", async () => {
+    expect(SWEEP_MAX_ATTEMPTS).toBe(5);
+    const stuck = await make("return", { attached: false });
+    const stuckKey = await keyOf(stuck);
+    const later = new Date(NOW.getTime() + 25 * HOUR);
+    const picky: FileStore = { ...store, remove: async (key) => (key === stuckKey ? Promise.reject(new Error("offline")) : store.remove(key)) };
+    for (let i = 0; i < 5; i++) expect(await sweepFiles(db, picky, later, 1)).toBe(0);
+    expect((await row(stuck))!.sweepAttempts).toBe(5);
+    // Now a second due file is reached even with a batch of one; the stuck row is left alone.
+    const next = await make("return", { attached: false });
+    const removes = vi.spyOn(picky, "remove");
+    expect(await sweepFiles(db, picky, later, 1)).toBe(1);
+    expect(await exists(next)).toBe(false);
+    expect(await exists(stuck)).toBe(true);
+    expect(removes).not.toHaveBeenCalledWith(stuckKey);
+  });
+
+  it("soft-deleted photos go first", async () => {
+    const old = await make("return", { attached: false });
+    const removed = await saveUpload(ahmed(), { kind: "return", date: "2026-11-14", bytes: jpeg800 }, deps({ now: new Date(NOW.getTime() + HOUR) }));
+    if (!removed.ok) throw new Error(removed.error);
+    await removeOwnFile(ahmed(), removed.id);
+    expect(await sweepFiles(db, store, new Date(NOW.getTime() + 25 * HOUR), 1)).toBe(1);
+    expect(await exists(removed.id)).toBe(false);
+    expect(await exists(old)).toBe(true);
+  });
+
+  it("two sweeps at once never take the same row", async () => {
+    const ids = [await make("return", { attached: false }), await make("return", { attached: false }), await make("return", { attached: false })];
+    const removes = vi.fn(store.remove);
+    const counting: FileStore = { ...store, remove: removes };
+    const later = new Date(NOW.getTime() + 25 * HOUR);
+    const [a, b] = await Promise.all([sweepFiles(db, counting, later), sweepFiles(db, counting, later)]);
+    expect(a + b).toBe(3);
+    expect(removes).toHaveBeenCalledTimes(3);
+    for (const id of ids) expect(await exists(id)).toBe(false);
+  });
+
   it("works in bounded batches and across companies", async () => {
     const a = await make("return", { attached: false });
     const b = await saveUpload(ctxOf("other-rep", "rep", "other-co"), { kind: "return", date: "2026-11-14", bytes: jpeg800 }, deps());
@@ -345,5 +433,53 @@ describe("sweepFiles", () => {
     expect(await sweepFiles(db, store, later, 1)).toBe(0);
     expect(await exists(a)).toBe(false);
     expect(await exists(b.id)).toBe(false);
+  });
+});
+
+describe("attachFiles (R70.2)", () => {
+  const CLOSE = "close-ahmed-2026-11-12";
+  const OTHER_CLOSE = "close-ahmed-2026-11-11";
+  const attach = (ids: string[], closeId = CLOSE, ctx = ahmed()) =>
+    db.transaction((tx) => attachFiles(tx as unknown as Db, ctx, closeId, ids.map((id, i) => ({ id, kind: "return" as const, returnPos: i })), NOW));
+
+  it("attaches the rep's own unattached photos with their positions", async () => {
+    const a = await upload();
+    const b = await upload();
+    expect(await attach([a, b])).toEqual({ missing: [] });
+    expect(await row(a)).toMatchObject({ closeId: CLOSE, returnPos: 0 });
+    expect(await row(b)).toMatchObject({ closeId: CLOSE, returnPos: 1 });
+    expect((await row(a))!.attachedAt).not.toBeNull();
+    // Re-attaching to the same close moves the position.
+    expect(await attach([b])).toEqual({ missing: [] });
+    expect((await row(b))!.returnPos).toBe(0);
+  });
+
+  it("reports every photo it could not attach and changes none of them", async () => {
+    const deleted = await upload();
+    await removeOwnFile(ahmed(), deleted);
+    const khaleds = await upload(ctxOf("khaled"));
+    const report = await upload(ahmed(), "report");
+    const elsewhere = await upload();
+    expect(await attach([elsewhere], OTHER_CLOSE)).toEqual({ missing: [] });
+    const unknown = "f".repeat(32);
+    const ok = await upload();
+    const r = await attach([deleted, khaleds, report, elsewhere, unknown, "../x", ok]);
+    expect(r.missing).toEqual([deleted, khaleds, report, elsewhere, unknown, "../x"]);
+    expect((await row(deleted))!.closeId).toBeNull();
+    expect((await row(khaleds))!.closeId).toBeNull();
+    expect((await row(report))!.closeId).toBeNull();
+    expect((await row(elsewhere))!.closeId).toBe(OTHER_CLOSE);
+    expect((await row(ok))!.closeId).toBe(CLOSE);
+  });
+
+  it("another company's context attaches nothing", async () => {
+    const a = await upload();
+    expect((await attach([a], CLOSE, ctxOf("ahmed", "rep", "other-co"))).missing).toEqual([a]);
+  });
+
+  it("a photo the sweep removed in between is reported, never silently lost", async () => {
+    const a = await upload();
+    await sweepFiles(db, store, new Date(NOW.getTime() + 25 * HOUR));
+    expect((await attach([a])).missing).toEqual([a]);
   });
 });

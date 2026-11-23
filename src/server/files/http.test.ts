@@ -23,7 +23,7 @@ vi.mock("./image", async (importOriginal) => {
       imageMock.forceBusy ? Promise.resolve({ ok: false as const, error: "busy" as const }) : real.normalisePhoto(...args),
   };
 });
-import { FILE_POST_MAX_BODY, PHOTO_REQUESTED_WITH, handleFileGet, handleFilePost } from "./http";
+import { FILE_POST_MAX_BODY, PHOTO_REQUESTED_WITH, SWEEP_INTERVAL_MS, claimSweepSlot, handleFileGet, handleFilePost } from "./http";
 
 let db: Db;
 let root: string;
@@ -188,6 +188,9 @@ describe("handleFilePost when the decoder is busy (R69)", () => {
     expect(await r.json()).toEqual({ error: "busy" });
     expect(await fileRows()).toHaveLength(0);
     expect(await storedObjects()).toEqual([]);
+    // The upload slot is given back (R70.5).
+    const [c] = await db.select({ count: s.aiCounters.count }).from(s.aiCounters);
+    expect(c?.count ?? 0).toBe(0);
   });
 
   it("saveUpload passes busy through", async () => {
@@ -218,7 +221,7 @@ describe("handleFileGet", () => {
     expect(h.get("content-disposition")).toBe('inline; filename="photo.jpg"');
     expect(h.get("cache-control")).toBe("private, no-store");
     expect(h.get("x-content-type-options")).toBe("nosniff");
-    expect(h.get("content-security-policy")).toBe("default-src 'none'; sandbox");
+    expect(h.get("content-security-policy")).toBe("default-src 'none'; frame-ancestors 'none'; sandbox");
     expect(h.get("cross-origin-resource-policy")).toBe("same-origin");
     expect(h.get("referrer-policy")).toBe("no-referrer");
     const bytes = new Uint8Array(await res.arrayBuffer());
@@ -249,5 +252,17 @@ describe("handleFileGet", () => {
     const id = await ahmedsPhoto();
     const empty: FileStore = { ...store, get: async () => null };
     await expectEmpty404(await handleFileGet(getRequest(id), ahmed(), id, { store: empty }));
+  });
+});
+
+describe("claimSweepSlot (R70.3)", () => {
+  it("allows one sweep per minute per instance", () => {
+    expect(SWEEP_INTERVAL_MS).toBe(60_000);
+    const t0 = 1_000_000_000;
+    expect(claimSweepSlot(t0)).toBe(true);
+    expect(claimSweepSlot(t0 + 1)).toBe(false);
+    expect(claimSweepSlot(t0 + 59_999)).toBe(false);
+    expect(claimSweepSlot(t0 + 60_000)).toBe(true);
+    expect(claimSweepSlot(t0 + 60_001)).toBe(false);
   });
 });

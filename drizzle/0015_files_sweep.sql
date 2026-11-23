@@ -1,0 +1,3 @@
+ALTER TABLE "files" ADD COLUMN "sweep_attempts" integer DEFAULT 0 NOT NULL;--> statement-breakpoint
+CREATE INDEX "files_sweep_loose" ON "files" USING btree ("created_at") WHERE "files"."sweep_attempts" < 5 and ("files"."deleted_at" is not null or "files"."attached_at" is null);--> statement-breakpoint
+CREATE INDEX "files_sweep_retention" ON "files" USING btree ("kind","date") WHERE "files"."sweep_attempts" < 5;

@@ -1,11 +1,11 @@
 import { randomBytes } from "node:crypto";
-import { and, eq, isNull, or, sql } from "drizzle-orm";
+import { and, eq, isNull, lt, notInArray, or, sql, type SQL } from "drizzle-orm";
 import { todayIn, type ISODate } from "@/domain/calendar";
 import { isFileId, storageKey, type FileKind } from "@/domain/files";
 import type { Db } from "@/db/client";
 import * as s from "@/db/schema";
 import { UPLOADS_USER_DAY } from "@/server/ai/limits";
-import { reserve } from "@/server/ai/quota";
+import { release, reserve } from "@/server/ai/quota";
 import { assertOwnContext, assertRole } from "@/server/auth/roles";
 import type { Ctx } from "@/server/ctx";
 import { normalisePhoto } from "./image";
@@ -23,6 +23,8 @@ const MAX_DAYS_BACK = 62;
 /** The counter kind for photo uploads (scope `user:<id>`, the company's day). */
 const UPLOAD_COUNTER = "upload";
 const SWEEP_LIMIT = 50;
+/** After this many failed removals the sweep leaves a row alone (it is logged, never retried forever; R70). */
+export const SWEEP_MAX_ATTEMPTS = 5;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -41,10 +43,13 @@ function dayNumber(date: string): number | null {
 
 /**
  * Stores a photo the rep (or supervisor) took for himself, unattached. In order: own context and
- * role; the date (a real date, not after today, at most 62 days back); one slot of the daily upload
- * counter (spent even when the photo is then refused, so decoding work is bounded per rep per day);
- * `normalisePhoto` (the stored bytes are always a JPEG the server encoded); the bytes go to the
- * store first, then the row is inserted; if the insert fails the stored object is removed.
+ * role; the date (a real date, not after today, at most `min(62, retention of the kind)` days back,
+ * so a photo is never due for deletion at birth; R70); one slot of the daily upload counter (spent
+ * even when the photo is then refused, so decoding work is bounded per rep per day, but given back
+ * on `busy` and `storage_failed`, which are not the rep's doing); `normalisePhoto` (the stored bytes
+ * are always a JPEG the server encoded); the row is inserted first (unattached, its storage key
+ * reserved), then the object is written; if the write fails the row is deleted (best effort,
+ * otherwise the 24-hour sweep removes it). So every stored object always has a row (R70).
  */
 export async function saveUpload(
   ctx: Ctx,
@@ -57,22 +62,18 @@ export async function saveUpload(
   const today = deps.today ?? todayIn(ctx.timeZone, now);
   const day = dayNumber(input.date);
   const todayN = dayNumber(today);
-  if (day === null || todayN === null || day > todayN || todayN - day > MAX_DAYS_BACK) return fail("bad_date");
+  const maxBack = Math.min(MAX_DAYS_BACK, FILE_RETENTION_DAYS[input.kind] ?? 0);
+  if (day === null || todayN === null || day > todayN || todayN - day > maxBack) return fail("bad_date");
 
-  if (!(await reserve(ctx.db, `user:${ctx.userId}`, today, UPLOAD_COUNTER, UPLOADS_USER_DAY, ctx.companyId))) return fail("quota");
+  const scope = `user:${ctx.userId}`;
+  if (!(await reserve(ctx.db, scope, today, UPLOAD_COUNTER, UPLOADS_USER_DAY, ctx.companyId))) return fail("quota");
+  const giveBack = (error: SaveUploadError) => release(ctx.db, scope, today, UPLOAD_COUNTER).then(() => fail(error), () => fail(error));
 
   const photo = await normalisePhoto(input.bytes);
-  if (!photo.ok) return fail(photo.error);
+  if (!photo.ok) return photo.error === "busy" ? giveBack("busy") : fail(photo.error);
 
   const id = randomBytes(16).toString("hex");
   const key = storageKey({ companyId: ctx.companyId, userId: ctx.userId, date: input.date, kind: input.kind, id });
-  const store = deps.store ?? getFileStore();
-  try {
-    await store.put(key, photo.jpeg);
-  } catch (e) {
-    console.error("photo store failed", e instanceof Error ? e.name : "unknown error");
-    return fail("storage_failed");
-  }
   try {
     await ctx.db.insert(s.files).values({
       id,
@@ -88,10 +89,34 @@ export async function saveUpload(
     });
   } catch (e) {
     console.error("photo record failed", e instanceof Error ? e.name : "unknown error");
-    await store.remove(key).catch(() => undefined);
-    return fail("storage_failed");
+    return giveBack("storage_failed");
+  }
+  try {
+    await (deps.store ?? getFileStore()).put(key, photo.jpeg);
+  } catch (e) {
+    console.error("photo store failed", e instanceof Error ? e.name : "unknown error");
+    await ctx.db
+      .delete(s.files)
+      .where(and(eq(s.files.id, id), eq(s.files.companyId, ctx.companyId)))
+      .catch(() => undefined);
+    return giveBack("storage_failed");
   }
   return { ok: true, id, width: photo.width, height: photo.height };
+}
+
+/** `YYYY-MM-DD` (UTC) of `days` before `now`. */
+const utcDayBefore = (now: Date, days: number) => new Date(now.getTime() - days * DAY_MS).toISOString().slice(0, 10);
+
+/**
+ * True for a photo still inside its kind's retention at `now`: its date is no earlier than 30
+ * (report) or 180 (return) days before today (UTC). On the 30th day after its date a report photo
+ * is still kept; on the 31st it is not.
+ */
+function inRetention(now: Date): SQL {
+  return or(
+    and(eq(s.files.kind, "report"), sql`${s.files.date} >= ${utcDayBefore(now, FILE_RETENTION_DAYS.report)}::date`),
+    and(eq(s.files.kind, "return"), sql`${s.files.date} >= ${utcDayBefore(now, FILE_RETENTION_DAYS.return)}::date`),
+  )!;
 }
 
 export type FileViewer = "owner" | "supervisor" | "admin";
@@ -103,7 +128,8 @@ export function canView(kind: FileKind, viewer: FileViewer): boolean {
 
 /**
  * The photo's bytes, or null. Every refusal is the same null: a malformed id (the store is never
- * touched), an id of another company, a soft-deleted photo, a caller who is neither the owner, nor
+ * touched), an id of another company, a soft-deleted photo, a photo past its retention (even
+ * before the sweep has removed it; R70), a caller who is neither the owner, nor
  * his supervisor, nor an admin of his company, a kind the viewer may not see, an owner role, and a
  * tagged (`actingFor`) context.
  *
@@ -112,7 +138,11 @@ export function canView(kind: FileKind, viewer: FileViewer): boolean {
  * supervisor check is the same rule as `repCtx` (the photo's owner is a rep of this company whose
  * supervisor is the caller) without a second query.
  */
-export async function readFile(ctx: Ctx, id: string, deps: { store?: FileStore } = {}): Promise<{ bytes: Uint8Array } | null> {
+export async function readFile(
+  ctx: Ctx,
+  id: string,
+  deps: { store?: FileStore; now?: Date } = {},
+): Promise<{ bytes: Uint8Array } | null> {
   if (!isFileId(id)) return null;
   const [row] = await ctx.db
     .select({
@@ -124,7 +154,7 @@ export async function readFile(ctx: Ctx, id: string, deps: { store?: FileStore }
     })
     .from(s.files)
     .innerJoin(s.users, and(eq(s.users.id, s.files.userId), eq(s.users.companyId, s.files.companyId)))
-    .where(and(eq(s.files.id, id), eq(s.files.companyId, ctx.companyId), isNull(s.files.deletedAt)));
+    .where(and(eq(s.files.id, id), eq(s.files.companyId, ctx.companyId), isNull(s.files.deletedAt), inRetention(deps.now ?? new Date())));
   if (!row || ctx.actingFor !== undefined) return null;
 
   let viewer: FileViewer | null = null;
@@ -149,44 +179,96 @@ export async function removeOwnFile(ctx: Ctx, id: string): Promise<{ ok: true } 
   return done.length > 0 ? { ok: true } : { ok: false, error: "not_found" };
 }
 
-/** `YYYY-MM-DD` (UTC) of `days` before `now`. */
-const utcDayBefore = (now: Date, days: number) => new Date(now.getTime() - days * DAY_MS).toISOString().slice(0, 10);
+export type AttachItem = { id: string; kind: FileKind; returnPos: number | null };
+
+/**
+ * Attaches the caller's photos to his close `closeId`, inside the caller's transaction `tx`. Each
+ * photo is one UPDATE that matches only a row of the caller's company and user, of the stated kind,
+ * not deleted, inside its retention, and unattached or already on this close; it sets `close_id`,
+ * `return_pos` and `attached_at`. A photo whose UPDATE matched no row (expired, removed by the
+ * sweep, another rep's, attached elsewhere, unknown or malformed) is returned in `missing`, so the
+ * caller can tell the rep to add it again; nothing is ever dropped silently (R70). Shared by the
+ * day close (return photos, Task 8) and the photo draft receipt (report photo, Task 11).
+ */
+export async function attachFiles(tx: Db, ctx: Ctx, closeId: string, items: readonly AttachItem[], now: Date): Promise<{ missing: string[] }> {
+  assertOwnContext(ctx);
+  const missing: string[] = [];
+  for (const item of items) {
+    if (!isFileId(item.id)) {
+      missing.push(item.id);
+      continue;
+    }
+    const done = await tx
+      .update(s.files)
+      .set({ closeId, returnPos: item.returnPos, attachedAt: now })
+      .where(
+        and(
+          eq(s.files.id, item.id),
+          eq(s.files.companyId, ctx.companyId),
+          eq(s.files.userId, ctx.userId),
+          eq(s.files.kind, item.kind),
+          isNull(s.files.deletedAt),
+          or(isNull(s.files.closeId), eq(s.files.closeId, closeId)),
+          inRetention(now),
+        ),
+      )
+      .returning({ id: s.files.id });
+    if (done.length !== 1) missing.push(item.id);
+  }
+  return { missing };
+}
 
 /**
  * Deletes at most `limit` photos that are soft-deleted, or unattached for more than 24 hours, or
- * past their kind's retention: the photo's date lies more than 30 (report) or 180 (return) days
- * before today (UTC), so on the 30th day after it the photo is still kept. An attached photo inside
- * its retention matches none of these and is never touched.
+ * past their kind's retention (see `inRetention`). An attached photo inside its retention matches
+ * none of these and is never touched.
  *
- * Each picked row is first claimed (soft-deleted, under the same conditions, so a row that changed
- * since the pick is skipped and a claimed one can no longer be read or attached), then its stored
- * object is removed, then the row is deleted. A storage failure leaves the claimed row for the next
- * sweep. Returns the number of rows deleted (R28). System maintenance: across companies by design.
+ * Each photo is handled in its own transaction: the row is picked and locked with
+ * `FOR UPDATE SKIP LOCKED` (soft-deleted rows first, then the oldest), so two sweeps at once never
+ * take the same row and a concurrent attach either waits for the delete (and then finds nothing,
+ * which it reports) or keeps the row out of this sweep. The stored object is removed, then the row
+ * is deleted. When the removal fails the row is soft-deleted (so it can no longer be read or
+ * attached) and its `sweep_attempts` goes up; after 5 failures the sweep leaves it alone, and a row
+ * that failed in this run is not picked again in the same run, so a failing row never starves the
+ * others. Returns the number of rows deleted (R28). System maintenance: across companies by design.
  */
 export async function sweepFiles(db: Db, store: FileStore, now: Date, limit = SWEEP_LIMIT): Promise<number> {
-  const due = or(
-    sql`${s.files.deletedAt} is not null`,
-    and(isNull(s.files.attachedAt), sql`${s.files.createdAt} < ${new Date(now.getTime() - UNATTACHED_HOURS * HOUR_MS).toISOString()}::timestamptz`),
-    and(eq(s.files.kind, "report"), sql`${s.files.date} < ${utcDayBefore(now, FILE_RETENTION_DAYS.report)}::date`),
-    and(eq(s.files.kind, "return"), sql`${s.files.date} < ${utcDayBefore(now, FILE_RETENTION_DAYS.return)}::date`),
+  const due = and(
+    lt(s.files.sweepAttempts, SWEEP_MAX_ATTEMPTS),
+    or(
+      sql`${s.files.deletedAt} is not null`,
+      and(isNull(s.files.attachedAt), sql`${s.files.createdAt} < ${new Date(now.getTime() - UNATTACHED_HOURS * HOUR_MS).toISOString()}::timestamptz`),
+      sql`not (${inRetention(now)})`,
+    ),
   )!;
-  const picked = await db.select({ id: s.files.id }).from(s.files).where(due).orderBy(s.files.createdAt).limit(limit);
+  const tried: string[] = [];
   let deleted = 0;
-  for (const { id } of picked) {
-    const [claimed] = await db
-      .update(s.files)
-      .set({ deletedAt: sql`coalesce(${s.files.deletedAt}, ${now.toISOString()}::timestamptz)` })
-      .where(and(eq(s.files.id, id), due))
-      .returning({ key: s.files.storageKey });
-    if (!claimed) continue;
-    try {
-      await store.remove(claimed.key);
-    } catch (e) {
-      console.error("photo sweep: remove failed", e instanceof Error ? e.name : "unknown error");
-      continue;
-    }
-    const gone = await db.delete(s.files).where(eq(s.files.id, id)).returning({ id: s.files.id });
-    deleted += gone.length;
+  for (let i = 0; i < limit; i++) {
+    const outcome = await db.transaction(async (tx) => {
+      const [row] = await tx
+        .select({ id: s.files.id, key: s.files.storageKey })
+        .from(s.files)
+        .where(tried.length > 0 ? and(due, notInArray(s.files.id, tried)) : due)
+        .orderBy(sql`(${s.files.deletedAt} is null)`, s.files.createdAt, s.files.id)
+        .limit(1)
+        .for("update", { skipLocked: true });
+      if (!row) return "none" as const;
+      tried.push(row.id);
+      try {
+        await store.remove(row.key);
+      } catch (e) {
+        console.error("photo sweep: remove failed", e instanceof Error ? e.name : "unknown error");
+        await tx
+          .update(s.files)
+          .set({ sweepAttempts: sql`${s.files.sweepAttempts} + 1`, deletedAt: sql`coalesce(${s.files.deletedAt}, ${now.toISOString()}::timestamptz)` })
+          .where(eq(s.files.id, row.id));
+        return "failed" as const;
+      }
+      const gone = await tx.delete(s.files).where(eq(s.files.id, row.id)).returning({ id: s.files.id });
+      return gone.length > 0 ? ("deleted" as const) : ("failed" as const);
+    });
+    if (outcome === "none") break;
+    if (outcome === "deleted") deleted += 1;
   }
   return deleted;
 }

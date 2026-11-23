@@ -60,6 +60,22 @@ export async function reserve(
   return rows.length > 0;
 }
 
+/**
+ * Gives back one slot of the counter (scope, bucket, kind), never going below 0, as one statement:
+ * `UPDATE ai_counters SET count = greatest(count - 1, 0), updated_at = now() WHERE …`. Used when a
+ * request was refused for a reason that is not the caller's (a busy decoder, a storage failure).
+ */
+export function releaseStatement(db: Db, scope: string, bucket: string, kind: string) {
+  return db
+    .update(s.aiCounters)
+    .set({ count: sql`greatest(${s.aiCounters.count} - 1, 0)`, updatedAt: sql`now()` })
+    .where(and(eq(s.aiCounters.scope, scope), eq(s.aiCounters.bucket, bucket), eq(s.aiCounters.kind, kind)));
+}
+
+export async function release(db: Db, scope: string, bucket: string, kind: string): Promise<void> {
+  await releaseStatement(db, scope, bucket, kind);
+}
+
 class Refused extends Error {
   constructor(readonly reason: Exclude<QuotaResult, "ok">) {
     super(reason);

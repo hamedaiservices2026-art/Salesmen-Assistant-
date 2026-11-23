@@ -488,7 +488,18 @@ export const files = pgTable(
     returnPos: integer("return_pos"),
     attachedAt: timestamp("attached_at", { withTimezone: true }),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    /** Failed attempts to remove the stored object; the sweep leaves a row alone after 5 (R70). */
+    sweepAttempts: integer("sweep_attempts").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("files_company_user_date").on(t.companyId, t.userId, t.date), index("files_close").on(t.closeId)],
+  (t) => [
+    index("files_company_user_date").on(t.companyId, t.userId, t.date),
+    index("files_close").on(t.closeId),
+    // The sweep's candidates: soft-deleted or unattached rows it has not given up on (R70).
+    index("files_sweep_loose")
+      .on(t.createdAt)
+      .where(sql`${t.sweepAttempts} < 5 and (${t.deletedAt} is not null or ${t.attachedAt} is null)`),
+    // Retention by kind and date, for rows it has not given up on.
+    index("files_sweep_retention").on(t.kind, t.date).where(sql`${t.sweepAttempts} < 5`),
+  ],
 );
