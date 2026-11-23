@@ -43,7 +43,7 @@ export type RunJob<T> = {
   providers: AiProvider[];
   call: (p: AiProvider, signal: AbortSignal) => Promise<TextResult>;
   parse: (text: string) => T | null;
-  /** Absolute time on the `now` clock; the run never goes past it (R33). */
+  /** Absolute time on the `now` clock; the run never goes past it (R33). Ignored unless finite. */
   deadlineAt?: number;
   /** For an stt job: providers that cannot take this recording are skipped without a request (R48). */
   audioMime?: AudioMime;
@@ -129,14 +129,19 @@ function waitBeforeRetry(a: Exclude<Attempt<unknown>, { ok: true }>, random: () 
  * Never throws and never logs; the result holds codes and counts only.
  */
 export async function runAi<T>(job: RunJob<T>, deps: Partial<RunDeps> = {}): Promise<RunOk<T> | RunFail> {
-  const d: RunDeps = { ...defaultDeps, ...deps };
+  // An entry passed as `undefined` keeps the default instead of replacing it.
+  const given = Object.fromEntries(Object.entries(deps ?? {}).filter(([, v]) => v !== undefined));
+  const d: RunDeps = { ...defaultDeps, ...given };
   let start = 0;
   let attempts = 0;
   let lastCode: AiErrorCode = "provider_error";
   let lastProvider: ProviderName | null = null;
   try {
     start = d.now();
-    const deadline = Math.min(start + DEADLINE_MS, job.deadlineAt ?? Number.POSITIVE_INFINITY);
+    // A deadlineAt that is not a finite number (NaN, ±Infinity) is ignored: the run's own
+    // deadline still bounds it.
+    const deadlineAt = Number.isFinite(job.deadlineAt) ? (job.deadlineAt as number) : Number.POSITIVE_INFINITY;
+    const deadline = Math.min(start + DEADLINE_MS, deadlineAt);
     const usable = job.providers.filter(
       (p) => p.modelFor(job.kind) !== null && (job.audioMime === undefined || p.acceptsAudio(job.audioMime)),
     );

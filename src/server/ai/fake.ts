@@ -1,4 +1,3 @@
-import sharp from "sharp";
 import { normaliseArabic } from "@/domain/ai/normalise";
 import { AiError, type AiProvider, type ChatRequest, type TextResult } from "./types";
 
@@ -197,10 +196,16 @@ function sttReply(audio: Uint8Array): string {
   return name !== undefined && Object.hasOwn(TRANSCRIPTS, name) ? (TRANSCRIPTS[name] ?? TRANSCRIPT_V1) : TRANSCRIPT_V1;
 }
 
+/** Same decode limits as the upload path (Global Constraints: at most 40 000 000 pixels). */
+const MAX_INPUT_PIXELS = 40_000_000;
+
 async function visionReply(image: Uint8Array): Promise<string> {
   let width: number | undefined;
   try {
-    width = (await sharp(image).metadata()).width;
+    // Loaded here, not at module scope, so importing the provider layer never loads the native
+    // image library (chat and speech-to-text paths do not need it).
+    const { default: sharp } = await import("sharp");
+    width = (await sharp(image, { limitInputPixels: MAX_INPUT_PIXELS, failOn: "error" }).metadata()).width;
   } catch {
     throw new AiError("bad_request", "fake");
   }

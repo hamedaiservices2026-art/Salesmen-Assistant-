@@ -115,6 +115,15 @@ describe("fakeProvider: vision", () => {
     expect((await vision(300)).text).toBe((await vision(640)).text);
   });
 
+  it("refuses an image over 40 000 000 pixels as a bad request, reading only its header", async () => {
+    const big = await sharp({ create: { width: 7000, height: 6000, channels: 3, background: { r: 1, g: 1, b: 1 } } })
+      .jpeg()
+      .toBuffer();
+    await expect(
+      fakeProvider().vision({ image: new Uint8Array(big), system: "s", prompt: "p", maxOutputTokens: 10 }, signal()),
+    ).rejects.toMatchObject({ code: "bad_request", provider: "fake" });
+  });
+
   it("refuses bytes that are not an image as a bad request", async () => {
     await expect(
       fakeProvider().vision({ image: ascii("<svg/>"), system: "s", prompt: "p", maxOutputTokens: 10 }, signal()),

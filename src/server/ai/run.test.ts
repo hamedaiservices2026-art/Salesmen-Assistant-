@@ -239,6 +239,27 @@ describe("runAi", () => {
     expect(a.calls).not.toHaveBeenCalled();
   });
 
+  it("ignores a deadlineAt that is not a finite number and keeps the run's own deadline", async () => {
+    for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+      const h = harness();
+      const a = scripted("gemini", [answer('{"a":1}')]);
+      const r = await runAi(chatJob([a], { deadlineAt: bad }), h.deps);
+      expect(r).toMatchObject({ ok: true, attempts: 1 });
+      expect(h.timers[0]?.ms).toBe(CALL_TIMEOUT_MS);
+    }
+  });
+
+  it("uses the default for a dependency passed as undefined", async () => {
+    const h = harness();
+    const a = scripted("gemini", [failWith("gemini", "timeout"), answer('{"a":1}')]);
+    const deps: Partial<RunDeps> = { ...h.deps, random: undefined };
+    const r = await runAi(chatJob([a]), deps);
+    expect(r).toMatchObject({ ok: true, attempts: 2 });
+    expect(h.sleeps).toHaveLength(1);
+    expect(h.sleeps[0]).toBeGreaterThanOrEqual(300);
+    expect(h.sleeps[0]).toBeLessThan(900);
+  });
+
   it("skips a provider that refuses the recording's audio type", async () => {
     const h = harness();
     const a = scripted("groq", [answer("x")], { accepts: false });
