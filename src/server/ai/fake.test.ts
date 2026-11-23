@@ -1,3 +1,4 @@
+import { crc32, deflateSync } from "node:zlib";
 import sharp from "sharp";
 import { describe, expect, it } from "vitest";
 import {
@@ -116,11 +117,27 @@ describe("fakeProvider: vision", () => {
   });
 
   it("refuses an image over 40 000 000 pixels as a bad request, reading only its header", async () => {
-    const big = await sharp({ create: { width: 7000, height: 6000, channels: 3, background: { r: 1, g: 1, b: 1 } } })
-      .jpeg()
-      .toBuffer();
+    // A tiny PNG that declares 8 000 x 8 000 pixels (64 000 000, over our limit but under sharp's
+    // own default) and carries no real pixel data: cheap to build, and only our limitInputPixels
+    // makes sharp refuse it.
+    const ihdr = Buffer.alloc(13);
+    ihdr.writeUInt32BE(8_000, 0);
+    ihdr.writeUInt32BE(8_000, 4);
+    ihdr.set([8, 2, 0, 0, 0], 8);
+    const chunk = (type: string, data: Buffer) => {
+      const head = Buffer.concat([Buffer.from(type, "ascii"), data]);
+      const len = Buffer.alloc(4);
+      len.writeUInt32BE(data.length);
+      const crc = Buffer.alloc(4);
+      crc.writeUInt32BE(crc32(head) >>> 0);
+      return Buffer.concat([len, head, crc]);
+    };
+    const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", ihdr), chunk("IDAT", deflateSync(Buffer.from([0]))), chunk("IEND", Buffer.alloc(0))]);
+    expect(png.length).toBeLessThan(100);
+    // Without our limit sharp reads the header happily, so the refusal below is the limit's doing.
+    expect((await sharp(png, { failOn: "error" }).metadata()).width).toBe(8_000);
     await expect(
-      fakeProvider().vision({ image: new Uint8Array(big), system: "s", prompt: "p", maxOutputTokens: 10 }, signal()),
+      fakeProvider().vision({ image: new Uint8Array(png), system: "s", prompt: "p", maxOutputTokens: 10 }, signal()),
     ).rejects.toMatchObject({ code: "bad_request", provider: "fake" });
   });
 

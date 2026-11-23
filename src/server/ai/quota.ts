@@ -11,7 +11,7 @@ export type QuotaResult = "ok" | "rate_limited" | "user_quota" | "company_quota"
 
 const KINDS: readonly AiKind[] = ["vision", "stt", "chat"];
 const COUNTER_TTL_MS = 3 * 24 * 60 * 60 * 1000;
-/** Rows a sweep deletes per call (retention sweeps run in bounded batches). */
+/** Rows a sweep deletes per call (callers loop up to 5 batches; R67; retention sweeps run in bounded batches). */
 const SWEEP_BATCH = 1000;
 
 /** `YYYY-MM-DDTHH:MM` in UTC. */
@@ -128,7 +128,9 @@ export async function quotaToday(ctx: Ctx, now: Date): Promise<Record<AiKind, { 
 
 /**
  * Deletes counters not updated for more than 3 days, at most 1000 per call (system maintenance,
- * across companies; counters hold no rep data). Returns the number deleted (R28).
+ * across companies; counters hold no rep data). Returns the number deleted (R28). A call that
+ * returns 1000 may have left more: the maintenance caller loops while the result equals the batch
+ * size, at most 5 batches per run (R67). Each call is independent, so looping is safe.
  */
 export async function sweepCounters(db: Db, now: Date): Promise<number> {
   const cutoff = new Date(now.getTime() - COUNTER_TTL_MS);

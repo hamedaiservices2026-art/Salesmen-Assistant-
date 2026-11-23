@@ -297,3 +297,91 @@ describe("sweepUsage", () => {
     expect((await usageRows()).map((r) => r.id)).toEqual(["recent"]);
   });
 });
+
+async function setCounter(scope: string, count: number, kind = "chat", bucket = "2026-11-14") {
+  await db.insert(s.aiCounters).values({ scope, bucket, kind, companyId: scope === "global" ? null : "demo-co", count });
+}
+
+describe("quota refusals are logged at most once per user, kind, day and reason (R67)", () => {
+  it("a repeated company_quota refusal writes one row with the deterministic id", async () => {
+    await acceptNotice();
+    await setCounter("company:demo-co", 500);
+    const fake = spiedFake();
+    for (let i = 0; i < 4; i++) {
+      expect(await aiCall(ahmed(), ask(QUESTION), { now: T0, config: FAKE, providers: [fake] })).toEqual({ ok: false, reason: "quota" });
+    }
+    const rows = await usageRows();
+    expect(rows.map((r) => r.id)).toEqual(["rej:ahmed:chat:2026-11-14:company_quota"]);
+    expect(rows[0]).toMatchObject({ outcome: "rejected", attempts: 0 });
+    expect(fake.chatSpy).not.toHaveBeenCalled();
+  });
+
+  it("a different reason, kind, user or day gets its own row", async () => {
+    await acceptNotice();
+    await acceptNotice("khaled");
+    await setCounter("company:demo-co", 500);
+    const config = { ...FAKE, globalDay: { ...FAKE.globalDay, vision: 0 } };
+    const fake = spiedFake();
+    const visionJob = {
+      kind: "vision" as const,
+      feature: "close_photo" as const,
+      call: (p: AiProvider, signal: AbortSignal) =>
+        p.vision({ image: new Uint8Array([1]), system: "s", prompt: "p", maxOutputTokens: 10 }, signal),
+      parse: () => ({}),
+    };
+    await aiCall(ahmed(), ask(QUESTION), { now: T0, config: FAKE, providers: [fake] });
+    await aiCall(ahmed(), visionJob, { now: T0, config, providers: [fake] });
+    await aiCall(ctxOf("khaled"), ask(QUESTION), { now: T0, config: FAKE, providers: [fake] });
+    await aiCall(ahmed(), ask(QUESTION), { now: new Date("2026-11-15T07:00:00Z"), config: FAKE, providers: [fake] }).catch(() => {});
+    const ids = (await usageRows()).map((r) => r.id).sort();
+    expect(ids).toContain("rej:ahmed:chat:2026-11-14:company_quota");
+    expect(ids).toContain("rej:ahmed:vision:2026-11-14:global_quota");
+    expect(ids).toContain("rej:khaled:chat:2026-11-14:company_quota");
+  });
+
+  it("writes no row when the user's day counter is already at its limit", async () => {
+    await acceptNotice();
+    await setCounter("user:ahmed", 50);
+    const fake = spiedFake();
+    for (let i = 0; i < 3; i++) {
+      expect(await aiCall(ahmed(), ask(QUESTION), { now: T0, config: FAKE, providers: [fake] })).toEqual({ ok: false, reason: "quota" });
+    }
+    expect(await usageRows()).toEqual([]);
+    expect(fake.chatSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("a reserved slot always gets a log row (R67)", () => {
+  it("when the runner itself throws, the row is provider_error and the caller gets a plain failure", async () => {
+    await acceptNotice();
+    const hostile = new Proxy({}, { ownKeys: () => { throw new Error("secret-detail-123"); } });
+    const r = await aiCall(ahmed(), ask(QUESTION), { now: T0, config: FAKE, providers: [fakeProvider()], deps: hostile as never });
+    expect(r).toEqual({ ok: false, reason: "failed" });
+    const rows = await usageRows();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ outcome: "provider_error", attempts: 0, provider: null });
+    expect(JSON.stringify(r)).not.toContain("secret-detail");
+    expect(await dayCount("user:ahmed")).toBe(1);
+  });
+});
+
+describe("audioMime reaches the runner (R48)", () => {
+  it("an stt job whose only provider refuses the type is skipped with no request", async () => {
+    await acceptNotice();
+    const base = fakeProvider();
+    const sttSpy = vi.fn(base.stt);
+    const picky: AiProvider = { ...base, acceptsAudio: (m) => m !== "audio/mp4", stt: sttSpy };
+    const job = (audioMime?: "audio/mp4" | "audio/webm") => ({
+      kind: "stt" as const,
+      feature: "close_voice" as const,
+      audioMime,
+      call: (p: AiProvider, signal: AbortSignal) => p.stt({ audio: new Uint8Array([1]), mime: audioMime ?? "audio/webm", language: "ar" }, signal),
+      parse: (t: string) => t || null,
+    });
+    expect(await aiCall(ahmed(), job("audio/mp4"), { now: T0, config: FAKE, providers: [picky], deps: noSleep })).toEqual({ ok: false, reason: "failed" });
+    expect(sttSpy).not.toHaveBeenCalled();
+    expect((await usageRows())[0]).toMatchObject({ outcome: "provider_error", attempts: 0, provider: null });
+    expect((await aiCall(ahmed(), job("audio/webm"), { now: T0, config: FAKE, providers: [picky], deps: noSleep })).ok).toBe(true);
+    expect(sttSpy).toHaveBeenCalledTimes(1);
+  });
+});

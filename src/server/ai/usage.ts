@@ -20,6 +20,8 @@ export type UsageRow = {
   latencyMs: number;
   usage: Usage;
   topic?: string | null;
+  /** A deterministic id makes the write idempotent (R67); omitted → a random one. */
+  id?: string;
 };
 
 const USAGE_TTL_MS = 90 * 24 * 60 * 60 * 1000;
@@ -47,7 +49,7 @@ function tokens(n: unknown): number | null {
 export async function logUsage(ctx: Ctx, row: UsageRow): Promise<void> {
   try {
     await ctx.db.insert(s.aiUsage).values({
-      id: randomUUID(),
+      id: row.id ?? randomUUID(),
       companyId: ctx.companyId,
       userId: ctx.userId,
       kind: row.kind,
@@ -61,7 +63,7 @@ export async function logUsage(ctx: Ctx, row: UsageRow): Promise<void> {
       tokensIn: tokens(row.usage?.tokensIn),
       tokensOut: tokens(row.usage?.tokensOut),
       topic: typeof row.topic === "string" && TOPIC.test(row.topic) ? row.topic : null,
-    });
+    }).onConflictDoNothing();
   } catch {
     console.error("ai usage log failed");
   }
@@ -69,7 +71,8 @@ export async function logUsage(ctx: Ctx, row: UsageRow): Promise<void> {
 
 /**
  * Deletes usage rows older than 90 days, at most 1000 per call (system maintenance, across
- * companies). Returns the number deleted (R28).
+ * companies). Returns the number deleted (R28). A call that returns 1000 may have left more: the
+ * maintenance caller loops while the result equals the batch size, at most 5 batches per run (R67).
  */
 export async function sweepUsage(db: Db, now: Date): Promise<number> {
   const cutoff = new Date(now.getTime() - USAGE_TTL_MS);

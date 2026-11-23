@@ -1,11 +1,13 @@
+import { todayIn } from "@/domain/calendar";
 import type { Ctx } from "@/server/ctx";
 import { aiAvailability, type AiUnavailable } from "./availability";
 import { readAiConfig, type AiConfig } from "./config";
 import { getProviders } from "./providers";
-import { reserveAi } from "./quota";
+import { DEFAULT_LIMITS } from "./limits";
+import { quotaToday, reserveAi, type QuotaResult } from "./quota";
 import { runAi, type RunDeps } from "./run";
 import type { AiKind, AiProvider, AudioMime, TextResult } from "./types";
-import { logUsage, type AiFeature } from "./usage";
+import { logUsage, type AiFeature, type UsageRow } from "./usage";
 
 export type AiCallFail = { ok: false; reason: AiUnavailable | "rate_limited" | "quota" | "failed" | "unreadable" };
 
@@ -33,6 +35,41 @@ export type AiCallOpts = {
 const NO_USAGE = { tokensIn: null, tokensOut: null };
 
 /**
+ * Logs a quota refusal as `rejected`, at most once per user, kind, day and reason (deterministic
+ * id, conflicts ignored; R67), and not at all when the user's own day counter is already at its
+ * limit: a rep who keeps pressing the button must not grow the log. Those refusals are visible
+ * in the counters.
+ */
+async function logRejection(
+  ctx: Ctx,
+  kind: AiKind,
+  feature: AiFeature,
+  topic: string | null,
+  reason: Exclude<QuotaResult, "ok" | "rate_limited">,
+  now: Date,
+): Promise<void> {
+  try {
+    const today = await quotaToday(ctx, now);
+    if (today[kind].user >= DEFAULT_LIMITS.userDay[kind]) return;
+  } catch {
+    return;
+  }
+  await logUsage(ctx, {
+    id: `rej:${ctx.userId}:${kind}:${todayIn(ctx.timeZone, now)}:${reason}`,
+    kind,
+    feature,
+    provider: null,
+    model: null,
+    outcome: "rejected",
+    attempts: 0,
+    fallback: false,
+    latencyMs: 0,
+    usage: NO_USAGE,
+    topic,
+  });
+}
+
+/**
  * The one way a feature talks to a model: availability → quota → run → usage log → result.
  * A refusal before the run moves no counter and calls no provider; a quota refusal is logged as
  * `rejected` with 0 attempts, the other early refusals are not logged. Once reserved, a request
@@ -54,38 +91,46 @@ export async function aiCall<T>(
   const quota = await reserveAi(ctx, kind, now, { day: config.globalDay[kind], minute: config.globalMinute[kind] });
   if (quota === "rate_limited") return { ok: false, reason: "rate_limited" };
   if (quota !== "ok") {
-    await logUsage(ctx, {
-      kind,
-      feature,
-      provider: null,
-      model: null,
-      outcome: "rejected",
-      attempts: 0,
-      fallback: false,
-      latencyMs: 0,
-      usage: NO_USAGE,
-      topic,
-    });
+    await logRejection(ctx, kind, feature, topic, quota, now);
     return { ok: false, reason: "quota" };
   }
 
+  // From here the slot is spent: whatever happens, exactly one row is written.
   const providers = opts.providers ?? getProviders(kind, config);
-  const r = await runAi(
-    { kind, providers, call: spec.call, parse: spec.parse, deadlineAt: opts.deadlineAt, audioMime: spec.audioMime },
-    opts.deps,
-  );
-  await logUsage(ctx, {
+  let row: UsageRow = {
     kind,
     feature,
-    provider: r.provider,
-    model: r.ok ? r.model : null,
-    outcome: r.ok ? "ok" : r.code,
-    attempts: r.attempts,
-    fallback: r.ok ? r.fallback : false,
-    latencyMs: r.latencyMs,
-    usage: r.ok ? r.usage : NO_USAGE,
+    provider: null,
+    model: null,
+    outcome: "provider_error",
+    attempts: 0,
+    fallback: false,
+    latencyMs: 0,
+    usage: NO_USAGE,
     topic,
-  });
+  };
+  let r: Awaited<ReturnType<typeof runAi<T>>>;
+  try {
+    r = await runAi(
+      { kind, providers, call: spec.call, parse: spec.parse, deadlineAt: opts.deadlineAt, audioMime: spec.audioMime },
+      opts.deps,
+    );
+    row = {
+      ...row,
+      provider: r.provider,
+      model: r.ok ? r.model : null,
+      outcome: r.ok ? "ok" : r.code,
+      attempts: r.attempts,
+      fallback: r.ok ? r.fallback : false,
+      latencyMs: r.latencyMs,
+      usage: r.ok ? r.usage : NO_USAGE,
+    };
+  } catch {
+    // The runner never throws by design; if it ever does, nothing of the error is kept.
+    return { ok: false, reason: "failed" };
+  } finally {
+    await logUsage(ctx, row);
+  }
   if (r.ok) return { ok: true, value: r.value, fallback: r.fallback };
   return { ok: false, reason: r.code === "invalid_output" ? "unreadable" : "failed" };
 }
