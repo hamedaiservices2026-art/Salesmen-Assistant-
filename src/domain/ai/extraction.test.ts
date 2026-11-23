@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { AMOUNT_MAX, CASES_MAX, parseAmount, type Unit } from "@/domain/money";
-import { draftKeys, LOW_CONFIDENCE, type DraftLine } from "./draft";
+import { draftContextKey, draftKeys, LOW_CONFIDENCE, type DraftLine } from "./draft";
 import { ExtractionSchema, readValue, toDraft } from "./extraction";
 
 const LINES: DraftLine[] = [
@@ -214,10 +214,9 @@ describe("toDraft: the schema", () => {
     expect(toDraft(one("line:bev", "1", -3), CTX)!.fields["line:bev"]).toMatchObject({ confidence: 0, low: true });
   });
 
-  it("a non-finite confidence is 0 when the schema lets it through", () => {
-    for (const c of [Number.NaN, Number.POSITIVE_INFINITY]) {
-      const d = toDraft(one("line:bev", "1", c), CTX);
-      if (d !== null) expect(d.fields["line:bev"]).toMatchObject({ confidence: 0, low: true });
+  it("a non-finite confidence is refused by the schema", () => {
+    for (const c of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+      expect(toDraft(one("line:bev", "1", c), CTX)).toBeNull();
     }
   });
 
@@ -238,6 +237,15 @@ describe("toDraft: the schema", () => {
       expect(d.dateMismatch).toBe(false);
     }
     expect(date("2028-02-29")!.reportDate).toBe("2028-02-29");
+    // years outside 2000-2100 are not a report date (R72)
+    for (const far of ["1999-12-31", "2101-01-01", "0001-01-01", "9999-12-31"]) {
+      expect(date(far)!.reportDate).toBeNull();
+      expect(date(far)!.dateMismatch).toBe(false);
+    }
+    expect(date("2000-01-01")!.reportDate).toBe("2000-01-01");
+    expect(date("2100-12-31")!.reportDate).toBe("2100-12-31");
+    expect(date("2000-02-29")!.reportDate).toBe("2000-02-29");
+    expect(date("2100-02-29")!.reportDate).toBeNull();
     expect(date("2026-11-14T00:00")).toBeNull(); // over 10 characters: schema failure
     expect(date("2026-11-14 ")).toBeNull();
   });
@@ -397,6 +405,30 @@ describe("readValue: named hostile values", () => {
     }
   });
 
+  it("whitespace other than space, NBSP and NNBSP is unreadable (R72)", () => {
+    expect(bad("118\n120", "cases")).toBe("unreadable");
+    expect(bad("100\t200", "cases")).toBe("unreadable");
+    expect(bad("1\u3000000", "cases")).toBe("unreadable");
+    for (const ws of ["\t", "\n", "\r", "\v", "\f", "\u2000", "\u2005", "\u2009", "\u200A", "\u2028", "\u2029", "\u3000", "\u205F", "\u1680", "\u0085", "\uFEFF"]) {
+      expect(bad(`1${ws}000`, "cases")).toBe("unreadable");
+      expect(bad(`${ws}150`, "cases")).toBe("unreadable");
+      expect(bad(`150${ws}`, "cases")).toBe("unreadable");
+    }
+    expect(bad("1 000", "cases")).toBe("ok:1000");
+    expect(bad(" 150 ", "cases")).toBe("ok:150");
+  });
+
+  it("an integer part that mixes separator types is unreadable (R72)", () => {
+    expect(bad("1,140 500", "cases")).toBe("unreadable");
+    expect(bad("1 140,500", "cases")).toBe("unreadable");
+    expect(bad("1,140٬500", "cases")).toBe("unreadable");
+    expect(bad("1\u00A0140 500", "cases")).toBe("unreadable");
+    expect(bad("1\u202F140,500.50")).toBe("unreadable");
+    expect(bad("1,140,500", "cases")).toBe("ok:1140500");
+    expect(bad("1 140 500", "cases")).toBe("ok:1140500");
+    expect(bad("1٬140٬500٫25")).toBe("ok:114050025");
+  });
+
   it("no-break spaces are thousands separators as for typed input", () => {
     expect(bad("7 900")).toBe("ok:790000");
     expect(bad("7 900.50")).toBe("ok:790050");
@@ -496,5 +528,38 @@ describe("toDraft: properties over hostile replies", () => {
       expect(d.fields.collections).toBeUndefined();
     }
     expect(({} as Record<string, unknown>).confidence).toBeUndefined();
+  });
+});
+
+describe("draftContextKey", () => {
+  const key = (lines: DraftLine[], date = "2026-11-14") => draftContextKey(lines, date);
+
+  it("is stable and ignores line order and line ids", () => {
+    expect(key(LINES)).toBe(key([...LINES].reverse()));
+    expect(key(LINES)).toBe(key(LINES.map((l) => ({ ...l, lineId: `x-${l.lineId}` }))));
+    expect(typeof key(LINES)).toBe("string");
+  });
+
+  it("changes with the date, a unit, a kind, a code, an added or removed line", () => {
+    const base = key(LINES);
+    expect(key(LINES, "2026-11-15")).not.toBe(base);
+    expect(key(LINES.map((l) => (l.code === "bev" ? { ...l, unit: "value" as const } : l)))).not.toBe(base);
+    expect(key(LINES.map((l) => (l.code === "coll" ? { ...l, kind: "sales" as const } : l)))).not.toBe(base);
+    expect(key(LINES.map((l) => (l.code === "bev" ? { ...l, code: "bev2" } : l)))).not.toBe(base);
+    expect(key(LINES.slice(1))).not.toBe(base);
+    expect(key([...LINES, { lineId: "x", code: "x", unit: "cases", kind: "sales" }])).not.toBe(base);
+  });
+
+  it("ignores coverage lines, which a draft never holds", () => {
+    expect(key([...LINES, { lineId: "cov", code: "cov", unit: "outlets", kind: "coverage" }])).toBe(key(LINES));
+  });
+
+  it("cannot be confused by codes that look like separators", () => {
+    const a: DraftLine[] = [{ lineId: "a", code: "a:cases:sales,b", unit: "cases", kind: "sales" }];
+    const b: DraftLine[] = [
+      { lineId: "a", code: "a", unit: "cases", kind: "sales" },
+      { lineId: "b", code: "b", unit: "cases", kind: "sales" },
+    ];
+    expect(key(a)).not.toBe(key(b));
   });
 });

@@ -44,7 +44,10 @@ export function fillForm(
   const values: Record<string, string> = {};
   const marks: Record<string, "ai" | "low"> = {};
   const skippedAdmin: Record<string, string> = {};
-  const fields: Partial<Record<DraftKey, DraftField>> = typeof draft.fields === "object" && draft.fields !== null ? draft.fields : {};
+  // A draft read back from sessionStorage may be anything: a non-object fills nothing.
+  const raw: unknown = typeof draft === "object" && draft !== null && !Array.isArray(draft) ? (draft as { fields?: unknown }).fields : undefined;
+  const fields: Partial<Record<DraftKey, DraftField>> =
+    typeof raw === "object" && raw !== null && !Array.isArray(raw) ? (raw as Partial<Record<DraftKey, DraftField>>) : {};
   const read = (key: DraftKey): DraftField | undefined => (Object.hasOwn(fields, key) ? fields[key] : undefined);
 
   const fill = (name: string, f: DraftField, unit: Unit) => {

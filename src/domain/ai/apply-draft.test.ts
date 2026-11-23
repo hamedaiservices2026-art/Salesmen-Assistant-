@@ -37,6 +37,16 @@ const draftOf = (fields: CloseDraft["fields"]): CloseDraft => ({
 });
 
 describe("fillForm", () => {
+  it("a null or non-object draft fills nothing (R72)", () => {
+    for (const bad of [null, undefined, "x", 5, [], { fields: null }, { fields: "x" }]) {
+      const f = fillForm(bad as unknown as CloseDraft, form());
+      expect(f.values).toEqual({});
+      expect(f.marks).toEqual({});
+      expect(f.skippedAdmin).toEqual({});
+      expect(f.missing).toEqual(["line.bev", "line.food", "line.coll", "cashSales"]);
+    }
+  });
+
   it("fills report A into an empty form with inputValue text and marks", () => {
     const f = fillForm(draftA, form());
     expect(f.values).toEqual({

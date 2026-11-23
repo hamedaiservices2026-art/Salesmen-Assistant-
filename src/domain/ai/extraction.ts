@@ -20,6 +20,9 @@ export type ValueReading = { ok: true; value: number } | { ok: false; problem: "
 const MINUS = /^[-−]/;
 const NOT_DIGIT = /[^0-9]/g;
 const LEADING_ZEROS = /^0+/;
+// Whitespace other than U+0020, U+00A0 and U+202F (tab, newline, other Unicode spaces; R72).
+const OTHER_WHITESPACE = /[^\S \u00A0\u202F]/;
+const SEPARATOR = /[,٬ \u00A0\u202F]/g;
 // Above this many significant digits a value is beyond every cap; BigInt is not needed to know it.
 const LONGEST_COMPARED = 20;
 
@@ -31,6 +34,8 @@ function westernDigits(s: string): string {
  * Reads one value text in `unit`, in the order of R31: (1) sign, (2) magnitude of the integer part
  * against `maxAmountFor(unit)` as a BigInt (so a value beyond the safe integers is `too_large`, not
  * unreadable), (3) `parseAmount`. A text without digits skips (2) and is unreadable at (3).
+ * Before (3), whitespace other than space, NBSP and NNBSP, and an integer part mixing separator
+ * types (`1,140 500`), are unreadable (R72); `parseAmount` itself is unchanged.
  */
 export function readValue(text: string, unit: Unit): ValueReading {
   if (MINUS.test(text.trim())) return { ok: false, problem: "negative" };
@@ -46,6 +51,13 @@ export function readValue(text: string, unit: Unit): ValueReading {
     const magnitude = BigInt(digits) * (unit === "value" ? BigInt(100) : BigInt(1));
     if (magnitude > BigInt(cap)) return { ok: false, problem: "too_large" };
   }
+
+  // R72: stricter than typed input, before parseAmount: no other whitespace, one separator type.
+  if (OTHER_WHITESPACE.test(text)) return { ok: false, problem: "unreadable" };
+  const trimmed = western.trim();
+  const trimmedDot = trimmed.indexOf(".");
+  const separators = new Set((trimmedDot < 0 ? trimmed : trimmed.slice(0, trimmedDot)).match(SEPARATOR) ?? []);
+  if (separators.size > 1) return { ok: false, problem: "unreadable" };
 
   const value = parseAmount(text, unit);
   if (value === null) return { ok: false, problem: "unreadable" };
@@ -66,13 +78,13 @@ function confidenceOf(c: number | undefined): number {
 
 const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 
-/** A real calendar date written `YYYY-MM-DD` (Western digits only), else null. */
+/** A real calendar date written `YYYY-MM-DD` (Western digits only) in the years 2000-2100 (R72), else null. */
 function realDate(s: string | null | undefined): ISODate | null {
   if (typeof s !== "string") return null;
   const m = ISO_DATE.exec(s);
   if (!m) return null;
   const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
-  if (y < 1 || mo < 1 || mo > 12 || d < 1) return null;
+  if (y < 2000 || y > 2100 || mo < 1 || mo > 12 || d < 1) return null;
   const leap = (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
   const daysInMonth = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][mo - 1] ?? 0;
   return d <= daysInMonth ? s : null;

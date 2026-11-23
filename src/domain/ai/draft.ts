@@ -54,3 +54,16 @@ export function draftKeys(lines: DraftLine[]): { key: DraftKey; unit: Unit }[] {
   for (const key of STOCK_KEYS) out.push({ key, unit: "cases" });
   return out;
 }
+
+/**
+ * A stable string naming what a draft was read against: the date and each daily line's code, unit
+ * and kind (order and line ids ignored). Task 14 stores it with a draft and refuses a stored draft
+ * whose key differs (a line changed unit, another date).
+ */
+export function draftContextKey(lines: DraftLine[], date: ISODate): string {
+  const daily = lines
+    .filter((l) => isDailyLine(l) && l.unit !== "outlets")
+    .map((l) => [l.code, l.unit, l.kind])
+    .sort((a, b) => (a.join("\u0000") < b.join("\u0000") ? -1 : a.join("\u0000") > b.join("\u0000") ? 1 : 0));
+  return JSON.stringify([date, daily]);
+}
