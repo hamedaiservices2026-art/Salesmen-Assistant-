@@ -119,3 +119,45 @@ describe("migration 0012 target_changes index and upload foreign key", () => {
     ).rejects.toThrow();
   });
 });
+
+describe("migration 0013 ai core", () => {
+  it("adds the AI switch (off) and the notice version (0) to existing rows, and the counter and usage tables", async () => {
+    const db = await createTestDbAt("0012_target_changes_index_fk");
+    await db.execute(sql`insert into companies (id, name, selling_weekdays) values ('c1', 'Co', '{6,0,1,2,3,4}')`);
+    await db.execute(sql`insert into users (id, company_id, role, name, login) values ('u1', 'c1', 'rep', 'A', 'a')`);
+    await migrateRest(db);
+    const co = (await db.execute(sql`select ai_enabled from companies where id = 'c1'`)) as unknown as {
+      rows: { ai_enabled: boolean }[];
+    };
+    expect(co.rows[0]!.ai_enabled).toBe(false);
+    const user = (await db.execute(sql`select ai_notice_version, ai_notice_at from users where id = 'u1'`)) as unknown as {
+      rows: { ai_notice_version: number; ai_notice_at: unknown }[];
+    };
+    expect(user.rows[0]!).toEqual({ ai_notice_version: 0, ai_notice_at: null });
+    const tables = (await db.execute(
+      sql`select table_name from information_schema.tables where table_name in ('ai_counters', 'ai_usage') order by table_name`,
+    )) as unknown as { rows: { table_name: string }[] };
+    expect(tables.rows.map((r) => r.table_name)).toEqual(["ai_counters", "ai_usage"]);
+    // No column of the usage log can hold content (a question, a transcript, a reply, a file name, an amount).
+    const cols = (await db.execute(
+      sql`select column_name from information_schema.columns where table_name = 'ai_usage' order by ordinal_position`,
+    )) as unknown as { rows: { column_name: string }[] };
+    expect(cols.rows.map((r) => r.column_name)).toEqual([
+      "id",
+      "company_id",
+      "user_id",
+      "kind",
+      "feature",
+      "provider",
+      "model",
+      "outcome",
+      "attempts",
+      "fallback",
+      "latency_ms",
+      "tokens_in",
+      "tokens_out",
+      "topic",
+      "created_at",
+    ]);
+  });
+});

@@ -92,6 +92,13 @@
       "when": 1795122807654,
       "tag": "0012_target_changes_index_fk",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1795441863552,
+      "tag": "0013_ai_core",
+      "breakpoints": true
     }
   ]
 }

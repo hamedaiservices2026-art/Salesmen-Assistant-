@@ -62,6 +62,25 @@ describe("seedDemo", () => {
     expect(versions).toEqual([expect.objectContaining({ schemeId: schemes[0]!.id, version: 1, publishedBy: null })]);
     expect(versions[0]!.components).toEqual(schemes[0]!.components);
 
+    // Plan 3: AI is on for the demo company only; one synthetic policy document.
+    const ai = Object.fromEntries((await db.select().from(s.companies)).map((c) => [c.id, c.aiEnabled]));
+    expect(ai).toEqual({ "demo-co": true, "other-co": false, platform: false });
+    const policies = await db.select().from(s.policyDocuments);
+    expect(policies).toHaveLength(1);
+    expect(policies[0]!).toMatchObject({
+      companyId: "demo-co",
+      title: "سياسة المرتجعات والخصومات",
+      locale: "ar",
+      uploadedBy: r.adminId,
+      body:
+        "# المرتجعات\nالمرتجع بسبب انتهاء الصلاحية يتسجل في نفس اليوم مع صورة للكراتين.\n# الخصومات\nأقصى خصم تقدر تديه من نفسك 3%. أي خصم أعلى لازم المشرف يوافق عليه قبل الفاتورة.",
+      sections: [
+        { label: "المرتجعات", text: "المرتجع بسبب انتهاء الصلاحية يتسجل في نفس اليوم مع صورة للكراتين." },
+        { label: "الخصومات", text: "أقصى خصم تقدر تديه من نفسك 3%. أي خصم أعلى لازم المشرف يوافق عليه قبل الفاتورة." },
+      ],
+    });
+    expect((await db.select().from(s.users)).every((u) => u.aiNoticeVersion === 0)).toBe(true);
+
     const other = await db.select().from(s.users).where(eq(s.users.id, r.otherRepId));
     expect(other[0]!.id).toBe("other-rep");
     expect(r.inviteToken).not.toBe(r.otherInviteToken);

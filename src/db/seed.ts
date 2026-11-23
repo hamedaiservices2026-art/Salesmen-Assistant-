@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { sampleScheme } from "@/domain/commission/sample-fixture";
+import { splitSections } from "@/domain/policy";
 import { hashToken, newToken } from "@/server/auth/token";
 import type { PgTable } from "drizzle-orm/pg-core";
 import type { Db } from "./client";
@@ -30,6 +31,15 @@ const DEMO_OWNER_PASSWORD_HASH =
   "scrypt$16384$8$1$bfe6bc238e0b044f59845848a0b4617b$9956113c1bdb160f375b9e1fc258ca39f79b108eccd0b70b9f0d2946b3621e86";
 const DEMO_ADMIN_PASSWORD_HASH =
   "scrypt$16384$8$1$f14288bdc455efbcccc5fed6912a1334$fdd92907e7b022bc7c26cefbd9126f61f74eed068687b9fc14288d80383967cf";
+
+/** Synthetic demo policy (plan 3, "Shared sample data"). */
+const DEMO_POLICY_TITLE = "سياسة المرتجعات والخصومات";
+const DEMO_POLICY_BODY = [
+  "# المرتجعات",
+  "المرتجع بسبب انتهاء الصلاحية يتسجل في نفس اليوم مع صورة للكراتين.",
+  "# الخصومات",
+  "أقصى خصم تقدر تديه من نفسك 3%. أي خصم أعلى لازم المشرف يوافق عليه قبل الفاتورة.",
+].join("\n");
 
 export type SeedResult = {
   companyId: string;
@@ -81,7 +91,8 @@ export async function seedDemo(db: Db, options: SeedOptions = { deployed: false 
       tx.insert(table).values(rows).onConflictDoNothing();
 
     await ins(s.companies, [
-      { id: companyId, name: "Demo Distribution Co.", sellingWeekdays: [6, 0, 1, 2, 3, 4] },
+      // AI is on for the demo company (plan 3); every other company keeps the default, off.
+      { id: companyId, name: "Demo Distribution Co.", sellingWeekdays: [6, 0, 1, 2, 3, 4], aiEnabled: true },
       { id: otherCompanyId, name: "Other Trading Co.", sellingWeekdays: [6, 0, 1, 2, 3, 4] },
       { id: platformId, name: "Platform", sellingWeekdays: [6, 0, 1, 2, 3, 4], weekStartsOn: 6 },
     ]);
@@ -273,6 +284,18 @@ export async function seedDemo(db: Db, options: SeedOptions = { deployed: false 
         components: sampleScheme.components,
         publishedBy: null,
         publishedAt: new Date("2026-11-01T00:00:00Z"),
+      },
+    ]);
+    // One synthetic policy document for the assistant (plan 3), stored as the admin page stores it.
+    await ins(s.policyDocuments, [
+      {
+        id: "policy-demo-returns",
+        companyId,
+        title: DEMO_POLICY_TITLE,
+        locale: "ar",
+        body: DEMO_POLICY_BODY,
+        sections: splitSections(DEMO_POLICY_BODY),
+        uploadedBy: adminId,
       },
     ]);
   });

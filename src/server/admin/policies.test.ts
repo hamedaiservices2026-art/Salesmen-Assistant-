@@ -14,6 +14,8 @@ let seed: SeedResult;
 beforeEach(async () => {
   db = await createTestDb();
   seed = await seedDemo(db);
+  // The demo seed carries one policy document (plan 3); these tests start from none (R44).
+  await db.delete(s.policyDocuments).where(eq(s.policyDocuments.companyId, "demo-co"));
 });
 
 const ctxOf = (userId: string, role: Role, companyId = "demo-co"): Ctx => ({ db, companyId, userId, role, locale: "ar", timeZone: "Asia/Riyadh" });

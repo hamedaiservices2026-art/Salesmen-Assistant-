@@ -7,6 +7,7 @@ import {
   integer,
   jsonb,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -38,6 +39,8 @@ export const companies = pgTable("companies", {
   sellingWeekdays: integer("selling_weekdays").array().notNull(),
   weekStartsOn: integer("week_starts_on").notNull().default(0),
   behindPct: integer("behind_pct").notNull().default(10),
+  /** The company admin's AI switch (plan 3): off until he turns it on after reading the data-use notice. */
+  aiEnabled: boolean("ai_enabled").notNull().default(false),
   ...stamps(),
 });
 
@@ -71,6 +74,9 @@ export const users = pgTable("users", {
   failedAt: timestamp("failed_at", { withTimezone: true }),
   lockedUntil: timestamp("locked_until", { withTimezone: true }),
   active: boolean("active").notNull().default(true),
+  /** The version of the one-time AI notice this user accepted; 0 = never (plan 3). */
+  aiNoticeVersion: integer("ai_notice_version").notNull().default(0),
+  aiNoticeAt: timestamp("ai_notice_at", { withTimezone: true }),
   ...stamps(),
 });
 
@@ -407,4 +413,53 @@ export const policyDocuments = pgTable(
     ...stamps(),
   },
   (t) => [index("policy_documents_company_updated").on(t.companyId, t.updatedAt)],
+);
+
+/**
+ * AI request counters. One row per (scope, bucket, kind); a request reserves a slot with a single
+ * conditional upsert (`src/server/ai/quota.ts`). `scope` is `user:<userId>`, `company:<companyId>`
+ * or `global`; `bucket` is a day `YYYY-MM-DD` (company time zone; UTC for `global`) or a minute
+ * `YYYY-MM-DDTHH:MM` (UTC). `company_id` is null only for `global`, the one deployment-wide row.
+ */
+export const aiCounters = pgTable(
+  "ai_counters",
+  {
+    scope: text("scope").notNull(),
+    bucket: text("bucket").notNull(),
+    kind: text("kind").notNull(),
+    companyId: text("company_id").references(() => companies.id),
+    count: integer("count").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.scope, t.bucket, t.kind] }), index("ai_counters_updated").on(t.updatedAt)],
+);
+
+/**
+ * One row per AI request (and per quota refusal). Codes and counts only: no column holds a
+ * question, a transcript, a reply, a file name or an amount.
+ */
+export const aiUsage = pgTable(
+  "ai_usage",
+  {
+    id: id(),
+    companyId: companyId(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id),
+    kind: text("kind", { enum: ["vision", "stt", "chat"] }).notNull(),
+    feature: text("feature", { enum: ["close_photo", "close_voice", "assistant", "assistant_voice", "explain"] }).notNull(),
+    provider: text("provider"),
+    model: text("model"),
+    outcome: text("outcome", {
+      enum: ["ok", "invalid_output", "timeout", "rate_limited", "provider_error", "bad_request", "rejected"],
+    }).notNull(),
+    attempts: integer("attempts").notNull(),
+    fallback: boolean("fallback").notNull(),
+    latencyMs: integer("latency_ms").notNull(),
+    tokensIn: integer("tokens_in"),
+    tokensOut: integer("tokens_out"),
+    topic: text("topic"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("ai_usage_company_created").on(t.companyId, t.createdAt), index("ai_usage_created").on(t.createdAt)],
 );
