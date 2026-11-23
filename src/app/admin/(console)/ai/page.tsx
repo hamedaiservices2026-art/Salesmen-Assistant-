@@ -1,9 +1,11 @@
-import { Info } from "lucide-react";
+import { Info, ListChecks } from "lucide-react";
+import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
 import { getCompanyAi } from "@/server/ai/consent";
 import { requireRole } from "@/server/auth/guard";
 import { Card } from "@/ui/admin/Card";
 import { PageHeader } from "@/ui/admin/PageHeader";
+import { secondaryButton } from "@/ui/admin/form-styles";
 import { AiSwitch } from "./ai-switch";
 
 export default async function AdminAiPage() {
@@ -38,6 +40,15 @@ export default async function AdminAiPage() {
           <div>
             <AiSwitch enabled={ai.enabled} />
           </div>
+        </div>
+      </Card>
+      <Card title={t("mappingLink.title")}>
+        <div className={`flex flex-wrap items-center justify-between gap-4 px-5 pb-5 ${lead}`}>
+          <p className="m-0 max-w-[60ch] text-[15px] text-ink-2">{t("mappingLink.body")}</p>
+          <Link href="/admin/ai/mapping" className={secondaryButton}>
+            <ListChecks aria-hidden="true" size={18} strokeWidth={2} />
+            {t("mappingLink.open")}
+          </Link>
         </div>
       </Card>
     </main>

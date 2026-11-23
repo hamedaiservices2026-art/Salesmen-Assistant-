@@ -415,6 +415,20 @@ export const policyDocuments = pgTable(
   (t) => [index("policy_documents_company_updated").on(t.companyId, t.updatedAt)],
 );
 
+/** How a company's report labels map to day-close fields (plan 3): extra labels per draft key, read by the report reader. */
+export const aiFieldMaps = pgTable("ai_field_maps", {
+  companyId: text("company_id")
+    .primaryKey()
+    .references(() => companies.id),
+  aliases: jsonb("aliases").$type<Record<string, string[]>>().notNull().default(sql`'{}'::jsonb`),
+  /** Version token: a save names the version it read and is refused as stale if another save got there first. */
+  version: integer("version").notNull().default(0),
+  updatedBy: text("updated_by")
+    .notNull()
+    .references(() => users.id),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 /**
  * AI request counters. One row per (scope, bucket, kind); a request reserves a slot with a single
  * conditional upsert (`src/server/ai/quota.ts`). `scope` is `user:<userId>`, `company:<companyId>`

@@ -1138,7 +1138,42 @@
       },
       "stateOn": "Status: on",
       "stateOff": "Status: off",
-      "stateOnStopped": "On, but stopped from the system settings"
+      "stateOnStopped": "On, but stopped from the system settings",
+      "mapping": {
+        "title": "Report labels",
+        "subtitle": "How the end-of-day report names each field",
+        "cardTitle": "Fields and their labels",
+        "back": "Back",
+        "intro": "Write each field's name as it appears in the end-of-day report from your sales program, so reading from the photo is more accurate.",
+        "builtIn": "Already understood",
+        "placeholder": "As written in the report",
+        "aliasLabel": "{field}, label {n}",
+        "addAnother": "Add another",
+        "save": "Save",
+        "saving": "Saving",
+        "saved": "Saved.",
+        "reload": "Reload the latest version",
+        "errors": {
+          "invalid": "A label cannot be empty-looking, longer than {max} characters, or contain < > '{' '}' [ ] ` | or a line break",
+          "too_many": "No more than {count} labels per field",
+          "unknown_key": "This field does not exist for your company",
+          "stale": "Someone else saved the labels while you were editing. Your changes were not saved."
+        },
+        "keys": {
+          "cashSales": "Cash sales",
+          "creditSales": "Credit sales",
+          "collections": "Collections",
+          "expenses": "Expenses",
+          "loaded": "Loaded",
+          "sold": "Sold",
+          "returned": "Returned"
+        }
+      },
+      "mappingLink": {
+        "title": "Report labels",
+        "body": "Tell the reader how your sales program names each box in the end-of-day report.",
+        "open": "Open"
+      }
     }
   },
   "coverage": {
