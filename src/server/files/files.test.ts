@@ -21,6 +21,7 @@ import {
   SWEEP_MAX_ATTEMPTS,
   UNATTACHED_HOURS,
   attachFiles,
+  attachOrder,
   canView,
   readFile,
   removeOwnFile,
@@ -152,15 +153,31 @@ describe("saveUpload", () => {
     expect(await fileCount()).toBe(1);
   });
 
-  it("a store whose put throws: storage_failed and no row", async () => {
-    const failing: FileStore = { ...store, put: async () => Promise.reject(new Error("disk full")) };
+  it("a store whose put throws: storage_failed; the row is soft-deleted so the sweep removes anything half-written (R71)", async () => {
+    let wroteKey = "";
+    // A write that fails after part of the object reached the store.
+    const failing: FileStore = {
+      ...store,
+      put: async (key, bytes) => {
+        wroteKey = key;
+        await store.put(key, bytes);
+        throw new Error("connection reset");
+      },
+    };
     expect(await saveUpload(ahmed(), { kind: "return", date: "2026-11-14", bytes: jpeg800 }, { ...deps(), store: failing })).toEqual({
       ok: false,
       error: "storage_failed",
     });
-    expect(await fileCount()).toBe(0);
+    const rows = await db.select().from(s.files);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.deletedAt).not.toBeNull();
+    expect(await readFile(ahmed(), rows[0]!.id, { store })).toBeNull();
     // The upload slot is given back (R70.5).
     expect(await uploadCount()).toBe(0);
+    // The next sweep removes the row and the object that did get written.
+    expect(await sweepFiles(db, store, new Date(NOW.getTime() + 60_000))).toBe(1);
+    expect(await store.get(wroteKey)).toBeNull();
+    expect(await fileCount()).toBe(0);
   });
 
   it("the row is written before the object: an insert that fails never stores an object (R70.4)", async () => {
@@ -305,11 +322,12 @@ describe("removeOwnFile", () => {
     await expect(removeOwnFile({ ...ahmed(), actingFor: "admin" }, id)).rejects.toThrow(Forbidden);
   });
 
-  it("an attached photo can be removed too", async () => {
+  it("an attached photo is left to the next save of its close (R71): ok, but still there", async () => {
     const id = await upload();
     await db.update(s.files).set({ closeId: "close-ahmed-2026-11-12", returnPos: 0, attachedAt: NOW }).where(eq(s.files.id, id));
     expect(await removeOwnFile(ahmed(), id)).toEqual({ ok: true });
-    expect(await readFile(ahmed(), id, { store })).toBeNull();
+    expect((await row(id))!.deletedAt).toBeNull();
+    expect(await readFile(ahmed(), id, { store })).not.toBeNull();
   });
 });
 
@@ -368,7 +386,7 @@ describe("sweepFiles", () => {
   it("removes a soft-deleted file at once, attached or not", async () => {
     const id = await make("return", { attached: true });
     const key = await keyOf(id);
-    await removeOwnFile(ahmed(), id);
+    await db.update(s.files).set({ deletedAt: NOW }).where(eq(s.files.id, id));
     expect(await sweepFiles(db, store, new Date(NOW.getTime() + HOUR))).toBe(1);
     expect(await exists(id)).toBe(false);
     expect(await store.get(key)).toBeNull();
@@ -470,6 +488,19 @@ describe("attachFiles (R70.2)", () => {
     expect((await row(report))!.closeId).toBeNull();
     expect((await row(elsewhere))!.closeId).toBe(OTHER_CLOSE);
     expect((await row(ok))!.closeId).toBe(CLOSE);
+  });
+
+  it("updates in id order whatever order the form lists them, so two saves cannot deadlock (R71)", async () => {
+    const ids = [await upload(), await upload(), await upload()];
+    const items = [...ids].sort().reverse().map((id, i) => ({ id, kind: "return" as const, returnPos: i }));
+    expect(attachOrder(items).map((it) => it.id)).toEqual([...ids].sort());
+    // The positions travel with their ids.
+    expect(attachOrder(items).every((it) => items.find((x) => x.id === it.id)!.returnPos === it.returnPos)).toBe(true);
+    // A missing id is still reported in the form's order.
+    const r = await db.transaction((tx) =>
+      attachFiles(tx as unknown as Db, ahmed(), CLOSE, [{ id: "f".repeat(32), kind: "return", returnPos: 0 }, ...items, { id: "e".repeat(32), kind: "return", returnPos: 1 }], NOW),
+    );
+    expect(r.missing).toEqual(["f".repeat(32), "e".repeat(32)]);
   });
 
   it("another company's context attaches nothing", async () => {

@@ -499,7 +499,8 @@ export const files = pgTable(
     index("files_sweep_loose")
       .on(t.createdAt)
       .where(sql`${t.sweepAttempts} < 5 and (${t.deletedAt} is not null or ${t.attachedAt} is null)`),
-    // Retention by kind and date, for rows it has not given up on.
+    // Retention by kind and date, for rows it has not given up on: serves the sweep's positive
+    // "kind = … and date < cutoff" branch (`pastRetention` in files.ts) without a full scan.
     index("files_sweep_retention").on(t.kind, t.date).where(sql`${t.sweepAttempts} < 5`),
   ],
 );

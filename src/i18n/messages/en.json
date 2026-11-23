@@ -165,8 +165,11 @@
         "too_many": "At most 3 photos per return",
         "expired": "This photo has expired. Add it again",
         "unknown": "This photo is not there. Add it again",
-        "invalid": "This photo is not there. Add it again"
-      }
+        "invalid": "This photo is not there. Add it again",
+        "busy": "The service is busy right now. Try again in a moment",
+        "removeFailed": "We could not remove the photo. Try again"
+      },
+      "hint": "Return photos are kept 180 days and your supervisor and the admin can see them."
     }
   },
   "commission": {
@@ -1204,7 +1207,7 @@
     }
   },
   "photos": {
-    "keptRep": "Return photos and report photos are kept on the company's server. Return photos stay 180 days and your supervisor and the admin can see them; report photos stay 30 days and only you can see them. A photo not saved with a close is deleted after a day.",
-    "keptAdmin": "Return photos and report photos are kept on the company's server. Return photos stay 180 days and the rep, his supervisor and the admin can see them; report photos stay 30 days and only the rep can see them. A photo not saved with a close is deleted after a day."
+    "keptRep": "Return photos and report photos are kept on the company's private cloud storage. Return photos stay 180 days and your supervisor and the admin can see them; report photos stay 30 days and only you can see them. A photo not saved with a close is deleted after a day.",
+    "keptAdmin": "Return photos and report photos are kept on the company's private cloud storage. Return photos stay 180 days and the rep, his supervisor and the admin can see them; report photos stay 30 days and only the rep can see them. A photo not saved with a close is deleted after a day."
   }
 }

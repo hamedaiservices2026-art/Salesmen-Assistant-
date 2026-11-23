@@ -49,6 +49,9 @@ export function CloseForm({
   const [state, action, pending] = useActionState<CloseState, FormData>(saveCloseAction, { errors: {} });
   const [values, setValues] = useState(initial);
   const [rows, setRows] = useState(initialReturns);
+  // Photos still uploading, per return row: the close waits for them (a confirm now would drop them; R71).
+  const [busy, setBusy] = useState<Record<number, number>>({});
+  const uploading = Object.values(busy).some((n) => n > 0);
 
   useEffect(() => {
     if (Object.keys(state.errors).length > 0) {
@@ -98,7 +101,14 @@ export function CloseForm({
   );
 
   return (
-    <form action={action} noValidate className="flex flex-col gap-3">
+    <form
+      action={action}
+      noValidate
+      onSubmit={(e) => {
+        if (uploading) e.preventDefault();
+      }}
+      className="flex flex-col gap-3"
+    >
       <input type="hidden" name="date" value={date} />
 
       {Object.keys(state.errors).length > 0 && (
@@ -140,7 +150,13 @@ export function CloseForm({
         {["loaded", "sold", "returned"].map((n) => field(stock(n)))}
       </details>
 
-      <ReturnsEditor date={date} rows={rows} onChange={setRows} errors={errorMap} />
+      <ReturnsEditor
+        date={date}
+        rows={rows}
+        onChange={setRows}
+        onBusy={(key, n) => setBusy((b) => (b[key] === n ? b : { ...b, [key]: n }))}
+        errors={errorMap}
+      />
 
       <ReconciliationPanel
         cashSales={v("cashSales")}
@@ -154,7 +170,9 @@ export function CloseForm({
         collectionsNote={collectionItems.some((it) => it.adminAmount !== undefined) ? t("collectionsByAdmin") : undefined}
       />
 
-      <PrimaryButton disabled={pending}>{pending ? t("submitting") : t("submit")}</PrimaryButton>
+      <PrimaryButton disabled={pending || uploading}>
+        {pending ? t("submitting") : uploading ? t("photo.uploading") : t("submit")}
+      </PrimaryButton>
     </form>
   );
 }

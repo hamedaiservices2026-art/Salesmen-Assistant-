@@ -1,11 +1,12 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Camera, LoaderCircle, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { isFileId } from "@/domain/files";
 import { removePhotoAction } from "@/app/app/close/actions";
 import { downscalePhoto, uploadPhoto, type PhotoError } from "@/ui/photo-client";
+import { addPhoto, removePhoto } from "@/ui/photo-list";
 
 const MAX = 3;
 const btn =
@@ -13,22 +14,29 @@ const btn =
 
 /**
  * A return's photos: up to 3 thumbnails, each removable, and a button that opens the camera. Each
- * photo is downscaled in the browser and uploaded at once; its id goes into the hidden `name`
- * field (comma-separated) and is attached when the close is saved. Thumbnails load only from a
- * validated file id.
+ * photo is downscaled in the browser and uploaded, one at a time (a queue), and its id goes into
+ * the hidden `name` field (comma-separated); it is attached when the close is saved. The list is
+ * changed only through updates applied to its latest value, so uploads finishing in any order and
+ * a remove during an upload never overwrite each other (R71). While anything is uploading the add
+ * button is hidden and `onBusy` reports the count, so the form can hold its submit. Thumbnails load
+ * only from a validated file id.
  */
 export function PhotoPicker({
   name,
   date,
   photos,
   onChange,
+  onBusy,
   error,
   photoErrors,
 }: {
   name: string;
   date: string;
   photos: string[];
-  onChange: (photos: string[]) => void;
+  /** Applies an update to the latest list of ids. */
+  onChange: (update: (photos: string[]) => string[]) => void;
+  /** How many photos are being uploaded right now (0 when done, and on unmount). */
+  onBusy: (uploading: number) => void;
   /** The row's error text from the last save, if any. */
   error?: string;
   /** Per-photo error text from the last save (for example an expired photo), by id. */
@@ -36,41 +44,57 @@ export function PhotoPicker({
 }) {
   const t = useTranslations("close.photo");
   const input = useRef<HTMLInputElement>(null);
+  const queue = useRef<Promise<void>>(Promise.resolve());
   const [uploading, setUploading] = useState(0);
-  const [failed, setFailed] = useState<PhotoError | null>(null);
+  const [failed, setFailed] = useState<PhotoError | "removeFailed" | null>(null);
   const ids = photos.filter(isFileId);
-  const full = ids.length + uploading >= MAX;
 
-  async function add(files: FileList | null) {
+  const busyReport = useRef(onBusy);
+  useEffect(() => {
+    busyReport.current = onBusy;
+  });
+  useEffect(() => {
+    busyReport.current(uploading);
+  }, [uploading]);
+  // A row removed mid-upload must not keep the form waiting.
+  useEffect(() => () => busyReport.current(0), []);
+
+  async function uploadOne(file: File): Promise<void> {
+    try {
+      let blob: Blob;
+      try {
+        blob = await downscalePhoto(file);
+      } catch {
+        setFailed("unreadable");
+        return;
+      }
+      const r = await uploadPhoto("return", date, blob);
+      if (r.ok) onChange((list) => addPhoto(list, r.id, MAX));
+      else setFailed(r.error);
+    } finally {
+      setUploading((n) => n - 1);
+    }
+  }
+
+  function add(files: FileList | null) {
     if (!files) return;
     const picked = [...files].slice(0, Math.max(0, MAX - ids.length - uploading));
-    setFailed(null);
-    let current = ids;
-    for (const file of picked) {
-      setUploading((n) => n + 1);
-      try {
-        let blob: Blob;
-        try {
-          blob = await downscalePhoto(file);
-        } catch {
-          setFailed("unreadable");
-          continue;
-        }
-        const r = await uploadPhoto("return", date, blob);
-        if (r.ok) {
-          current = [...current, r.id];
-          onChange(current);
-        } else setFailed(r.error);
-      } finally {
-        setUploading((n) => n - 1);
-      }
-    }
     if (input.current) input.current.value = "";
+    if (picked.length === 0) return;
+    setFailed(null);
+    setUploading((n) => n + picked.length);
+    // One upload at a time, in the order picked.
+    for (const file of picked) queue.current = queue.current.then(() => uploadOne(file));
   }
 
   async function remove(id: string) {
-    onChange(ids.filter((x) => x !== id));
-    await removePhotoAction(id);
+    setFailed(null);
+    onChange((list) => removePhoto(list, id));
+    const r = await removePhotoAction(id).catch(() => ({ ok: false }));
+    if (!r.ok) {
+      onChange((list) => addPhoto(list, id, MAX));
+      setFailed("removeFailed");
+    }
   }
 
   return (
@@ -106,7 +130,7 @@ export function PhotoPicker({
         </ul>
       )}
       <div className="flex flex-wrap items-center gap-2">
-        {!full && (
+        {uploading === 0 && ids.length < MAX && (
           <button type="button" onClick={() => input.current?.click()} className={`${btn} self-start`}>
             <Camera aria-hidden="true" size={18} strokeWidth={2} />
             {t("add")}
@@ -114,6 +138,8 @@ export function PhotoPicker({
         )}
         {ids.length > 0 && <span className="text-[13px] text-ink-2">{t("count", { n: ids.length })}</span>}
       </div>
+      {/* Where the photos are kept and who sees them, always in view (R71). */}
+      <p className="m-0 text-[12.5px] text-ink-2">{t("hint")}</p>
       <input
         ref={input}
         type="file"

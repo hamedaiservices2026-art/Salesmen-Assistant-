@@ -48,8 +48,9 @@ function dayNumber(date: string): number | null {
  * even when the photo is then refused, so decoding work is bounded per rep per day, but given back
  * on `busy` and `storage_failed`, which are not the rep's doing); `normalisePhoto` (the stored bytes
  * are always a JPEG the server encoded); the row is inserted first (unattached, its storage key
- * reserved), then the object is written; if the write fails the row is deleted (best effort,
- * otherwise the 24-hour sweep removes it). So every stored object always has a row (R70).
+ * reserved), then the object is written; if the write fails the row is soft-deleted (best effort,
+ * otherwise the 24-hour sweep finds it unattached), so the sweep removes anything half-written.
+ * So every stored object always has a row (R70, R71).
  */
 export async function saveUpload(
   ctx: Ctx,
@@ -95,8 +96,11 @@ export async function saveUpload(
     await (deps.store ?? getFileStore()).put(key, photo.jpeg);
   } catch (e) {
     console.error("photo store failed", e instanceof Error ? e.name : "unknown error");
+    // Soft-deleted, not deleted: a failed write may still have left (part of) the object behind,
+    // and the sweep removes the object before the row (removing a missing object succeeds; R71).
     await ctx.db
-      .delete(s.files)
+      .update(s.files)
+      .set({ deletedAt: now })
       .where(and(eq(s.files.id, id), eq(s.files.companyId, ctx.companyId)))
       .catch(() => undefined);
     return giveBack("storage_failed");
@@ -112,6 +116,17 @@ const utcDayBefore = (now: Date, days: number) => new Date(now.getTime() - days 
  * (report) or 180 (return) days before today (UTC). On the 30th day after its date a report photo
  * is still kept; on the 31st it is not.
  */
+/**
+ * The opposite of `inRetention`, written positively (kind = … and date < …) so the partial index
+ * `files_sweep_retention (kind, date)` can serve the sweep's retention branch.
+ */
+function pastRetention(now: Date): SQL {
+  return or(
+    and(eq(s.files.kind, "report"), sql`${s.files.date} < ${utcDayBefore(now, FILE_RETENTION_DAYS.report)}::date`),
+    and(eq(s.files.kind, "return"), sql`${s.files.date} < ${utcDayBefore(now, FILE_RETENTION_DAYS.return)}::date`),
+  )!;
+}
+
 export function inRetention(now: Date): SQL {
   return or(
     and(eq(s.files.kind, "report"), sql`${s.files.date} >= ${utcDayBefore(now, FILE_RETENTION_DAYS.report)}::date`),
@@ -167,16 +182,22 @@ export async function readFile(
   return bytes ? { bytes } : null;
 }
 
-/** The owner removes his own photo, attached or not: it is soft-deleted now and swept later. */
+/**
+ * The owner removes one of his photos. An unattached photo is soft-deleted now (and swept later).
+ * An attached one is left as it is: the close it belongs to still lists it until the rep saves
+ * that close without it, and that save soft-deletes it (`syncReturnPhotos`), so leaving the screen
+ * without saving never takes a photo away from a saved close (R71). Both answer ok; another rep's
+ * or an unknown id is `not_found`.
+ */
 export async function removeOwnFile(ctx: Ctx, id: string): Promise<{ ok: true } | { ok: false; error: "not_found" }> {
   assertOwnContext(ctx);
   if (!isFileId(id)) return { ok: false, error: "not_found" };
-  const done = await ctx.db
+  const [row] = await ctx.db
     .update(s.files)
-    .set({ deletedAt: sql`coalesce(${s.files.deletedAt}, now())` })
+    .set({ deletedAt: sql`case when ${s.files.attachedAt} is null then coalesce(${s.files.deletedAt}, now()) else ${s.files.deletedAt} end` })
     .where(and(eq(s.files.id, id), eq(s.files.companyId, ctx.companyId), eq(s.files.userId, ctx.userId)))
     .returning({ id: s.files.id });
-  return done.length > 0 ? { ok: true } : { ok: false, error: "not_found" };
+  return row ? { ok: true } : { ok: false, error: "not_found" };
 }
 
 export type AttachItem = { id: string; kind: FileKind; returnPos: number | null };
@@ -192,10 +213,10 @@ export type AttachItem = { id: string; kind: FileKind; returnPos: number | null 
  */
 export async function attachFiles(tx: Db, ctx: Ctx, closeId: string, items: readonly AttachItem[], now: Date): Promise<{ missing: string[] }> {
   assertOwnContext(ctx);
-  const missing: string[] = [];
-  for (const item of items) {
+  const missed = new Set<string>();
+  for (const item of attachOrder(items)) {
     if (!isFileId(item.id)) {
-      missing.push(item.id);
+      missed.add(item.id);
       continue;
     }
     const done = await tx
@@ -213,9 +234,18 @@ export async function attachFiles(tx: Db, ctx: Ctx, closeId: string, items: read
         ),
       )
       .returning({ id: s.files.id });
-    if (done.length !== 1) missing.push(item.id);
+    if (done.length !== 1) missed.add(item.id);
   }
-  return { missing };
+  // Reported in the caller's order.
+  return { missing: items.map((it) => it.id).filter((id) => missed.has(id)) };
+}
+
+/**
+ * The order rows are updated in: by id, whatever order the form listed them. Two saves that list
+ * the same photos in opposite orders then lock the rows in the same order and cannot deadlock (R71).
+ */
+export function attachOrder<T extends { id: string }>(items: readonly T[]): T[] {
+  return [...items].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 }
 
 /**
@@ -238,7 +268,7 @@ export async function sweepFiles(db: Db, store: FileStore, now: Date, limit = SW
     or(
       sql`${s.files.deletedAt} is not null`,
       and(isNull(s.files.attachedAt), sql`${s.files.createdAt} < ${new Date(now.getTime() - UNATTACHED_HOURS * HOUR_MS).toISOString()}::timestamptz`),
-      sql`not (${inRetention(now)})`,
+      pastRetention(now),
     ),
   )!;
   const tried: string[] = [];

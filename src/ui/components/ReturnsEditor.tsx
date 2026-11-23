@@ -16,18 +16,21 @@ export function ReturnsEditor({
   date,
   rows,
   onChange,
+  onBusy,
   errors,
 }: {
   /** The day being recorded: photos are dated with it. */
   date: string;
   rows: ReturnRow[];
-  onChange: (rows: ReturnRow[]) => void;
+  /** Applies an update to the latest rows (uploads finish after other changes; R71). */
+  onChange: (update: (rows: ReturnRow[]) => ReturnRow[]) => void;
+  /** How many photos a row (by key) is uploading right now. */
+  onBusy: (key: number, uploading: number) => void;
   /** Translated error text by field name (`ret.<i>.<field>`, and `photo.<id>` for one photo). */
   errors: Record<string, string | undefined>;
 }) {
   const t = useTranslations("close");
-  const set = (key: number, patch: Partial<ReturnRow>) =>
-    onChange(rows.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+  const set = (key: number, patch: Partial<ReturnRow>) => onChange((rows) => rows.map((r) => (r.key === key ? { ...r, ...patch } : r)));
   const nextKey = rows.reduce((m, r) => Math.max(m, r.key), -1) + 1;
   return (
     <section aria-label={t("returnsTitle")} className="flex flex-col gap-3 rounded-[14px] border border-line bg-white p-4">
@@ -76,13 +79,14 @@ export function ReturnsEditor({
             name={`ret.${i}.photos`}
             date={date}
             photos={r.photos}
-            onChange={(photos) => set(r.key, { photos })}
+            onChange={(update) => onChange((rows) => rows.map((x) => (x.key === r.key ? { ...x, photos: update(x.photos) } : x)))}
+            onBusy={(n) => onBusy(r.key, n)}
             error={errors[`ret.${i}.photos`]}
             photoErrors={Object.fromEntries(r.photos.map((id) => [id, errors[`photo.${id}`]]))}
           />
           <button
             type="button"
-            onClick={() => onChange(rows.filter((x) => x.key !== r.key))}
+            onClick={() => onChange((rows) => rows.filter((x) => x.key !== r.key))}
             className="inline-flex min-h-11 items-center justify-center gap-1.5 self-start rounded-[10px] border border-line bg-white px-3.5 text-sm font-semibold text-brand focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
           >
             <X aria-hidden="true" size={18} strokeWidth={2} />
@@ -92,7 +96,7 @@ export function ReturnsEditor({
       ))}
       <button
         type="button"
-        onClick={() => onChange([...rows, { key: nextKey, description: "", quantity: "", reason: "expired", photos: [] }])}
+        onClick={() => onChange((rows) => [...rows, { key: nextKey, description: "", quantity: "", reason: "expired", photos: [] }])}
         className="inline-flex min-h-12 items-center justify-center gap-1.5 rounded-[10px] border border-line bg-white px-3.5 text-sm font-semibold text-brand focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
       >
         <Plus aria-hidden="true" size={18} strokeWidth={2} />

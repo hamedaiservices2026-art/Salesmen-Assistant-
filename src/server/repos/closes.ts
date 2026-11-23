@@ -205,7 +205,11 @@ async function photoErrors(ctx: Ctx, form: CloseForm, now: Date): Promise<Record
     for (const id of r.photos ?? []) {
       const row = isFileId(id) && !seen.has(id) ? byId.get(id) : undefined;
       seen.add(id);
-      if (!row || row.kind !== "return" || (row.closeId !== null && row.closeId !== close?.id)) {
+      if (!row || row.kind !== "return") {
+        code = "unknown";
+      } else if (row.closeId !== null && row.closeId !== close?.id) {
+        // His own photo, on another day's close: also named on its own, so the screen can mark it.
+        errors[`photo.${id}`] = "unknown";
         code = "unknown";
       } else if (row.deleted || !row.kept) {
         errors[`photo.${id}`] = "expired";

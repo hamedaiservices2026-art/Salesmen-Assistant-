@@ -568,6 +568,17 @@ describe("returns with photos (Task 8)", () => {
     expect((await getClose(ahmed(), TODAY))!.returns[0]!.photos).toEqual([a]);
   });
 
+  it("removing an attached photo waits for the next save; the save without it soft-deletes it (R71)", async () => {
+    const a = await photo();
+    const b = await photo();
+    await saveClose(ahmed(), withReturn([a, b]), { today: TODAY });
+    expect(await removeOwnFile(ahmed(), b)).toEqual({ ok: true });
+    expect((await getClose(ahmed(), TODAY))!.returns[0]!.photos).toEqual([a, b]);
+    await saveClose(ahmed(), withReturn([a]), { today: TODAY });
+    expect((await fileRow(b)).deletedAt).not.toBeNull();
+    expect((await getClose(ahmed(), TODAY))!.returns[0]!.photos).toEqual([a]);
+  });
+
   it("a removed return row takes its photos with it; moving a photo to another row keeps it", async () => {
     const a = await photo();
     const b = await photo();
@@ -595,9 +606,14 @@ describe("returns with photos (Task 8)", () => {
     const report = await photo(ahmed(), "report");
     const onTwelfth = await photo(ahmed(), "return", "2026-11-12");
     expect(await saveClose(ahmed(), withReturn([onTwelfth], "2026-11-12"), { today: TODAY })).toEqual({ ok: true });
-    for (const id of [khaleds, report, onTwelfth, "f".repeat(32)]) {
+    for (const id of [khaleds, report, "f".repeat(32)]) {
       expect(await saveClose(ahmed(), withReturn([id]), { today: TODAY })).toEqual({ ok: false, errors: { "returns.0.photos": "unknown" } });
     }
+    // His own photo on another close is also named on its own, so the screen can mark it.
+    expect(await saveClose(ahmed(), withReturn([onTwelfth]), { today: TODAY })).toEqual({
+      ok: false,
+      errors: { "returns.0.photos": "unknown", [`photo.${onTwelfth}`]: "unknown" },
+    });
     expect(await getClose(ahmed(), TODAY)).toBeNull();
     expect((await fileRow(khaleds)).closeId).toBeNull();
     expect((await fileRow(report)).closeId).toBeNull();
@@ -651,7 +667,8 @@ describe("returns with photos (Task 8)", () => {
     await saveClose(ahmed(), withReturn([a, b]), { today: TODAY });
     let day = (await getHistoryDays(ahmed(), 2026, 11)).find((d) => d.date === TODAY)!;
     expect(day.returnPhotos).toEqual([{ description: "كولا", photos: [a, b] }]);
-    await removeOwnFile(ahmed(), b);
+    // Soft-deleted (as a later save or the sweep does): no longer listed.
+    await db.update(s.files).set({ deletedAt: new Date() }).where(eq(s.files.id, b));
     day = (await getHistoryDays(ahmed(), 2026, 11)).find((d) => d.date === TODAY)!;
     expect(day.returnPhotos).toEqual([{ description: "كولا", photos: [a] }]);
     // Days without photos carry no photo field at all.
