@@ -14,7 +14,8 @@
     "admin:create-owner": "tsx src/db/run-create-owner.ts",
     "e2e": "node scripts/e2e-smoke.mjs",
     "db:pilot": "tsx src/db/run-pilot.ts",
-    "e2e:admin": "node scripts/e2e-admin.mjs"
+    "e2e:admin": "node scripts/e2e-admin.mjs",
+    "ai:smoke": "tsx scripts/ai-smoke.mjs"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.16",

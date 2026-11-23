@@ -276,8 +276,9 @@ describe("getProviders", () => {
     ).toEqual(["fake"]);
   });
 
-  it("gives no live adapter yet (Task 4), and never the fake in live mode", () => {
-    expect(getProviders("chat", readAiConfig({ GEMINI_API_KEY: "k" }))).toEqual([]);
+  it("gives the live adapters, never the fake, in live mode", () => {
+    expect(getProviders("chat", readAiConfig({ GEMINI_API_KEY: "k" })).map((p) => p.name)).toEqual(["gemini"]);
+    expect(getProviders("chat", readAiConfig({}))).toEqual([]);
   });
 });
 

@@ -87,6 +87,26 @@ Status words: **SEEN** = stated in a search summary of the official page named i
 | `MediaRecorder.isTypeSupported(type)` is the way to pick a type; `false` means unsupported, `true` is not a guarantee. Safari records MP4 (AAC audio); WebM with Opus arrived in Safari 18.4. A WebKit bug report (315091, May 2026) says MP4 recordings can freeze on iOS unless `start()` gets a timeslice (for example 1000 ms); unconfirmed. Recorder should try `audio/webm;codecs=opus`, `audio/mp4`, `audio/ogg` in order. | SEEN, `https://developer.mozilla.org/en-US/docs/Web/API/MediaRecorder/isTypeSupported_static`, `https://webkit.org/blog/11353/mediarecorder-api/`, `https://webkit.org/blog/16574/webkit-features-in-safari-18-4/` |
 | `speechSynthesis.getVoices()` can be empty until the `voiceschanged` event fires (Chrome); each voice has a BCP 47 `lang`. No voice for a language gives a `language-unavailable` error. Which `ar` and `ur` voices exist on iOS and Android is **UNVERIFIED**: test on real devices (the button is hidden when none matches, decision 9). | SEEN, `https://developer.mozilla.org/en-US/docs/Web/API/SpeechSynthesis/getVoices`, `.../voiceschanged_event`; Apple developer forum thread 653419 mentions an Arabic voice on iOS 13 only |
 
+## Live adapters (Task 4) and the smoke check
+
+Written 2026-11-23. The adapters in `src/server/ai/gemini.ts`, `groq.ts` and `openrouter.ts` were written from the table rows above and the providers' commonly documented request shapes. **Every request shape below is UNVERIFIED** until the owner's smoke run passes; nothing was exercised against a live provider (the unit tests use recorded-shape fixtures and an injected `fetch`).
+
+Each adapter keeps its base URL, API version, path pieces, auth header and accepted audio types in one constant block at the top of its file, so a correction is a few lines:
+
+| Adapter | Constants | Request (UNVERIFIED) |
+|---|---|---|
+| `gemini.ts` | `BASE`, `API_VERSION` (`v1beta`), `GENERATE_SUFFIX` (`:generateContent`), `KEY_HEADER` (`x-goog-api-key`), `ACCEPTED_AUDIO` (webm, ogg) | `POST {BASE}/{API_VERSION}/models/{encoded model}:generateContent`; `systemInstruction`, `contents` with `inlineData`, `generationConfig` with `temperature` and (vision, chat) `responseMimeType: application/json`; no tools. Reply text from `candidates[0].content.parts[].text`, tokens from `usageMetadata`. |
+| `groq.ts` | `BASE`, `TRANSCRIPTIONS_PATH` (`/openai/v1/audio/transcriptions`), `AUTH_HEADER`, `FILE_NAME` (m4a, webm, ogg), `ACCEPTED_AUDIO` | multipart `file`, `model`, `language`, `response_format=json`, `temperature=0`; reply `{ text }`. |
+| `openrouter.ts` | `BASE`, `CHAT_PATH` (`/api/v1/chat/completions`), `AUTH_HEADER`, `IMAGE_URL_PREFIX` | `model`, `messages` (JPEG as a data URL part), `max_tokens`, `temperature`; no tools; reply `choices[0].message.content`, tokens from `usage`. |
+
+The model id is also checked in the adapter before it goes into a URL path (`models.ts`): ids that do not match `^[A-Za-z0-9][A-Za-z0-9._:/-]{0,99}$` or contain `..` make no request; the rest are passed through `encodeURIComponent`.
+
+### Smoke check
+
+`AI_SMOKE=1 pnpm ai:smoke` (never run by tests, e2e or CI; refuses when `CI` is set). It first lists the models each key can use (Gemini models that support `generateContent`; Groq models; free OpenRouter models, with an `[image]` marker for vision) and says whether `gemini-4-hydrogen` and the configured ids are in the list. Then it makes one tiny call per job with a synthetic 64x64 JPEG (text `CASH 100`) and a synthetic one-second tone, and prints a table of provider, job, model, outcome, latency and whether the reply parsed. It prints no key and no response body and writes nothing. The speech-to-text calls send a WAV tone (the recorder types are not producible in the script), so they check endpoint, auth and model, not Arabic accuracy or the webm/mp4/ogg path.
+
+**Live smoke run: not run with a real key** (2026-11-23). A run with `AI_SMOKE_PROXY_AUTH=1` reached `generativelanguage.googleapis.com` but got HTTP 400 for the placeholder key, and `api.groq.com` and `openrouter.ai` were unreachable from the session, so no result says anything about the providers. The owner must run it with real keys and copy the model lists and the table here; until then `gemini-3.5-flash-lite` and all limits above remain unconfirmed (R66).
+
 ## Hosts to allow for outbound requests
 
 `generativelanguage.googleapis.com`, `api.groq.com`, `openrouter.ai`, and the project's `<ref>.supabase.co`.
