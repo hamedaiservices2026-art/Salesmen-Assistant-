@@ -45,6 +45,16 @@ export async function acceptAiNotice(
   return { ok: true };
 }
 
+/** The form wrapper: a missing or malformed `version` counts as a stale one (-1), never as the current one. */
+export function acceptAiNoticeFromForm(
+  ctx: Ctx,
+  form: FormData,
+): Promise<{ ok: true } | { ok: false; error: "stale_version" }> {
+  const raw = form.get("version");
+  const version = typeof raw === "string" && /^\d{1,4}$/.test(raw) ? Number(raw) : -1;
+  return acceptAiNotice(ctx, version);
+}
+
 /** The signed-in rep takes his consent back: the notice must be accepted again. */
 export async function withdrawAiNotice(ctx: Ctx): Promise<{ ok: true }> {
   assertRole(ctx, ["rep", "supervisor"]);

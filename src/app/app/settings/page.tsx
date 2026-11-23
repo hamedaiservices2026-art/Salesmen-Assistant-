@@ -72,7 +72,7 @@ export default async function SettingsPage() {
           <ChangePinForm />
         </section>
         <section aria-labelledby="ai-title" className="flex flex-col gap-2.5">
-          <h2 id="ai-title" className="m-0 text-[15px] font-bold">
+          <h2 id="ai-title" className={`m-0 text-[15px] font-bold ${locale === "ur" ? "leading-[2.2]" : ""}`}>
             {t("ai.title")}
           </h2>
           <AiNotice accepted={aiAccepted} version={AI_NOTICE_VERSION} />

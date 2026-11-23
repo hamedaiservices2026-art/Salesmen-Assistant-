@@ -1,17 +1,16 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { acceptAiNotice, withdrawAiNotice } from "@/server/ai/consent";
+import { acceptAiNoticeFromForm, withdrawAiNotice } from "@/server/ai/consent";
 import { requireCtx } from "@/server/auth/guard";
 
 // Consent is recorded for the signed-in rep only; the form carries just the notice version he saw.
 
-export async function acceptAiNoticeAction(form: FormData): Promise<void> {
+export async function acceptAiNoticeAction(form: FormData): Promise<{ ok: true } | { ok: false; error: "stale_version" }> {
   const ctx = await requireCtx();
-  const raw = form.get("version");
-  const version = typeof raw === "string" && /^\d{1,4}$/.test(raw) ? Number(raw) : -1;
-  await acceptAiNotice(ctx, version);
-  revalidatePath("/app", "layout");
+  const result = await acceptAiNoticeFromForm(ctx, form);
+  if (result.ok) revalidatePath("/app", "layout");
+  return result;
 }
 
 export async function withdrawAiNoticeAction(): Promise<void> {

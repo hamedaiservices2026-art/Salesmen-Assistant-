@@ -9,7 +9,7 @@ import { Forbidden, type Role } from "@/server/auth/roles";
 import { repCtx } from "@/server/admin/rep-ctx";
 import { aiAvailability } from "./availability";
 import { readAiConfig } from "./config";
-import { acceptAiNotice, aiNoticeAccepted, aiStatus, getCompanyAi, setCompanyAi, withdrawAiNotice } from "./consent";
+import { acceptAiNotice, acceptAiNoticeFromForm, aiNoticeAccepted, aiStatus, getCompanyAi, setCompanyAi, withdrawAiNotice } from "./consent";
 
 let db: Db;
 let seed: SeedResult;
@@ -107,7 +107,34 @@ describe("rep notice", () => {
   });
 });
 
+describe("supervisor and form wrapper", () => {
+  it("a supervisor can accept for himself", async () => {
+    const sami = ctxOf("sami", "supervisor");
+    expect(await acceptAiNotice(sami, 1)).toEqual({ ok: true });
+    expect(await aiNoticeAccepted(sami)).toBe(true);
+  });
+
+  it("a malformed or missing form version is stale and records nothing", async () => {
+    for (const v of ["abc", "", "1.5", "-1", "99999", "1 ", null]) {
+      const f = new FormData();
+      if (v !== null) f.set("version", v);
+      expect(await acceptAiNoticeFromForm(ahmed(), f)).toEqual({ ok: false, error: "stale_version" });
+    }
+    expect(await aiNoticeAccepted(ahmed())).toBe(false);
+    const good = new FormData();
+    good.set("version", "1");
+    expect(await acceptAiNoticeFromForm(ahmed(), good)).toEqual({ ok: true });
+    expect(await aiNoticeAccepted(ahmed())).toBe(true);
+  });
+});
+
 describe("aiNoticeAccepted", () => {
+  it("is false for a lower stored version than the current one", async () => {
+    // With the current version at 1, 0 is the only lower value; a stored 0 with a timestamp still counts as not accepted.
+    await db.update(s.users).set({ aiNoticeVersion: 0, aiNoticeAt: new Date() }).where(eq(s.users.id, "ahmed"));
+    expect(await aiNoticeAccepted(ahmed())).toBe(false);
+  });
+
   it("follows accept and withdraw", async () => {
     expect(await aiNoticeAccepted(ahmed())).toBe(false);
     await acceptAiNotice(ahmed(), 1);

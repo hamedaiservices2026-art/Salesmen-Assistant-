@@ -121,3 +121,7 @@ The model id is also checked in the adapter before it goes into a URL path (`mod
 4. Read Groq's free-plan limits in the console.
 5. Create the Supabase project, note the key form, confirm the Storage REST paths.
 6. Run `scripts/ai-smoke.mjs` (Task 4) with real keys.
+
+## Notice wording and paid providers
+
+The rep notice and the admin page say the services are free during the trial and may use what is sent to improve their products (`ai.notice.p2`, `admin.ai.points`). If any paid provider or plan is enabled, that "free during the trial" copy must be updated in all three catalogs and `AI_NOTICE_VERSION` bumped so reps accept the notice again.
