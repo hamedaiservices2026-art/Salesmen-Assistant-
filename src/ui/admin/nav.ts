@@ -1,4 +1,4 @@
-import { Building2, Award, Gift, LayoutGrid, Target, Settings, Upload, Users, BookOpen, MapPinned, ListTree, Star, type LucideIcon } from "lucide-react";
+import { Building2, Award, Gift, LayoutGrid, Target, Settings, Upload, Users, BookOpen, MapPinned, ListTree, Star, Sparkles, type LucideIcon } from "lucide-react";
 import type { Role } from "@/server/auth/roles";
 
 export type NavItem = { href: string; key: string; Icon: LucideIcon };
@@ -13,6 +13,7 @@ const ADMIN_NAV: NavItem[] = [
   { href: "/admin/schemes", key: "schemes", Icon: Gift },
   { href: "/admin/incentives", key: "incentives", Icon: Award },
   { href: "/admin/policies", key: "policies", Icon: BookOpen },
+  { href: "/admin/ai", key: "ai", Icon: Sparkles },
   { href: "/admin/uploads", key: "uploads", Icon: Upload },
   { href: "/admin/settings", key: "settings", Icon: Settings },
 ];

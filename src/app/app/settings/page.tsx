@@ -2,7 +2,10 @@ import { Check } from "lucide-react";
 import { getLocale, getTranslations } from "next-intl/server";
 import { LOCALES, LOCALE_ENDONYM } from "@/i18n/config";
 import { signOutAction } from "@/app/(auth-actions)/actions";
+import { AI_NOTICE_VERSION } from "@/server/ai/availability";
+import { aiNoticeAccepted } from "@/server/ai/consent";
 import { requireCtx } from "@/server/auth/guard";
+import { AiNotice } from "@/ui/components/AiNotice";
 import { getLogin } from "@/server/repos/profile";
 import { setLocaleAction } from "./actions";
 import { ChangePinForm } from "./change-pin-form";
@@ -10,7 +13,12 @@ import { ChangePinForm } from "./change-pin-form";
 
 export default async function SettingsPage() {
   const ctx = await requireCtx();
-  const [t, locale, login] = await Promise.all([getTranslations("settings"), getLocale(), getLogin(ctx)]);
+  const [t, locale, login, aiAccepted] = await Promise.all([
+    getTranslations("settings"),
+    getLocale(),
+    getLogin(ctx),
+    aiNoticeAccepted(ctx),
+  ]);
   return (
     <>
       <header className="bg-brand px-5 py-4 text-white">
@@ -62,6 +70,12 @@ export default async function SettingsPage() {
             {t("pin.title")}
           </h2>
           <ChangePinForm />
+        </section>
+        <section aria-labelledby="ai-title" className="flex flex-col gap-2.5">
+          <h2 id="ai-title" className="m-0 text-[15px] font-bold">
+            {t("ai.title")}
+          </h2>
+          <AiNotice accepted={aiAccepted} version={AI_NOTICE_VERSION} />
         </section>
         <form action={signOutAction} className="flex flex-col gap-2">
           <p className="m-0 flex flex-wrap items-baseline gap-2 text-[15px]">

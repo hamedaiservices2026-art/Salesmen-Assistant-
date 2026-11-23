@@ -238,6 +238,14 @@
         "same": "The new PIN is the same as the old one. Choose another",
         "mismatch": "The two new PINs do not match"
       }
+    },
+    "ai": {
+      "title": "Smart reading and the assistant",
+      "accepted": "You have agreed to the notice",
+      "notAccepted": "You have not agreed to the notice yet",
+      "read": "Read the notice",
+      "withdraw": "Withdraw my consent",
+      "close": "Close"
     }
   },
   "currency": {
@@ -283,7 +291,8 @@
       "uploads": "Upload data",
       "settings": "Settings",
       "companies": "Companies",
-      "incentives": "Mid-month incentives"
+      "incentives": "Mid-month incentives",
+      "ai": "Artificial intelligence"
     },
     "shell": {
       "navLabel": "Console sections",
@@ -1080,6 +1089,32 @@
         "cancel": "Keep it",
         "confirm": "Delete"
       }
+    },
+    "ai": {
+      "title": "Artificial intelligence",
+      "subtitle": "Reading report photos and voice notes, and the assistant for reps",
+      "switchLabel": "Turn on smart reading and the assistant for reps",
+      "on": "On",
+      "off": "Off",
+      "intro": "Before you turn it on, know what is sent and what is kept:",
+      "points": [
+        "Report photos, voice recordings and reps' questions are sent to outside AI services so they can be read and answered.",
+        "During the trial these services are free, and the companies that run them may use what is sent to improve their products.",
+        "Report photos may show customer names, and those names are sent with the photo.",
+        "PINs and phone numbers are never sent.",
+        "No number read from a photo or voice note is saved until the rep reviews it and presses confirm.",
+        "Each rep reads a notice and agrees to it himself before his first use, and you can turn the service off at any time."
+      ],
+      "turnOn": "Turn on",
+      "turnOff": "Turn off",
+      "killSwitch": "The service is stopped from the system settings",
+      "killSwitchNote": "Nothing will run until it is switched back on in the system settings, even if it is turned on here.",
+      "confirm": {
+        "title": "Turn on smart reading and the assistant?",
+        "body": "Report photos, reps' voice and their questions will be sent to outside services, and may contain customer names. Each rep agrees to the notice before his first use.",
+        "cancel": "Keep it off",
+        "confirm": "Turn on"
+      }
     }
   },
   "coverage": {
@@ -1123,5 +1158,27 @@
     },
     "new": "New",
     "learnMore": "See how much you could earn"
+  },
+  "ai": {
+    "notice": {
+      "title": "Before you use smart reading and the assistant",
+      "p1": "Your report photo, your voice recording and your questions are sent to outside AI services so they can be read and answered.",
+      "p2": "During the trial these services are free, and the companies that run them may use what is sent to improve their products.",
+      "p3": "If the report photo shows customer names, those names are sent with the photo. If you can, photograph only the part with the numbers.",
+      "p4": "Your PIN and your phone number are never sent.",
+      "p5": "No number read from a photo or a voice note is saved until you review it and press confirm.",
+      "accept": "I agree",
+      "decline": "Not now, I will type it myself"
+    },
+    "unavailable": {
+      "disabled": "Smart reading is off right now. Type it in yourself.",
+      "company_off": "Smart reading is off right now. Type it in yourself.",
+      "no_provider": "Smart reading is off right now. Type it in yourself.",
+      "quota": "You have reached the daily limit. Type it in yourself; it opens again tomorrow.",
+      "rate_limited": "Wait a minute and try again.",
+      "failed": "We could not read it right now. Try again or type it in yourself.",
+      "unreadable": "We could not understand the reply. Try again.",
+      "no_notice": "Read the notice and agree to it first."
+    }
   }
 }
