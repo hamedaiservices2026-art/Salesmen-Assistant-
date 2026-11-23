@@ -9,6 +9,8 @@ import { currentDay } from "@/server/today";
 import { closeMonth, focusOn } from "./close-date";
 import { isOptionalLine, parseCloseForm, returnIndexes, zeroEmptiedLines } from "./parse-form";
 import { getClose } from "@/server/repos/closes";
+import { isFileId } from "@/domain/files";
+import { removeOwnFile } from "@/server/files/files";
 
 export type CloseState = { errors: Record<string, string> };
 
@@ -47,4 +49,14 @@ export async function saveCloseAction(_prev: CloseState, data: FormData): Promis
   const result = await saveClose(ctx, form, { today });
   if (!result.ok) return { errors: formFieldErrors(result.errors, returnIndexes(data)) };
   redirect("/app");
+}
+
+/**
+ * The rep removes one of his own return photos (the picker's remove button). It is soft-deleted at
+ * once and the sweep removes the bytes; another rep's or an unknown id is simply not found.
+ */
+export async function removePhotoAction(id: string): Promise<{ ok: boolean }> {
+  const ctx = await requireCtx();
+  if (typeof id !== "string" || !isFileId(id)) return { ok: false };
+  return { ok: (await removeOwnFile(ctx, id)).ok };
 }

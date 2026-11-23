@@ -8,8 +8,9 @@ import { AiSwitch } from "./ai-switch";
 
 export default async function AdminAiPage() {
   const ctx = await requireRole(["admin"]);
-  const [t, ai, locale] = await Promise.all([getTranslations("admin.ai"), getCompanyAi(ctx), getLocale()]);
-  const points = t.raw("points") as string[];
+  const [t, tp, ai, locale] = await Promise.all([getTranslations("admin.ai"), getTranslations("photos"), getCompanyAi(ctx), getLocale()]);
+  // The notice's points, then where photos are kept and who sees them (the rep notice says the same).
+  const points = [...(t.raw("points") as string[]), tp("keptAdmin")];
   // Nastaliq needs taller lines than the Latin and Arabic faces.
   const lead = locale === "ur" ? "leading-[2.2]" : "";
   const state = ai.enabled ? (ai.envDisabled ? t("stateOnStopped") : t("stateOn")) : t("stateOff");

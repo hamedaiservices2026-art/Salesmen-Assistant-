@@ -23,6 +23,7 @@ export function AiNoticeSheet({
 }) {
   const t = useTranslations("ai.notice");
   const tc = useTranslations("settings.ai");
+  const tp = useTranslations("photos");
   const router = useRouter();
   const lead = useLocale() === "ur" ? "leading-[2.2]" : "leading-loose";
   const [stale, setStale] = useState(false);
@@ -58,6 +59,8 @@ export function AiNoticeSheet({
         {(["p1", "p2", "p3", "p4", "p5"] as const).map((k) => (
           <li key={k}>{t(k)}</li>
         ))}
+        {/* Where photos are kept and who sees them (notice version 2). */}
+        <li>{tp("keptRep")}</li>
       </ul>
       {stale && (
         <p role="alert" className="m-0 mb-3 rounded-xl border border-alert bg-alert-tint px-4 py-3 text-[14px] text-alert">

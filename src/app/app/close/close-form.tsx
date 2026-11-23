@@ -58,7 +58,9 @@ export function CloseForm({
 
   const err = (name: string) => {
     const code = state.errors[name];
-    return code ? t(`errors.${code}`) : undefined;
+    if (!code) return undefined;
+    // Photo problems have their own copy (a return's photos field, or one photo by id).
+    return name.startsWith("photo.") || name.endsWith(".photos") ? t(`photo.errors.${code}` as never) : t(`errors.${code}` as never);
   };
   const errorMap: Record<string, string | undefined> = Object.fromEntries(
     Object.keys(state.errors).map((k) => [k, err(k)]),
@@ -138,7 +140,7 @@ export function CloseForm({
         {["loaded", "sold", "returned"].map((n) => field(stock(n)))}
       </details>
 
-      <ReturnsEditor rows={rows} onChange={setRows} errors={errorMap} />
+      <ReturnsEditor date={date} rows={rows} onChange={setRows} errors={errorMap} />
 
       <ReconciliationPanel
         cashSales={v("cashSales")}

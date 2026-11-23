@@ -13,6 +13,16 @@ import { getFirstCloseDate, getHistoryDays, getHistoryMonths } from "./history";
 import { loadLines } from "./month-data";
 import { isOptionalLine, parseCloseForm, zeroEmptiedLines } from "@/app/app/close/parse-form";
 import { getCompanyPrefs } from "./company";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import sharp from "sharp";
+import { afterEach } from "vitest";
+import { Forbidden } from "@/server/auth/roles";
+import { repCtx } from "@/server/admin/rep-ctx";
+import { readFile, removeOwnFile, saveUpload } from "@/server/files/files";
+import { localStore } from "@/server/files/local-store";
+import type { FileStore } from "@/server/files/store";
 
 const TODAY = "2026-11-14";
 const NOV = { year: 2026, month: 11, today: TODAY };
@@ -197,7 +207,13 @@ describe("saveClose", () => {
       },
     );
     expect(await saveClose(ahmed(), full, { today: TODAY })).toEqual({ ok: true });
-    expect(await getClose(ahmed(), TODAY)).toEqual({ ...full, admin: {}, draft: false });
+    // A saved close's returns always carry their photos (none here; R52).
+    expect(await getClose(ahmed(), TODAY)).toEqual({
+      ...full,
+      returns: full.returns.map((r) => ({ ...r, photos: [] })),
+      admin: {},
+      draft: false,
+    });
     const view = await getMonthView(ahmed(), NOV);
     expect(view.focus.find((f) => f.id === "mango")!.achieved).toBe(135);
   });
@@ -508,5 +524,137 @@ describe("line createdOn and earlier-month closes", () => {
     const after = await getClose(ahmed(), "2026-11-12");
     expect(after!.lines["coll"]).toBe(0);
     expect(after!.collections).toBe(0);
+  });
+});
+
+describe("returns with photos (Task 8)", () => {
+  let root: string;
+  let store: FileStore;
+  let jpeg: Uint8Array;
+  beforeEach(async () => {
+    root = await mkdtemp(path.join(tmpdir(), "close-photos-"));
+    store = localStore(root);
+    jpeg ??= new Uint8Array(await sharp({ create: { width: 64, height: 48, channels: 3, background: { r: 99, g: 99, b: 99 } } }).jpeg().toBuffer());
+  });
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+
+  const ctxOf = (userId: string, role: "rep" | "supervisor" = "rep"): Ctx => ({ ...ahmed(), userId, role });
+  async function photo(ctx: Ctx = ahmed(), kind: "return" | "report" = "return", date = TODAY): Promise<string> {
+    const r = await saveUpload(ctx, { kind, date, bytes: jpeg }, { store, today: TODAY });
+    if (!r.ok) throw new Error(r.error);
+    return r.id;
+  }
+  const withReturn = (photos: string[], date = TODAY) =>
+    form(date, { bev: 120, food: 800_000, coll: 2_000_000 }, { cashSales: 100_000, returns: [{ description: "كولا", quantity: 3, reason: "expired", photos }] });
+  const fileRow = async (id: string) => (await db.select().from(s.files).where(eq(s.files.id, id)))[0]!;
+
+  it("attaches the photos to the return, lists them back, and re-saving with fewer soft-deletes the rest", async () => {
+    const a = await photo();
+    const b = await photo();
+    expect(await saveClose(ahmed(), withReturn([a, b]), { today: TODAY })).toEqual({ ok: true });
+    const saved = await getClose(ahmed(), TODAY);
+    expect(saved!.returns).toEqual([{ description: "كولا", quantity: 3, reason: "expired", photos: [a, b] }]);
+    const [closeRow] = await db.select().from(s.dailyCloses).where(and(eq(s.dailyCloses.userId, "ahmed"), eq(s.dailyCloses.date, TODAY)));
+    for (const id of [a, b]) {
+      expect(await fileRow(id)).toMatchObject({ closeId: closeRow!.id, returnPos: 0, deletedAt: null });
+      expect((await fileRow(id)).attachedAt).not.toBeNull();
+    }
+
+    expect(await saveClose(ahmed(), withReturn([a]), { today: TODAY })).toEqual({ ok: true });
+    expect((await fileRow(b)).deletedAt).not.toBeNull();
+    expect(await readFile(ahmed(), b, { store })).toBeNull();
+    expect((await getClose(ahmed(), TODAY))!.returns[0]!.photos).toEqual([a]);
+  });
+
+  it("a removed return row takes its photos with it; moving a photo to another row keeps it", async () => {
+    const a = await photo();
+    const b = await photo();
+    const two = form(TODAY, { bev: 120, food: 800_000, coll: 2_000_000 }, {
+      cashSales: 100_000,
+      returns: [
+        { description: "كولا", quantity: 3, reason: "expired", photos: [a] },
+        { description: "عصير", quantity: 1, reason: "damaged", photos: [b] },
+      ],
+    });
+    expect(await saveClose(ahmed(), two, { today: TODAY })).toEqual({ ok: true });
+    expect((await fileRow(b)).returnPos).toBe(1);
+    const one = form(TODAY, { bev: 120, food: 800_000, coll: 2_000_000 }, {
+      cashSales: 100_000,
+      returns: [{ description: "عصير", quantity: 1, reason: "damaged", photos: [b] }],
+    });
+    expect(await saveClose(ahmed(), one, { today: TODAY })).toEqual({ ok: true });
+    expect((await fileRow(a)).deletedAt).not.toBeNull();
+    expect(await fileRow(b)).toMatchObject({ returnPos: 0, deletedAt: null });
+    expect((await getClose(ahmed(), TODAY))!.returns).toEqual([{ description: "عصير", quantity: 1, reason: "damaged", photos: [b] }]);
+  });
+
+  it("another rep's photo, a report photo and a photo on another close are unknown, and nothing is written", async () => {
+    const khaleds = await photo(ctxOf("khaled"));
+    const report = await photo(ahmed(), "report");
+    const onTwelfth = await photo(ahmed(), "return", "2026-11-12");
+    expect(await saveClose(ahmed(), withReturn([onTwelfth], "2026-11-12"), { today: TODAY })).toEqual({ ok: true });
+    for (const id of [khaleds, report, onTwelfth, "f".repeat(32)]) {
+      expect(await saveClose(ahmed(), withReturn([id]), { today: TODAY })).toEqual({ ok: false, errors: { "returns.0.photos": "unknown" } });
+    }
+    expect(await getClose(ahmed(), TODAY)).toBeNull();
+    expect((await fileRow(khaleds)).closeId).toBeNull();
+    expect((await fileRow(report)).closeId).toBeNull();
+  });
+
+  it("his own photo removed before the save is expired, named per photo, and nothing is written (R70)", async () => {
+    const a = await photo();
+    const gone = await photo();
+    await removeOwnFile(ahmed(), gone);
+    expect(await saveClose(ahmed(), withReturn([a, gone]), { today: TODAY })).toEqual({
+      ok: false,
+      errors: { "returns.0.photos": "expired", [`photo.${gone}`]: "expired" },
+    });
+    expect(await getClose(ahmed(), TODAY)).toBeNull();
+    expect((await fileRow(a)).closeId).toBeNull();
+  });
+
+  it("at most 3 photos per return and 12 per close; an id twice is unknown", async () => {
+    const ids = Array.from({ length: 15 }, (_, i) => i.toString(16).padStart(32, "a"));
+    expect(await saveClose(ahmed(), withReturn(ids.slice(0, 4)), { today: TODAY })).toEqual({
+      ok: false,
+      errors: { "returns.0.photos": "too_many" },
+    });
+    const five = form(TODAY, { bev: 1, food: 1, coll: 1 }, {
+      returns: [0, 1, 2, 3, 4].map((r) => ({ description: `r${r}`, quantity: 1, reason: "other" as const, photos: ids.slice(r * 3, r * 3 + 3) })),
+    });
+    expect(await saveClose(ahmed(), five, { today: TODAY })).toEqual({ ok: false, errors: { "returns.4.photos": "too_many" } });
+    const a = await photo();
+    const twice = form(TODAY, { bev: 1, food: 1, coll: 1 }, {
+      returns: [
+        { description: "x", quantity: 1, reason: "other", photos: [a] },
+        { description: "y", quantity: 1, reason: "other", photos: [a] },
+      ],
+    });
+    expect(await saveClose(ahmed(), twice, { today: TODAY })).toEqual({ ok: false, errors: { "returns.1.photos": "unknown" } });
+  });
+
+  it("a malformed id is unknown without a lookup", async () => {
+    expect(await saveClose(ahmed(), withReturn(["../../x"]), { today: TODAY })).toEqual({ ok: false, errors: { "returns.0.photos": "unknown" } });
+  });
+
+  it("saving through a repCtx context still throws Forbidden", async () => {
+    const a = await photo();
+    const acting = await repCtx({ ...ahmed(), userId: seed.supervisorId, role: "supervisor" }, "ahmed");
+    await expect(saveClose(acting!, withReturn([a]), { today: TODAY })).rejects.toThrow(Forbidden);
+  });
+
+  it("history lists a day's return photos, not the removed ones", async () => {
+    const a = await photo();
+    const b = await photo();
+    await saveClose(ahmed(), withReturn([a, b]), { today: TODAY });
+    let day = (await getHistoryDays(ahmed(), 2026, 11)).find((d) => d.date === TODAY)!;
+    expect(day.returnPhotos).toEqual([{ description: "كولا", photos: [a, b] }]);
+    await removeOwnFile(ahmed(), b);
+    day = (await getHistoryDays(ahmed(), 2026, 11)).find((d) => d.date === TODAY)!;
+    expect(day.returnPhotos).toEqual([{ description: "كولا", photos: [a] }]);
+    // Days without photos carry no photo field at all.
+    expect((await getHistoryDays(ahmed(), 2026, 11)).find((d) => d.date === "2026-11-12")!.returnPhotos).toBeUndefined();
   });
 });

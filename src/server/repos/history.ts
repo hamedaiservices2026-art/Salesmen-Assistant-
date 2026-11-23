@@ -1,4 +1,5 @@
-import { and, desc, eq, gte, lte, min } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, lte, min } from "drizzle-orm";
+import { inRetention } from "@/server/files/files";
 import type { ISODate } from "@/domain/calendar";
 import { evaluateScheme } from "@/domain/commission";
 import { reconcile } from "@/domain/reconciliation";
@@ -32,6 +33,8 @@ export type HistoryDay = {
   cashToHandOver: number;
   /** Created by an admin's upload and not yet confirmed by the rep: an open day. */
   draft: boolean;
+  /** The day's returns that have photos (not deleted), in return order; absent when none has any. */
+  returnPhotos?: { description: string; photos: string[] }[];
 };
 
 /** Months in which the rep has a close or a target, newest first. */
@@ -162,13 +165,54 @@ export async function getHistoryDays(
     }
   }
 
-  return closes.map((c) => ({
-    date: c.date,
-    lines: byClose.get(c.id) ?? {},
-    admin: adminByClose.get(c.id) ?? {},
-    cashToHandOver: reconcile(c).cashToHandOver,
-    draft: c.status === "draft",
-  }));
+  const photosByClose = await returnPhotosOf(ctx, closes.map((c) => c.id));
+  return closes.map((c) => {
+    const photos = photosByClose.get(c.id);
+    return {
+      date: c.date,
+      lines: byClose.get(c.id) ?? {},
+      admin: adminByClose.get(c.id) ?? {},
+      cashToHandOver: reconcile(c).cashToHandOver,
+      draft: c.status === "draft",
+      ...(photos ? { returnPhotos: photos } : {}),
+    };
+  });
+}
+
+/** Per close: its returns that have photos not deleted (and inside retention), with their ids oldest first. */
+async function returnPhotosOf(ctx: Ctx, closeIds: string[]): Promise<Map<string, { description: string; photos: string[] }[]>> {
+  const out = new Map<string, { description: string; photos: string[] }[]>();
+  if (closeIds.length === 0) return out;
+  const files = await ctx.db
+    .select({ id: s.files.id, closeId: s.files.closeId, pos: s.files.returnPos })
+    .from(s.files)
+    .where(
+      and(
+        eq(s.files.companyId, ctx.companyId),
+        eq(s.files.userId, ctx.userId),
+        eq(s.files.kind, "return"),
+        inArray(s.files.closeId, closeIds),
+        isNull(s.files.deletedAt),
+        inRetention(new Date()),
+      ),
+    )
+    .orderBy(asc(s.files.createdAt), asc(s.files.id));
+  if (files.length === 0) return out;
+  const withPhotos = [...new Set(files.map((f) => f.closeId!))];
+  const returns = await ctx.db
+    .select({ closeId: s.returns.closeId, description: s.returns.description })
+    .from(s.returns)
+    .where(and(eq(s.returns.companyId, ctx.companyId), inArray(s.returns.closeId, withPhotos)))
+    // The same order as getClose, so a position means the same return row.
+    .orderBy(asc(s.returns.createdAt), asc(s.returns.id));
+  for (const closeId of withPhotos) {
+    const rows = returns.filter((r) => r.closeId === closeId);
+    const list = rows
+      .map((r, i) => ({ description: r.description, photos: files.filter((f) => f.closeId === closeId && f.pos === i).map((f) => f.id) }))
+      .filter((r) => r.photos.length > 0);
+    if (list.length > 0) out.set(closeId, list);
+  }
+  return out;
 }
 
 /**

@@ -1,6 +1,7 @@
 import type { LineKind } from "@/domain/lines";
 import type { Unit } from "@/domain/money";
 import { parseAmount } from "@/domain/money";
+import { isFileId } from "@/domain/files";
 import type { CloseForm, ReturnReason } from "@/server/repos/closes";
 
 export type ParseResult =
@@ -14,7 +15,7 @@ function text(data: FormData, name: string): string {
   return typeof v === "string" ? v.trim() : "";
 }
 
-/** Original indexes of the returns rows that hold something (a blank row is dropped). */
+/** Original indexes of the returns rows that hold something (a blank row is dropped; a row with photos is kept). */
 export function returnIndexes(data: FormData): number[] {
   const found = new Set<number>();
   for (const key of data.keys()) {
@@ -23,12 +24,14 @@ export function returnIndexes(data: FormData): number[] {
   }
   return [...found]
     .sort((a, b) => a - b)
-    .filter((i) => text(data, `ret.${i}.description`) !== "" || text(data, `ret.${i}.quantity`) !== "");
+    .filter(
+      (i) => text(data, `ret.${i}.description`) !== "" || text(data, `ret.${i}.quantity`) !== "" || text(data, `ret.${i}.photos`) !== "",
+    );
 }
 
 /**
  * Reads the day-close form. Field names: `line.<id>`, `focus.<id>`, the money and stock fields by
- * name, and `ret.<i>.description|quantity|reason`. A required field left empty is `required`, one
+ * name, and `ret.<i>.description|quantity|reason|photos` (photos: comma-separated file ids). A required field left empty is `required`, one
  * that cannot be read as a number is `invalid`; nothing unreadable is ever turned into 0.
  * When the company has a collection-kind line, `collections` is the sum of those lines (the form
  * has no separate field; an omitted optional line counts 0); otherwise it is read from the `collections` field, optional.
@@ -80,7 +83,14 @@ export function parseCloseForm(
     const quantity = read(`ret.${i}.quantity`, "cases", true);
     const reason = text(data, `ret.${i}.reason`);
     if (!REASONS.includes(reason)) errors[`ret.${i}.reason`] = "invalid";
-    returns.push({ description: text(data, `ret.${i}.description`), quantity, reason: reason as ReturnReason });
+    const row: CloseForm["returns"][number] = { description: text(data, `ret.${i}.description`), quantity, reason: reason as ReturnReason };
+    if (data.has(`ret.${i}.photos`)) {
+      const raw = text(data, `ret.${i}.photos`);
+      const ids = raw === "" ? [] : raw.split(",");
+      if (ids.some((id) => !isFileId(id))) errors[`ret.${i}.photos`] = "invalid";
+      row.photos = ids;
+    }
+    returns.push(row);
   }
 
   if (Object.keys(errors).length > 0) return { ok: false, errors };

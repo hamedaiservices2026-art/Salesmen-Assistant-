@@ -148,7 +148,26 @@
     "stockSummary": "Van stock (optional)",
     "adminNote": "Admin recorded {amount}",
     "repNote": "You typed {amount}",
-    "collectionsByAdmin": "Collections as recorded by the admin"
+    "collectionsByAdmin": "Collections as recorded by the admin",
+    "photo": {
+      "add": "Add photo",
+      "remove": "Remove photo",
+      "uploading": "Uploading…",
+      "count": "{n, plural, =1 {1 photo} other {# photos}}",
+      "thumbAlt": "Return photo {n}",
+      "open": "Open photo {n}",
+      "errors": {
+        "too_large": "The photo is too large",
+        "unsupported_type": "That type is not supported. Take the photo with the camera",
+        "unreadable": "We could not open the photo",
+        "quota": "You reached today's photo limit",
+        "failed": "The upload did not go through. Try again",
+        "too_many": "At most 3 photos per return",
+        "expired": "This photo has expired. Add it again",
+        "unknown": "This photo is not there. Add it again",
+        "invalid": "This photo is not there. Add it again"
+      }
+    }
   },
   "commission": {
     "title": "Commission",
@@ -213,7 +232,8 @@
     "unknownLine": "Old target line",
     "adminNote": "Admin recorded {amount}",
     "repNote": "You typed {amount}",
-    "tooLarge": "Too large to calculate"
+    "tooLarge": "Too large to calculate",
+    "photosLabel": "Return photos"
   },
   "settings": {
     "title": "Settings",
@@ -1182,5 +1202,9 @@
       "unreadable": "We could not understand the reply. Try again.",
       "no_notice": "Read the notice and agree to it first."
     }
+  },
+  "photos": {
+    "keptRep": "Return photos and report photos are kept on the company's server. Return photos stay 180 days and your supervisor and the admin can see them; report photos stay 30 days and only you can see them. A photo not saved with a close is deleted after a day.",
+    "keptAdmin": "Return photos and report photos are kept on the company's server. Return photos stay 180 days and the rep, his supervisor and the admin can see them; report photos stay 30 days and only the rep can see them. A photo not saved with a close is deleted after a day."
   }
 }

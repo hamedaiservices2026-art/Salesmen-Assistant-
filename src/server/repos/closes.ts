@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, notInArray, sql } from "drizzle-orm";
 import type { ISODate } from "@/domain/calendar";
 import * as s from "@/db/schema";
 import type { Db } from "@/db/client";
@@ -9,6 +9,8 @@ import type { Ctx } from "@/server/ctx";
 import { currentDay } from "@/server/today";
 import { isDailyLine } from "@/domain/lines";
 import { loadCalendar, loadLines } from "./month-data";
+import { isFileId } from "@/domain/files";
+import { CLOSE_PHOTOS_MAX, RETURN_PHOTOS_MAX, attachFiles, inRetention } from "@/server/files/files";
 
 export type ReturnReason = "expired" | "damaged" | "other";
 
@@ -23,14 +25,22 @@ export type CloseForm = {
   loaded: number;
   sold: number;
   returned: number;
-  returns: { description: string; quantity: number; reason: ReturnReason }[];
+  returns: CloseReturn[];
   note: string;
 };
+
+/** A returned item. `photos` are file ids of the rep's return photos; absent means none (R52). */
+export type CloseReturn = { description: string; quantity: number; reason: ReturnReason; photos?: string[] };
 
 /** What the rep sees for a line an admin's Excel upload set: the admin's amount and, when he typed his own, his. */
 export type AdminLine = { amount: number; repAmount: number | null };
 /** `draft`: created by an admin's upload and not yet confirmed by the rep (its money and stock fields are not his entries). */
-export type SavedClose = CloseForm & { admin: Record<string, AdminLine>; draft: boolean };
+export type SavedClose = Omit<CloseForm, "returns"> & {
+  /** Each return with the ids of its photos that are not deleted, oldest first (always set; R52). */
+  returns: (Omit<CloseReturn, "photos"> & { photos: string[] })[];
+  admin: Record<string, AdminLine>;
+  draft: boolean;
+};
 
 export type SaveCloseResult = { ok: true } | { ok: false; errors: Record<string, string> };
 
@@ -48,11 +58,26 @@ export async function getClose(ctx: Ctx, date: ISODate): Promise<SavedClose | nu
   if (!close) return null;
   const inClose = <T extends typeof s.closeLines | typeof s.closeFocus | typeof s.returns>(t: T) =>
     and(eq(t.closeId, close.id), eq(t.companyId, ctx.companyId));
-  const [lines, focus, returns] = await Promise.all([
+  const [lines, focus, returns, photos] = await Promise.all([
     ctx.db.select().from(s.closeLines).where(inClose(s.closeLines)),
     ctx.db.select().from(s.closeFocus).where(inClose(s.closeFocus)),
     ctx.db.select().from(s.returns).where(inClose(s.returns)).orderBy(asc(s.returns.createdAt), asc(s.returns.id)),
+    ctx.db
+      .select({ id: s.files.id, pos: s.files.returnPos })
+      .from(s.files)
+      .where(
+        and(
+          eq(s.files.closeId, close.id),
+          eq(s.files.companyId, ctx.companyId),
+          eq(s.files.userId, ctx.userId),
+          eq(s.files.kind, "return"),
+          isNull(s.files.deletedAt),
+          inRetention(new Date()),
+        ),
+      )
+      .orderBy(asc(s.files.createdAt), asc(s.files.id)),
   ]);
+  const photosAt = (i: number) => photos.filter((p) => p.pos === i).map((p) => p.id);
   return {
     date: close.date,
     lines: Object.fromEntries(lines.map((l) => [l.lineId, l.amount])),
@@ -64,7 +89,7 @@ export async function getClose(ctx: Ctx, date: ISODate): Promise<SavedClose | nu
     loaded: close.loaded,
     sold: close.sold,
     returned: close.returned,
-    returns: returns.map((r) => ({ description: r.description, quantity: r.quantity, reason: r.reason })),
+    returns: returns.map((r, i) => ({ description: r.description, quantity: r.quantity, reason: r.reason, photos: photosAt(i) })),
     note: close.note ?? "",
     draft: close.status === "draft",
     admin: Object.fromEntries(
@@ -85,7 +110,7 @@ function isRealDate(date: string): boolean {
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === date;
 }
 
-async function validate(ctx: Ctx, form: CloseForm, today: ISODate): Promise<Record<string, string>> {
+async function validate(ctx: Ctx, form: CloseForm, today: ISODate, now: Date): Promise<Record<string, string>> {
   const errors: Record<string, string> = {};
 
   if (!isRealDate(form.date)) errors.date = "invalid";
@@ -133,13 +158,77 @@ async function validate(ctx: Ctx, form: CloseForm, today: ISODate): Promise<Reco
     if (!REASONS.includes(r.reason)) errors[`returns.${i}.reason`] = "invalid";
   });
 
+  if (errors.date === undefined) Object.assign(errors, await photoErrors(ctx, form, now));
   return errors;
 }
 
+/**
+ * The return photos of a form: at most `RETURN_PHOTOS_MAX` per return and `CLOSE_PHOTOS_MAX` per
+ * close (`too_many`, on the return that passes the limit); then each id must be a well-formed id,
+ * listed once, of a `return` photo of the caller's company and user, unattached or on this day's
+ * close (`unknown` otherwise: the same code for another rep's photo and for one that does not
+ * exist). His own photo that is deleted or past its retention is `expired`, and also named on its
+ * own (`photo.<id>`) so the screen can mark it (R70).
+ */
+async function photoErrors(ctx: Ctx, form: CloseForm, now: Date): Promise<Record<string, string>> {
+  const errors: Record<string, string> = {};
+  let total = 0;
+  form.returns.forEach((r, i) => {
+    const n = r.photos?.length ?? 0;
+    total += n;
+    if (n > RETURN_PHOTOS_MAX || total > CLOSE_PHOTOS_MAX) errors[`returns.${i}.photos`] = "too_many";
+  });
+  if (Object.keys(errors).length > 0) return errors;
+
+  const ids = form.returns.flatMap((r) => (r.photos ?? []).filter(isFileId));
+  if (ids.length === 0 && !form.returns.some((r) => (r.photos?.length ?? 0) > 0)) return errors;
+  const [close] = await ctx.db
+    .select({ id: s.dailyCloses.id })
+    .from(s.dailyCloses)
+    .where(and(eq(s.dailyCloses.companyId, ctx.companyId), eq(s.dailyCloses.userId, ctx.userId), eq(s.dailyCloses.date, form.date)));
+  const rows = ids.length
+    ? await ctx.db
+        .select({
+          id: s.files.id,
+          kind: s.files.kind,
+          closeId: s.files.closeId,
+          deleted: sql<boolean>`${s.files.deletedAt} is not null`,
+          kept: sql<boolean>`${inRetention(now)}`,
+        })
+        .from(s.files)
+        .where(and(inArray(s.files.id, ids), eq(s.files.companyId, ctx.companyId), eq(s.files.userId, ctx.userId)))
+    : [];
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const seen = new Set<string>();
+  form.returns.forEach((r, i) => {
+    let code: "unknown" | "expired" | null = null;
+    for (const id of r.photos ?? []) {
+      const row = isFileId(id) && !seen.has(id) ? byId.get(id) : undefined;
+      seen.add(id);
+      if (!row || row.kind !== "return" || (row.closeId !== null && row.closeId !== close?.id)) {
+        code = "unknown";
+      } else if (row.deleted || !row.kept) {
+        errors[`photo.${id}`] = "expired";
+        code ??= "expired";
+      }
+    }
+    if (code) errors[`returns.${i}.photos`] = code;
+  });
+  return errors;
+}
+
+/** Thrown inside the save's transaction to roll it back when a photo could not be attached. */
+class PhotosMissing extends Error {
+  constructor(readonly errors: Record<string, string>) {
+    super("photos missing");
+  }
+}
+
 /** Validates and upserts the rep's close for form.date, replacing its line, focus and return rows. */
-export async function saveClose(ctx: Ctx, form: CloseForm, opts?: { today?: ISODate }): Promise<SaveCloseResult> {
+export async function saveClose(ctx: Ctx, form: CloseForm, opts?: { today?: ISODate; now?: Date }): Promise<SaveCloseResult> {
   assertOwnContext(ctx);
   const today = opts?.today ?? currentDay(ctx.timeZone);
+  const now = opts?.now ?? new Date();
   const values = {
     source: "manual" as const,
     status: "confirmed" as const,
@@ -152,11 +241,25 @@ export async function saveClose(ctx: Ctx, form: CloseForm, opts?: { today?: ISOD
     returned: form.returned,
     note: form.note === "" ? null : form.note,
   };
-  const companyId = ctx.companyId;
+  try {
+    return await saveInTransaction(ctx, form, today, now, values);
+  } catch (e) {
+    if (e instanceof PhotosMissing) return { ok: false, errors: e.errors };
+    throw e;
+  }
+}
 
+async function saveInTransaction(
+  ctx: Ctx,
+  form: CloseForm,
+  today: ISODate,
+  now: Date,
+  values: Omit<typeof s.dailyCloses.$inferInsert, "id" | "companyId" | "userId" | "date">,
+): Promise<SaveCloseResult> {
+  const companyId = ctx.companyId;
   return ctx.db.transaction(async (tx): Promise<SaveCloseResult> => {
     // Validated inside the transaction so what is checked is what is written.
-    const errors = await validate({ ...ctx, db: tx as unknown as Db }, form, today);
+    const errors = await validate({ ...ctx, db: tx as unknown as Db }, form, today, now);
     if (Object.keys(errors).length > 0) return { ok: false, errors };
 
     const [close] = await tx
@@ -242,10 +345,56 @@ export async function saveClose(ctx: Ctx, form: CloseForm, opts?: { today?: ISOD
       // One batch shares created_at, so the ids carry the position and getClose keeps the given order.
       await tx
         .insert(s.returns)
-        .values(form.returns.map((r, i) => ({ id: `${closeId}-r${String(i).padStart(3, "0")}`, companyId, closeId, ...r })));
+        .values(
+          form.returns.map((r, i) => ({
+            id: `${closeId}-r${String(i).padStart(3, "0")}`,
+            companyId,
+            closeId,
+            description: r.description,
+            quantity: r.quantity,
+            reason: r.reason,
+          })),
+        );
     }
+    await syncReturnPhotos(tx as unknown as Db, ctx, closeId, form, now);
     return { ok: true };
   });
+}
+
+/**
+ * Links the listed photos to their return rows (by close and position, as the return rows are
+ * replaced on every save) and soft-deletes this close's other return photos, which the sweep then
+ * removes. A photo that cannot be attached any more (removed or swept since the check) rolls the
+ * whole save back with `expired` for it: a photo is never dropped silently (R70).
+ */
+async function syncReturnPhotos(tx: Db, ctx: Ctx, closeId: string, form: CloseForm, now: Date): Promise<void> {
+  const items = form.returns.flatMap((r, i) => (r.photos ?? []).map((id) => ({ id, kind: "return" as const, returnPos: i })));
+  if (items.length > 0) {
+    const { missing } = await attachFiles(tx, ctx, closeId, items, now);
+    if (missing.length > 0) {
+      const errors: Record<string, string> = {};
+      for (const id of missing) {
+        errors[`photo.${id}`] = "expired";
+        const at = items.find((it) => it.id === id)!.returnPos;
+        errors[`returns.${at}.photos`] = "expired";
+      }
+      throw new PhotosMissing(errors);
+    }
+  }
+  const listed = items.map((it) => it.id);
+  await tx
+    .update(s.files)
+    .set({ deletedAt: now })
+    .where(
+      and(
+        eq(s.files.closeId, closeId),
+        eq(s.files.companyId, ctx.companyId),
+        eq(s.files.userId, ctx.userId),
+        eq(s.files.kind, "return"),
+        isNull(s.files.deletedAt),
+        ...(listed.length > 0 ? [notInArray(s.files.id, listed)] : []),
+      ),
+    );
 }
 
 /**

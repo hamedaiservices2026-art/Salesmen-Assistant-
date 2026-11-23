@@ -7,7 +7,7 @@ import { getProviders } from "./providers";
 import type { AiProvider } from "./types";
 
 /** The version of the one-time notice a rep accepts before his first AI request. */
-export const AI_NOTICE_VERSION = 1;
+export const AI_NOTICE_VERSION = 2;
 
 export type AiUnavailable = "disabled" | "company_off" | "no_notice" | "no_provider";
 

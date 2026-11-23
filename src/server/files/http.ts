@@ -1,13 +1,12 @@
 import type { ISODate } from "@/domain/calendar";
-import { PHOTO_MAX_BYTES } from "@/domain/files";
+import { PHOTO_MAX_BYTES, PHOTO_REQUESTED_WITH } from "@/domain/files";
 import type { Ctx } from "@/server/ctx";
 import { checkPostHeaders, readCappedBody } from "@/server/http/guarded-post";
 import { currentDay } from "@/server/today";
 import { readFile, saveUpload, type SaveUploadError } from "./files";
 import type { FileStore } from "./store";
 
-/** The browser sends this header with every photo upload; a plain cross-site form post cannot. */
-export const PHOTO_REQUESTED_WITH = "photo";
+export { PHOTO_REQUESTED_WITH };
 /** The photo limit plus room for the multipart framing and the other form fields. */
 export const FILE_POST_MAX_BODY = PHOTO_MAX_BYTES + 65_536;
 /** Least time between two photo sweeps started by this server instance (R70). */

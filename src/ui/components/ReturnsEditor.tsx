@@ -3,21 +3,26 @@
 import { Plus, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { AmountField } from "./AmountField";
+import { PhotoPicker } from "./PhotoPicker";
 
-export type ReturnRow = { key: number; description: string; quantity: string; reason: string };
+export type ReturnRow = { key: number; description: string; quantity: string; reason: string; photos: string[] };
 
 const REASONS = ["expired", "damaged", "other"] as const;
 const inputClass =
   "box-border h-12 w-full rounded-[10px] border border-line bg-white px-3 text-[15px] text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand";
 
-/** Returned goods: add and remove rows of description, quantity and reason. Photos come later. */
+/** Returned goods: add and remove rows of description, quantity, reason and up to 3 photos. */
 export function ReturnsEditor({
+  date,
   rows,
   onChange,
   errors,
 }: {
+  /** The day being recorded: photos are dated with it. */
+  date: string;
   rows: ReturnRow[];
   onChange: (rows: ReturnRow[]) => void;
+  /** Translated error text by field name (`ret.<i>.<field>`, and `photo.<id>` for one photo). */
   errors: Record<string, string | undefined>;
 }) {
   const t = useTranslations("close");
@@ -67,6 +72,14 @@ export function ReturnsEditor({
               <span className="text-[13px] font-semibold text-alert">{errors[`ret.${i}.reason`]}</span>
             )}
           </label>
+          <PhotoPicker
+            name={`ret.${i}.photos`}
+            date={date}
+            photos={r.photos}
+            onChange={(photos) => set(r.key, { photos })}
+            error={errors[`ret.${i}.photos`]}
+            photoErrors={Object.fromEntries(r.photos.map((id) => [id, errors[`photo.${id}`]]))}
+          />
           <button
             type="button"
             onClick={() => onChange(rows.filter((x) => x.key !== r.key))}
@@ -79,7 +92,7 @@ export function ReturnsEditor({
       ))}
       <button
         type="button"
-        onClick={() => onChange([...rows, { key: nextKey, description: "", quantity: "", reason: "expired" }])}
+        onClick={() => onChange([...rows, { key: nextKey, description: "", quantity: "", reason: "expired", photos: [] }])}
         className="inline-flex min-h-12 items-center justify-center gap-1.5 rounded-[10px] border border-line bg-white px-3.5 text-sm font-semibold text-brand focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
       >
         <Plus aria-hidden="true" size={18} strokeWidth={2} />

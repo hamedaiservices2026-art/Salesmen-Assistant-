@@ -7,7 +7,7 @@ import * as s from "@/db/schema";
 import type { Ctx } from "@/server/ctx";
 import { Forbidden, type Role } from "@/server/auth/roles";
 import { repCtx } from "@/server/admin/rep-ctx";
-import { aiAvailability } from "./availability";
+import { AI_NOTICE_VERSION, aiAvailability } from "./availability";
 import { readAiConfig } from "./config";
 import { acceptAiNotice, acceptAiNoticeFromForm, aiNoticeAccepted, aiStatus, getCompanyAi, setCompanyAi, withdrawAiNotice } from "./consent";
 
@@ -72,10 +72,10 @@ describe("rep notice", () => {
   it("accepting the current version makes the rep available; withdrawing takes it back", async () => {
     expect(await aiAvailability(ahmed(), "chat", FAKE)).toEqual({ ok: false, reason: "no_notice" });
     const now = new Date("2026-11-14T07:00:00Z");
-    expect(await acceptAiNotice(ahmed(), 1, now)).toEqual({ ok: true });
+    expect(await acceptAiNotice(ahmed(), 2, now)).toEqual({ ok: true });
     expect(await aiAvailability(ahmed(), "chat", FAKE)).toEqual({ ok: true });
     const [u] = await db.select().from(s.users).where(eq(s.users.id, "ahmed"));
-    expect(u!.aiNoticeVersion).toBe(1);
+    expect(u!.aiNoticeVersion).toBe(2);
     expect(u!.aiNoticeAt).toEqual(now);
     expect(await withdrawAiNotice(ahmed())).toEqual({ ok: true });
     expect(await aiAvailability(ahmed(), "chat", FAKE)).toEqual({ ok: false, reason: "no_notice" });
@@ -85,7 +85,8 @@ describe("rep notice", () => {
 
   it("a stale or future version is refused and records nothing", async () => {
     expect(await acceptAiNotice(ahmed(), 0)).toEqual({ ok: false, error: "stale_version" });
-    expect(await acceptAiNotice(ahmed(), 2)).toEqual({ ok: false, error: "stale_version" });
+    expect(await acceptAiNotice(ahmed(), 1)).toEqual({ ok: false, error: "stale_version" });
+    expect(await acceptAiNotice(ahmed(), 3)).toEqual({ ok: false, error: "stale_version" });
     const [u] = await db.select().from(s.users).where(eq(s.users.id, "ahmed"));
     expect(u!.aiNoticeVersion).toBe(0);
   });
@@ -93,15 +94,15 @@ describe("rep notice", () => {
   it("consent cannot be recorded for someone else: acting contexts, admins and owners are refused", async () => {
     const acting = await repCtx(admin(), "ahmed");
     expect(acting).not.toBeNull();
-    await expect(acceptAiNotice(acting!, 1)).rejects.toBeInstanceOf(Forbidden);
+    await expect(acceptAiNotice(acting!, 2)).rejects.toBeInstanceOf(Forbidden);
     await expect(withdrawAiNotice(acting!)).rejects.toBeInstanceOf(Forbidden);
-    await expect(acceptAiNotice(admin(), 1)).rejects.toBeInstanceOf(Forbidden);
+    await expect(acceptAiNotice(admin(), 2)).rejects.toBeInstanceOf(Forbidden);
     const [u] = await db.select().from(s.users).where(eq(s.users.id, "ahmed"));
     expect(u!.aiNoticeVersion).toBe(0);
   });
 
   it("accepting touches only the signed-in rep", async () => {
-    await acceptAiNotice(ahmed(), 1);
+    await acceptAiNotice(ahmed(), 2);
     const [k] = await db.select().from(s.users).where(eq(s.users.id, "khaled"));
     expect(k!.aiNoticeVersion).toBe(0);
   });
@@ -110,7 +111,7 @@ describe("rep notice", () => {
 describe("supervisor and form wrapper", () => {
   it("a supervisor can accept for himself", async () => {
     const sami = ctxOf("sami", "supervisor");
-    expect(await acceptAiNotice(sami, 1)).toEqual({ ok: true });
+    expect(await acceptAiNotice(sami, 2)).toEqual({ ok: true });
     expect(await aiNoticeAccepted(sami)).toBe(true);
   });
 
@@ -122,22 +123,36 @@ describe("supervisor and form wrapper", () => {
     }
     expect(await aiNoticeAccepted(ahmed())).toBe(false);
     const good = new FormData();
-    good.set("version", "1");
+    good.set("version", "2");
     expect(await acceptAiNoticeFromForm(ahmed(), good)).toEqual({ ok: true });
+    expect(await aiNoticeAccepted(ahmed())).toBe(true);
+  });
+});
+
+describe("notice version 2 (Task 8: photos are kept)", () => {
+  it("is the current version, and a rep who accepted version 1 must accept again", async () => {
+    expect(AI_NOTICE_VERSION).toBe(2);
+    await db.update(s.users).set({ aiNoticeVersion: 1, aiNoticeAt: new Date() }).where(eq(s.users.id, "ahmed"));
+    expect(await aiNoticeAccepted(ahmed())).toBe(false);
+    expect(await aiAvailability(ahmed(), "chat", FAKE)).toEqual({ ok: false, reason: "no_notice" });
+    const old = new FormData();
+    old.set("version", "1");
+    expect(await acceptAiNoticeFromForm(ahmed(), old)).toEqual({ ok: false, error: "stale_version" });
+    expect(await acceptAiNotice(ahmed(), 2)).toEqual({ ok: true });
     expect(await aiNoticeAccepted(ahmed())).toBe(true);
   });
 });
 
 describe("aiNoticeAccepted", () => {
   it("is false for a lower stored version than the current one", async () => {
-    // With the current version at 1, 0 is the only lower value; a stored 0 with a timestamp still counts as not accepted.
+    // 0 is lower than every version; a stored 0 with a timestamp still counts as not accepted.
     await db.update(s.users).set({ aiNoticeVersion: 0, aiNoticeAt: new Date() }).where(eq(s.users.id, "ahmed"));
     expect(await aiNoticeAccepted(ahmed())).toBe(false);
   });
 
   it("follows accept and withdraw", async () => {
     expect(await aiNoticeAccepted(ahmed())).toBe(false);
-    await acceptAiNotice(ahmed(), 1);
+    await acceptAiNotice(ahmed(), 2);
     expect(await aiNoticeAccepted(ahmed())).toBe(true);
     await withdrawAiNotice(ahmed());
     expect(await aiNoticeAccepted(ahmed())).toBe(false);
@@ -147,7 +162,7 @@ describe("aiNoticeAccepted", () => {
 describe("aiStatus", () => {
   it("wraps availability for the kind", async () => {
     expect(await aiStatus(ahmed(), "chat", FAKE)).toEqual({ available: false, reason: "no_notice" });
-    await acceptAiNotice(ahmed(), 1);
+    await acceptAiNotice(ahmed(), 2);
     expect(await aiStatus(ahmed(), "vision", FAKE)).toEqual({ available: true, reason: null });
     expect(await aiStatus(ahmed(), "chat", readAiConfig({ AI_DISABLED: "1" }))).toEqual({ available: false, reason: "disabled" });
   });

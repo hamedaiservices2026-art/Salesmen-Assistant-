@@ -11,6 +11,7 @@ import { getFirstCloseDate, getHistoryDays, getMonthSellingDays } from "@/server
 import { loadLines } from "@/server/repos/month-data";
 import { currentDay } from "@/server/today";
 import { formatAmount, type Unit } from "@/domain/money";
+import { isFileId } from "@/domain/files";
 import { mergeDayRows, parseYm } from "@/ui/history-rows";
 import { INTL_TAG } from "@/ui/intl-tag";
 
@@ -26,8 +27,9 @@ export default async function HistoryMonthPage({
   if (!parsed) notFound();
   const { year, month } = parsed;
 
-  const [t, tRoot, locale, closed, selling, lines, prefs, firstClose] = await Promise.all([
+  const [t, tPhoto, tRoot, locale, closed, selling, lines, prefs, firstClose] = await Promise.all([
     getTranslations("history"),
+    getTranslations("close.photo"),
     getTranslations(),
     getLocale(),
     getHistoryDays(ctx, year, month),
@@ -166,6 +168,35 @@ export default async function HistoryMonthPage({
                         );
                       })}
                   </dl>
+                  {d.returnPhotos && (
+                    <div className="flex flex-col gap-2 border-t border-line-soft pt-2.5">
+                      <h3 className="m-0 text-[14px] font-medium text-ink-2">{t("photosLabel")}</h3>
+                      {d.returnPhotos.map((r, ri) => (
+                        <div key={ri} className="flex flex-col gap-1.5">
+                          <span dir="auto" className="text-[14px] text-ink">
+                            {r.description} · {tPhoto("count", { n: r.photos.length })}
+                          </span>
+                          <ul className="m-0 flex list-none flex-wrap gap-2 p-0">
+                            {r.photos.filter(isFileId).map((id, i) => (
+                              <li key={id}>
+                                <a
+                                  href={`/files/${id}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  aria-label={tPhoto("open", { n: i + 1 })}
+                                  className="block size-14 overflow-hidden rounded-[10px] border border-line focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+                                >
+                                  {/* A private photo behind the session: never passed through the image optimizer (R61). */}
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img src={`/files/${id}`} alt="" width={56} height={56} className="size-full object-cover" />
+                                </a>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   {d.draft ? (
                     <Link
                       href={`/app/close?date=${d.date}`}

@@ -141,6 +141,7 @@ export default async function ClosePage({ searchParams }: { searchParams: Promis
     description: r.description,
     quantity: inputValue(r.quantity, "cases"),
     reason: r.reason,
+    photos: r.photos,
   }));
 
   const title =

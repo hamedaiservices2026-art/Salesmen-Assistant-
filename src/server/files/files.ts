@@ -112,7 +112,7 @@ const utcDayBefore = (now: Date, days: number) => new Date(now.getTime() - days 
  * (report) or 180 (return) days before today (UTC). On the 30th day after its date a report photo
  * is still kept; on the 31st it is not.
  */
-function inRetention(now: Date): SQL {
+export function inRetention(now: Date): SQL {
   return or(
     and(eq(s.files.kind, "report"), sql`${s.files.date} >= ${utcDayBefore(now, FILE_RETENTION_DAYS.report)}::date`),
     and(eq(s.files.kind, "return"), sql`${s.files.date} >= ${utcDayBefore(now, FILE_RETENTION_DAYS.return)}::date`),

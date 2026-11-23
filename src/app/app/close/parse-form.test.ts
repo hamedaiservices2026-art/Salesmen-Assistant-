@@ -77,6 +77,41 @@ describe("parseCloseForm", () => {
     ]);
   });
 
+  it("reads return photos as comma-separated file ids (Task 8)", () => {
+    const a = "0123456789abcdef0123456789abcdef";
+    const b = "fedcba9876543210fedcba9876543210";
+    const f = data(good);
+    f.set("ret.0.description", "كولا");
+    f.set("ret.0.quantity", "3");
+    f.set("ret.0.reason", "expired");
+    f.set("ret.0.photos", `${a},${b}`);
+    const r = parseCloseForm(f, lines, focus);
+    expect(r.ok && r.form.returns).toEqual([{ description: "كولا", quantity: 3, reason: "expired", photos: [a, b] }]);
+    f.set("ret.0.photos", "");
+    const none = parseCloseForm(f, lines, focus);
+    expect(none.ok && none.form.returns).toEqual([{ description: "كولا", quantity: 3, reason: "expired", photos: [] }]);
+  });
+
+  it("a photo value that is not a file id is invalid", () => {
+    const f = data(good);
+    f.set("ret.0.description", "كولا");
+    f.set("ret.0.quantity", "3");
+    f.set("ret.0.reason", "expired");
+    for (const bad of ["x", "../../etc/passwd", "0123456789abcdef0123456789abcdef,x", "0123456789ABCDEF0123456789ABCDEF"]) {
+      f.set("ret.0.photos", bad);
+      expect(parseCloseForm(f, lines, focus)).toEqual({ ok: false, errors: { "ret.0.photos": "invalid" } });
+    }
+  });
+
+  it("a return row with photos but no description or quantity is kept, and its quantity is required", () => {
+    const f = data(good);
+    f.set("ret.0.description", "");
+    f.set("ret.0.quantity", "");
+    f.set("ret.0.reason", "expired");
+    f.set("ret.0.photos", "0123456789abcdef0123456789abcdef");
+    expect(parseCloseForm(f, lines, focus)).toEqual({ ok: false, errors: { "ret.0.quantity": "required" } });
+  });
+
   it("empty cash sales is required", () => {
     const r = parseCloseForm(data({ ...good, cashSales: "" }), lines, focus);
     expect(r).toEqual({ ok: false, errors: { cashSales: "required" } });

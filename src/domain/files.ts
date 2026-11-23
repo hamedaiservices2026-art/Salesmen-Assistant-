@@ -10,6 +10,9 @@ export const PHOTO_MAX_SIDE = 10_000;
 export const PHOTO_MAX_EDGE = 1600;
 
 export type FileKind = "report" | "return";
+
+/** The browser sends this header with every photo upload; a plain cross-site form post cannot. Client-safe. */
+export const PHOTO_REQUESTED_WITH = "photo";
 export type ImageType = "jpeg" | "png" | "webp";
 
 const FILE_KINDS: readonly FileKind[] = ["report", "return"];
