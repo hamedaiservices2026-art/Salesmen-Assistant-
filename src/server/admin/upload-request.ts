@@ -1,5 +1,6 @@
 import { revalidatePath } from "next/cache";
 import type { Ctx } from "@/server/ctx";
+import { checkPostHeaders, readCappedBody as readCappedPostBody, type PostHeaderError } from "@/server/http/guarded-post";
 import { REQUESTED_WITH, isKind, type UploadResponse } from "./upload-request-shared";
 import {
   STORED_ERRORS,
@@ -19,57 +20,16 @@ const BODY_OVERHEAD = 64 * 1024;
 const BODY_LIMIT = UPLOAD_MAX_BYTES + BODY_OVERHEAD;
 
 /**
- * Route handlers have no automatic cross-site protection for cookie sessions, so the request must
- * name its own origin (same scheme and host as the request it was sent to), carry the custom header,
- * and declare a body length within the limit. All of this is read from headers: nothing of the body
- * is touched.
+ * The shared header checks (`checkPostHeaders`) with this endpoint's header value and body cap:
+ * same-origin, the custom header, and a declared length within the limit. Nothing of the body is read.
  */
-export function checkUploadHeaders(headers: Headers, requestUrl?: string): "bad_origin" | "bad_header" | "too_large" | null {
-  const origin = headers.get("origin");
-  const host = headers.get("x-forwarded-host") ?? headers.get("host");
-  const proto = (headers.get("x-forwarded-proto") ?? (requestUrl ? new URL(requestUrl).protocol : "")).replace(/:$/, "");
-  let ok = false;
-  try {
-    const o = origin ? new URL(origin) : null;
-    ok = !!o && !!host && o.host === host && (proto === "" || o.protocol.replace(/:$/, "") === proto);
-  } catch {
-    ok = false;
-  }
-  if (!ok) return "bad_origin";
-  if (headers.get("x-requested-with") !== REQUESTED_WITH) return "bad_header";
-  const length = Number(headers.get("content-length"));
-  if (!Number.isFinite(length) || headers.get("content-length") === null || length > BODY_LIMIT) {
-    return "too_large";
-  }
-  return null;
+export function checkUploadHeaders(headers: Headers, requestUrl?: string): PostHeaderError | null {
+  return checkPostHeaders(headers, { requestedWith: REQUESTED_WITH, maxBody: BODY_LIMIT, requestUrl });
 }
 
-/**
- * The request body, read chunk by chunk and abandoned as soon as it passes the cap, whatever the
- * headers claimed. Returns null when it is over the cap.
- */
-export async function readCappedBody(request: Request): Promise<Uint8Array | null> {
-  if (!request.body) return new Uint8Array();
-  const reader = request.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    size += value.byteLength;
-    if (size > BODY_LIMIT) {
-      await reader.cancel().catch(() => undefined);
-      return null;
-    }
-    chunks.push(value);
-  }
-  const out = new Uint8Array(size);
-  let at = 0;
-  for (const c of chunks) {
-    out.set(c, at);
-    at += c.byteLength;
-  }
-  return out;
+/** The request body read with this endpoint's cap (`readCappedBody`); null when it is over the cap. */
+export function readCappedBody(request: Request): Promise<Uint8Array | null> {
+  return readCappedPostBody(request, BODY_LIMIT);
 }
 
 const json = (status: number, body: UploadResponse): Response =>

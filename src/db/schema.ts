@@ -463,3 +463,32 @@ export const aiUsage = pgTable(
   },
   (t) => [index("ai_usage_company_created").on(t.companyId, t.createdAt), index("ai_usage_created").on(t.createdAt)],
 );
+
+/**
+ * A private photo (plan 3): a JPEG the server encoded, kept in the file store under `storage_key`.
+ * `user_id` is the rep who took it. A return photo is linked to its close by `close_id` and the
+ * return's position (`return_pos`), because `saveClose` replaces the return rows on every save.
+ * `deleted_at` marks a soft delete; the sweep removes the bytes and then the row.
+ */
+export const files = pgTable(
+  "files",
+  {
+    id: id(),
+    companyId: companyId(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id),
+    kind: text("kind", { enum: ["report", "return"] }).notNull(),
+    date: date("date", { mode: "string" }).notNull(),
+    storageKey: text("storage_key").notNull().unique(),
+    bytes: integer("bytes").notNull(),
+    width: integer("width").notNull(),
+    height: integer("height").notNull(),
+    closeId: text("close_id").references(() => dailyCloses.id),
+    returnPos: integer("return_pos"),
+    attachedAt: timestamp("attached_at", { withTimezone: true }),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("files_company_user_date").on(t.companyId, t.userId, t.date), index("files_close").on(t.closeId)],
+);

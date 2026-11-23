@@ -83,6 +83,9 @@ async function main() {
     ALLOW_APP_TODAY: "1",
     ALLOW_LOCAL_DB: "1",
     PGLITE_DIR: join(dataRoot, "pglite"),
+    // Private photos on a throwaway local disk (R63).
+    ALLOW_LOCAL_FILES: "1",
+    FILES_DIR: join(dataRoot, "files"),
   };
   delete process.env.DATABASE_URL;
 
@@ -223,6 +226,68 @@ async function main() {
     has(`other rep's ${p} shows their own line`, other.text, marker);
     for (const f of ahmedFigures) hasNoToken(`${p} hides ${f} from the other company`, other.text, f);
   }
+
+  // Private photos under `next start`: sharp loads in the production build, a JPEG goes up through
+  // POST /app/files and comes back from GET /files/<id> with the photo headers; nobody else gets it.
+  const sharp = createRequire(import.meta.url)("sharp");
+  const jpeg = await sharp({ create: { width: 800, height: 600, channels: 3, background: { r: 120, g: 120, b: 120 } } }).jpeg().toBuffer();
+  // The requests run inside the page, as the app's own script would send them: the session cookie
+  // is Secure, which the browser sends to 127.0.0.1 and Playwright's API client does not.
+  const inPage = (pg, req) =>
+    pg.evaluate(async ({ url, method, headers, form }) => {
+      let body;
+      if (form) {
+        body = new FormData();
+        for (const [k, v] of Object.entries(form.fields)) body.set(k, v);
+        const bin = Uint8Array.from(atob(form.file), (c) => c.charCodeAt(0));
+        body.set("file", new File([bin], "return.jpg", { type: "image/jpeg" }));
+      }
+      const res = await fetch(url, { method, headers, body, credentials: "same-origin" });
+      const bytes = new Uint8Array(await res.arrayBuffer());
+      const text = new TextDecoder().decode(bytes);
+      return { status: res.status, headers: [...res.headers.entries()], head: [...bytes.subarray(0, 3)], length: bytes.length, text };
+    }, req);
+  const postPhoto = (pg, kind, headers = { "x-requested-with": "photo" }) =>
+    inPage(pg, { url: `${base}/app/files`, method: "POST", headers, form: { fields: { kind, date: "2026-11-14" }, file: jpeg.toString("base64") } });
+  const up = await postPhoto(page, "return");
+  let upBody = null;
+  try {
+    upBody = JSON.parse(up.text);
+  } catch {}
+  check("POST /app/files stores a return photo (200)", up.status === 200 && /^[0-9a-f]{32}$/.test(upBody?.id ?? ""), "200 with an id", `${up.status} ${up.text}`);
+  check("the stored photo is 800x600", upBody.width === 800 && upBody.height === 600, "800x600", `${upBody.width}x${upBody.height}`);
+  const report = await postPhoto(page, "report");
+  check("POST /app/files refuses kind=report (400)", report.status === 400, "400", `${report.status} ${report.text}`);
+  const noHeader = await postPhoto(page, "return", {});
+  check("POST /app/files without the custom header is refused (403)", noHeader.status === 403, "403", `${noHeader.status} ${noHeader.text}`);
+
+  const photoUrl = `${base}/files/${upBody.id}`;
+  const got = await inPage(page, { url: photoUrl, method: "GET" });
+  check("GET /files/<id> serves Ahmed's photo (200)", got.status === 200, "200", got.status);
+  check("the served bytes are a JPEG", got.head.join(",") === "255,216,255", "FF D8 FF", got.head.join(","));
+  // A header sent twice would read here as "a, b": equality proves one consistent value (R50).
+  const expectOne = (name, value) => {
+    const values = got.headers.filter(([k]) => k === name).map(([, v]) => v);
+    check(`photo header ${name} is exactly "${value}"`, values.length === 1 && values[0] === value, value, JSON.stringify(values));
+  };
+  expectOne("content-type", "image/jpeg");
+  expectOne("content-security-policy", "default-src 'none'; sandbox");
+  expectOne("referrer-policy", "no-referrer");
+  expectOne("cache-control", "private, no-store");
+  expectOne("x-content-type-options", "nosniff");
+  expectOne("cross-origin-resource-policy", "same-origin");
+  expectOne("content-disposition", 'inline; filename="photo.jpg"');
+
+  const foreign = await inPage(page2, { url: photoUrl, method: "GET" });
+  check("the other company's rep gets an empty 404 for the photo", foreign.status === 404 && foreign.length === 0, "404, empty", `${foreign.status} ${foreign.length}`);
+  const anon = await fetch(photoUrl);
+  check("no session gets an empty 404 for the photo", anon.status === 404 && (await anon.arrayBuffer()).byteLength === 0, "404, empty", anon.status);
+  const malformed = await inPage(page, { url: `${base}/files/not-an-id`, method: "GET" });
+  check("a malformed photo id is an empty 404", malformed.status === 404 && malformed.length === 0, "404, empty", malformed.status);
+  // The route sets no policy on a 404, so these values come from next.config.ts's /files rule (R50).
+  const policy = (r, name) => r.headers.filter(([k]) => k === name).map(([, v]) => v);
+  check("next.config gives /files the strict CSP", JSON.stringify(policy(malformed, "content-security-policy")) === JSON.stringify(["default-src 'none'; sandbox"]), "[\"default-src 'none'; sandbox\"]", JSON.stringify(policy(malformed, "content-security-policy")));
+  check("next.config gives /files no-referrer", JSON.stringify(policy(malformed, "referrer-policy")) === JSON.stringify(["no-referrer"]), '["no-referrer"]', JSON.stringify(policy(malformed, "referrer-policy")));
 }
 
 async function cleanup() {
