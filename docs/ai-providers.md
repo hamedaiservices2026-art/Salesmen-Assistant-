@@ -125,3 +125,7 @@ The model id is also checked in the adapter before it goes into a URL path (`mod
 ## Notice wording and paid providers
 
 The rep notice and the admin page say the services are free during the trial and may use what is sent to improve their products (`ai.notice.p2`, `admin.ai.points`). If any paid provider or plan is enabled, that "free during the trial" copy must be updated in all three catalogs and `AI_NOTICE_VERSION` bumped so reps accept the notice again.
+
+## What a close's source means (R74)
+
+`daily_closes.source` labels the last confirmed save. `photo` or `voice` means a draft was read for this rep and day, and the rep confirmed with that draft's receipt within 24 hours. It is not evidence of where the figures came from, because the rep reviews and may change every field before he confirms. A later confirm without a receipt (or a second confirm with the same, already used receipt) sets the close back to `manual`. A close confirmed by photo keeps one report photo: the one the figures were last read from. Earlier report photos of that close are deleted.

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import sharp from "sharp";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { createTestDb } from "@/db/testing";
 import { seedDemo } from "@/db/seed";
 import type { Db } from "@/db/client";
@@ -237,6 +237,28 @@ describe("draftFromPhoto: partial and unreadable reports", () => {
     });
   }
 
+  it("a valid reply with no usable field is invalid_output, and the fallback provider is tried (R74)", async () => {
+    const empty = spiedFake(() => '{"reportDate":null,"fields":[{"key":"line:zzz","value":"5","confidence":0.9}]}');
+    expect(await draftFromPhoto(ahmed(), { date: TODAY, bytes: await grey(640) }, opts({ providers: [empty.provider] }))).toEqual({
+      ok: false,
+      reason: "unreadable",
+    });
+    expect((await usageRows())[0]).toMatchObject({ outcome: "invalid_output" });
+
+    const empty2 = spiedFake(() => '{"reportDate":null,"fields":[]}');
+    const good = spiedFake();
+    const r = await draftFromPhoto(
+      ahmed(),
+      { date: TODAY, bytes: await grey(640) },
+      opts({ now: new Date(NOW.getTime() + MINUTE), providers: [empty2.provider, good.provider] }),
+    );
+    expect(r.ok && r.fallback).toBe(true);
+    expect(empty2.vision).toHaveBeenCalled();
+    expect(good.vision).toHaveBeenCalledTimes(1);
+    const rows = await db.select().from(s.aiUsage).orderBy(s.aiUsage.createdAt);
+    expect(rows[1]).toMatchObject({ outcome: "ok", fallback: true });
+  });
+
   it("a reply that obeys text printed on the report still has to pass toDraft: unknown keys dropped, values read as printed", async () => {
     const spy = spiedFake(
       () =>
@@ -454,6 +476,18 @@ describe("POST /app/ai/close-photo (handleClosePhotoPost)", () => {
     const res = await post(ahmed(), { date: TODAY, file: big }, { "content-length": "1000" });
     expect(res.status).toBe(413);
     expect(await fileRows()).toEqual([]);
+  });
+
+  it("an unexpected error → 500 { reason: failed }, no-store, nothing of the error; the photo soft-deleted", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    await db.execute(sql`drop table ai_drafts`);
+    const res = await post(ahmed(), { date: TODAY });
+    expect(res.status).toBe(500);
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    expect(await res.json()).toEqual({ reason: "failed" });
+    expect((await fileRows())[0]!.deletedAt).not.toBeNull();
+    expect(logged).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(logged.mock.calls)).not.toMatch(/ai_drafts|relation/);
   });
 
   it("no file → 400; a refusal comes back as { reason }", async () => {

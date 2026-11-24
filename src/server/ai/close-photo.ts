@@ -111,12 +111,16 @@ export async function draftFromPhoto(ctx: Ctx, input: { date: ISODate; bytes: Ui
         kind: "vision",
         feature: "close_photo",
         call: (p, signal) => p.vision({ image, system, prompt, maxOutputTokens: MAX_OUTPUT_TOKENS }, signal),
-        parse: (text) => toDraft(parseJsonReply(text), { source: "photo", date: input.date, lines }),
+        // A draft with no usable field is not an answer: `invalid_output`, so the next provider
+        // is tried and the usage row does not record a success (R74).
+        parse: (text) => {
+          const draft = toDraft(parseJsonReply(text), { source: "photo", date: input.date, lines });
+          return draft !== null && Object.keys(draft.fields).length > 0 ? draft : null;
+        },
       },
       { now, config, providers: opts.providers, deps: opts.deps, deadlineAt },
     );
     if (!r.ok) return await discard(r.reason);
-    if (Object.keys(r.value.fields).length === 0) return await discard("unreadable");
 
     const draftId = await createDraftReceipt(ctx, { date: input.date, source: "photo", fileId }, now);
     return { ok: true, draft: r.value, draftId, fileId, fallback: r.fallback };
@@ -159,6 +163,16 @@ const json = (status: number, body: ClosePhotoResponse, headers: Record<string, 
  * against the provider's deadline (R33). The route file only wraps this (R64).
  */
 export async function handleClosePhotoPost(request: Request, ctx: Ctx | null, deps: ClosePhotoOpts = {}): Promise<Response> {
+  try {
+    return await handle(request, ctx, deps);
+  } catch (e) {
+    // Nothing of the error reaches the reply or the log beyond its class name.
+    console.error("close photo failed", e instanceof Error ? e.name : "unknown error");
+    return json(500, { reason: "failed" });
+  }
+}
+
+async function handle(request: Request, ctx: Ctx | null, deps: ClosePhotoOpts): Promise<Response> {
   const deadlineAt = deps.deadlineAt ?? Date.now() + CLOSE_PHOTO_BUDGET_MS;
   if (!ctx) return json(401, { reason: "unauthorized" });
   if ((ctx.role !== "rep" && ctx.role !== "supervisor") || ctx.actingFor !== undefined) return json(403, { reason: "forbidden" });

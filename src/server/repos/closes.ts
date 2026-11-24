@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, eq, inArray, isNull, notInArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, ne, notInArray, sql } from "drizzle-orm";
 import type { ISODate } from "@/domain/calendar";
 import * as s from "@/db/schema";
 import type { Db } from "@/db/client";
@@ -391,6 +391,23 @@ async function saveInTransaction(
       // is still saved: it is the rep's own reviewed figures, and the photo is only its evidence.
       const { missing } = await attachFiles(tx as unknown as Db, ctx, closeId, [{ id: receipt.fileId, kind: "report", returnPos: null }], now);
       if (missing.length > 0) console.error("report photo not attached: gone before the close was confirmed");
+      else {
+        // One report photo per close: the one the figures were last read from. Earlier ones are
+        // soft-deleted and the sweep removes them (R74).
+        await tx
+          .update(s.files)
+          .set({ deletedAt: now })
+          .where(
+            and(
+              eq(s.files.closeId, closeId),
+              eq(s.files.companyId, ctx.companyId),
+              eq(s.files.userId, ctx.userId),
+              eq(s.files.kind, "report"),
+              isNull(s.files.deletedAt),
+              ne(s.files.id, receipt.fileId),
+            ),
+          );
+      }
     }
     return { ok: true };
   });

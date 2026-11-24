@@ -17,7 +17,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import sharp from "sharp";
-import { afterEach } from "vitest";
+import { afterEach, vi } from "vitest";
 import { Forbidden } from "@/server/auth/roles";
 import { repCtx } from "@/server/admin/rep-ctx";
 import { readFile, removeOwnFile, saveUpload } from "@/server/files/files";
@@ -742,6 +742,28 @@ describe("saveClose with a draft receipt (Task 11)", () => {
     expect(await sourceOn(TODAY)).toBeUndefined();
   });
 
+  it("a save rolled back after the receipt was consumed leaves the receipt unused", async () => {
+    const id = await createDraftReceipt(ahmed(), { date: TODAY, source: "voice", fileId: null }, NOW_14);
+    await db.execute(sql`create function refuse_return() returns trigger language plpgsql as $$ begin raise exception 'forced'; end $$`);
+    await db.execute(sql`create trigger refuse_return before insert on returns for each row execute function refuse_return()`);
+    const withReturn = full();
+    withReturn.returns = [{ description: "x", quantity: 1, reason: "expired" }];
+    await expect(saveClose(ahmed(), withReturn, { today: TODAY, now: NOW_14, draftId: id })).rejects.toThrow();
+    expect((await receipt(id)).usedAt).toBeNull();
+    expect(await sourceOn(TODAY)).toBeUndefined();
+  });
+
+  it("an admin-recorded collection line that differs from the rep's keeps the collections invariant with a receipt", async () => {
+    await db.insert(s.dailyCloses).values({ id: "upl-c", companyId: seed.companyId, userId: "ahmed", date: TODAY, source: "excel", status: "draft" });
+    await db.insert(s.closeLines).values({ id: "upl-c-coll", companyId: seed.companyId, closeId: "upl-c", lineId: "coll", amount: 2_000_000, source: "excel", repAmount: null });
+    const id = await createDraftReceipt(ahmed(), { date: TODAY, source: "voice", fileId: null }, NOW_14);
+    expect(await saveClose(ahmed(), full(), { today: TODAY, now: NOW_14, draftId: id })).toEqual({ ok: true });
+    const [close] = await db.select().from(s.dailyCloses).where(eq(s.dailyCloses.id, "upl-c"));
+    expect(close).toMatchObject({ source: "voice", status: "confirmed", collections: 2_000_000 });
+    const [coll] = await db.select().from(s.closeLines).where(and(eq(s.closeLines.closeId, "upl-c"), eq(s.closeLines.lineId, "coll")));
+    expect(coll).toMatchObject({ amount: 2_000_000, repAmount: 1_950_000 });
+  });
+
   it("two saves racing with one receipt: it is consumed exactly once", async () => {
     const id = await createDraftReceipt(ahmed(), { date: TODAY, source: "voice", fileId: null }, NOW_14);
     const hits = await Promise.all([1, 2].map(() => db.transaction((tx) => consumeDraftReceipt(tx as unknown as Db, ahmed(), { id, date: TODAY }, NOW_14))));
@@ -780,6 +802,7 @@ describe("saveClose with a draft receipt (Task 11)", () => {
     });
 
     it("a report photo removed meanwhile: the close is still saved as photo, the photo stays unattached", async () => {
+      const logged = vi.spyOn(console, "error").mockImplementation(() => {});
       const fileId = await reportPhoto();
       const id = await createDraftReceipt(ahmed(), { date: TODAY, source: "photo", fileId }, NOW_14);
       expect(await removeOwnFile(ahmed(), fileId)).toEqual({ ok: true });
@@ -787,6 +810,25 @@ describe("saveClose with a draft receipt (Task 11)", () => {
       expect(await sourceOn(TODAY)).toBe("photo");
       const [f] = await db.select().from(s.files).where(eq(s.files.id, fileId));
       expect(f!.closeId).toBeNull();
+      expect(logged).toHaveBeenCalledWith("report photo not attached: gone before the close was confirmed");
+      logged.mockRestore();
+    });
+
+    it("a newer report photo on the same close soft-deletes the earlier one (R74)", async () => {
+      const first = await reportPhoto();
+      const r1 = await createDraftReceipt(ahmed(), { date: TODAY, source: "photo", fileId: first }, NOW_14);
+      expect(await saveClose(ahmed(), full(), { today: TODAY, now: NOW_14, draftId: r1 })).toEqual({ ok: true });
+      const second = await reportPhoto();
+      const r2 = await createDraftReceipt(ahmed(), { date: TODAY, source: "photo", fileId: second }, NOW_14);
+      expect(await saveClose(ahmed(), full(), { today: TODAY, now: NOW_14, draftId: r2 })).toEqual({ ok: true });
+      const rows = await db.select().from(s.files).where(eq(s.files.kind, "report"));
+      const byId = new Map(rows.map((r) => [r.id, r]));
+      expect(byId.get(first)!.deletedAt).not.toBeNull();
+      expect(byId.get(second)).toMatchObject({ deletedAt: null });
+      expect(byId.get(second)!.closeId).toBe(byId.get(first)!.closeId);
+      // A typed re-save without a receipt leaves the current report photo alone.
+      expect(await saveClose(ahmed(), full(), { today: TODAY, now: NOW_14 })).toEqual({ ok: true });
+      expect((await db.select().from(s.files).where(eq(s.files.id, second)))[0]!.deletedAt).toBeNull();
     });
   });
 });

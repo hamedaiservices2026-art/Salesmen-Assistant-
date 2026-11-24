@@ -175,6 +175,12 @@ export const dailyCloses = pgTable(
       .notNull()
       .references(() => users.id),
     date: date("date", { mode: "string" }).notNull(),
+    /**
+     * A label of the last confirmed save (R74): `photo`/`voice` means a draft was read for this rep
+     * and day and a confirm with its receipt followed within 24 hours; it is not evidence of where
+     * the figures came from (the rep may have edited every field). A later confirm without a
+     * receipt sets `manual`; `excel` is an admin upload's draft.
+     */
     source: text("source", { enum: ["manual", "photo", "voice", "excel"] })
       .notNull()
       .default("manual"),

@@ -1,8 +1,11 @@
 import type { VocabularyEntry } from "@/domain/ai/aliases";
+import { isLineCode } from "@/domain/lines";
 import { EXTRACTION_FIRST_LINE } from "../fake";
 
-/** A key as the prompt may print it: `line:<code>` (codes are `[a-z0-9_-]`) or a fixed field name. */
-const SAFE_KEY = /^(?:line:[a-z0-9][a-z0-9_-]{0,31}|[a-zA-Z]{1,20})$/;
+/** A key as the prompt may print it: `line:<code>` with a valid line code, or a fixed field name. */
+function safeKey(key: string): boolean {
+  return key.startsWith("line:") ? isLineCode(key.slice(5)) : /^[a-zA-Z]{1,20}$/.test(key);
+}
 /** Characters that end a line somewhere; escaped even though labels are already cleaned of them. */
 const LINE_END = /[\n\r\v\f\u0085\u2028\u2029]/gu;
 
@@ -42,7 +45,7 @@ function systemText(source: "photo" | "voice"): string {
  */
 export function extractionPrompt(vocab: readonly VocabularyEntry[], source: "photo" | "voice"): { system: string; prompt: string } {
   const rows = vocab
-    .filter((v) => SAFE_KEY.test(v.key))
+    .filter((v) => safeKey(v.key))
     .map((v) => {
       const labels = v.labels.filter((l): l is string => typeof l === "string" && l !== "");
       return `${v.key} | ${v.unit === "cases" ? "cases" : "money"} | ${labels.length > 0 ? labelCell(labels) : "-"}`;
