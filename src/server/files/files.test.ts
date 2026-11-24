@@ -113,7 +113,7 @@ describe("canView", () => {
 describe("saveUpload", () => {
   it("stores Ahmed's return photo with his company and user, unattached, readable back as a JPEG", async () => {
     const r = await saveUpload(ahmed(), { kind: "return", date: "2026-11-14", bytes: jpeg800 }, deps());
-    expect(r).toEqual({ ok: true, id: expect.stringMatching(/^[0-9a-f]{32}$/), width: 800, height: 600 });
+    expect(r).toEqual({ ok: true, id: expect.stringMatching(/^[0-9a-f]{32}$/), width: 800, height: 600, jpeg: expect.any(Uint8Array) });
     if (!r.ok) return;
     const f = (await row(r.id))!;
     expect(f).toMatchObject({ companyId: "demo-co", userId: "ahmed", kind: "return", date: "2026-11-14", closeId: null, returnPos: null });

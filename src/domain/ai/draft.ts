@@ -67,3 +67,6 @@ export function draftContextKey(lines: DraftLine[], date: ISODate): string {
     .sort((a, b) => (a.join("\u0000") < b.join("\u0000") ? -1 : a.join("\u0000") > b.join("\u0000") ? 1 : 0));
   return JSON.stringify([date, daily]);
 }
+
+/** The browser sends this `X-Requested-With` value with every AI request (photo, voice); a plain cross-site form cannot. Client-safe. */
+export const AI_REQUESTED_WITH = "ai";

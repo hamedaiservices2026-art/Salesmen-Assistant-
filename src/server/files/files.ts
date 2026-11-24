@@ -29,7 +29,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
 
 export type SaveUploadError = "too_large" | "unsupported_type" | "too_many_pixels" | "corrupt" | "busy" | "bad_date" | "quota" | "storage_failed";
-export type SaveUploadResult = { ok: true; id: string; width: number; height: number } | { ok: false; error: SaveUploadError };
+/** `jpeg` is the stored photo as the server encoded it (what a provider may be shown; never the uploaded bytes). */
+export type SaveUploadResult = { ok: true; id: string; width: number; height: number; jpeg: Uint8Array } | { ok: false; error: SaveUploadError };
 
 const fail = (error: SaveUploadError): SaveUploadResult => ({ ok: false, error });
 
@@ -105,7 +106,7 @@ export async function saveUpload(
       .catch(() => undefined);
     return giveBack("storage_failed");
   }
-  return { ok: true, id, width: photo.width, height: photo.height };
+  return { ok: true, id, width: photo.width, height: photo.height, jpeg: photo.jpeg };
 }
 
 /** `YYYY-MM-DD` (UTC) of `days` before `now`. */

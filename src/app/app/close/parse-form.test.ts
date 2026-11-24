@@ -214,3 +214,26 @@ describe("zeroEmptiedLines", () => {
   });
 });
 
+
+describe("parseCloseForm: the hidden draftId (R52)", () => {
+  const ID = "0123456789abcdef0123456789abcdef";
+  it("with a hidden draftId → the ok result has it beside form, not inside", () => {
+    const r = parseCloseForm(data({ ...good, draftId: ID }), lines, focus);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.draftId).toBe(ID);
+    expect(r.form).not.toHaveProperty("draftId");
+  });
+  it("without it, empty, or not id-shaped → draftId null, and the form is read the same", () => {
+    const plain = parseCloseForm(data(good), lines, focus);
+    expect(plain.ok && plain.draftId).toBeNull();
+    for (const v of ["", "  ", "xyz", ID.toUpperCase(), `${ID}0`, "../etc/passwd"]) {
+      const r = parseCloseForm(data({ ...good, draftId: v }), lines, focus);
+      expect(r.ok && r.draftId).toBeNull();
+      if (r.ok && plain.ok) expect(r.form).toEqual(plain.form);
+    }
+  });
+  it("a draftId never turns a refused form into an accepted one", () => {
+    expect(parseCloseForm(data({ ...good, "line.bev": "", draftId: ID }), lines, focus)).toEqual({ ok: false, errors: { "line.bev": "required" } });
+  });
+});

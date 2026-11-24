@@ -23,6 +23,7 @@ import { repCtx } from "@/server/admin/rep-ctx";
 import { readFile, removeOwnFile, saveUpload } from "@/server/files/files";
 import { localStore } from "@/server/files/local-store";
 import type { FileStore } from "@/server/files/store";
+import { consumeDraftReceipt, createDraftReceipt, sweepDrafts } from "@/server/ai/drafts";
 
 const TODAY = "2026-11-14";
 const NOV = { year: 2026, month: 11, today: TODAY };
@@ -673,5 +674,157 @@ describe("returns with photos (Task 8)", () => {
     expect(day.returnPhotos).toEqual([{ description: "كولا", photos: [a] }]);
     // Days without photos carry no photo field at all.
     expect((await getHistoryDays(ahmed(), 2026, 11)).find((d) => d.date === "2026-11-12")!.returnPhotos).toBeUndefined();
+  });
+});
+
+describe("saveClose with a draft receipt (Task 11)", () => {
+  const NOW_14 = new Date("2026-11-14T07:00:00Z");
+  const full = (date = TODAY) => form(date, { bev: 118, food: 790_000, coll: 1_950_000 }, { cashSales: 1_480_000, collections: 1_950_000 });
+  const receipt = async (id: string) => (await db.select().from(s.aiDrafts).where(eq(s.aiDrafts.id, id)))[0]!;
+  const sourceOn = async (date: string, userId = "ahmed") =>
+    (await db.select().from(s.dailyCloses).where(and(eq(s.dailyCloses.userId, userId), eq(s.dailyCloses.date, date))))[0]?.source;
+  const khaled = (): Ctx => ({ ...ahmed(), userId: "khaled" });
+
+  it("a voice receipt stamps the close voice and is used once", async () => {
+    const id = await createDraftReceipt(ahmed(), { date: TODAY, source: "voice", fileId: null }, NOW_14);
+    expect(await saveClose(ahmed(), full(), { today: TODAY, now: NOW_14, draftId: id })).toEqual({ ok: true });
+    expect(await sourceOn(TODAY)).toBe("voice");
+    expect((await receipt(id)).usedAt).not.toBeNull();
+  });
+
+  it("khaled saving with Ahmed's draftId → manual, Ahmed's receipt still unused (Review Focus 1)", async () => {
+    const id = await createDraftReceipt(ahmed(), { date: TODAY, source: "voice", fileId: null }, NOW_14);
+    expect(await saveClose(khaled(), full(), { today: TODAY, now: NOW_14, draftId: id })).toEqual({ ok: true });
+    expect(await sourceOn(TODAY, "khaled")).toBe("manual");
+    expect((await receipt(id)).usedAt).toBeNull();
+  });
+
+  it("a receipt of another company's rep is never consumed", async () => {
+    const id = await createDraftReceipt(ahmed(), { date: TODAY, source: "voice", fileId: null }, NOW_14);
+    const other = await otherRep();
+    const otherLines = Object.fromEntries((await loadLines(other)).filter(isDailyLine).map((l) => [l.lineId, 1]));
+    expect(await saveClose(other, form(TODAY, otherLines), { today: TODAY, now: NOW_14, draftId: id })).toEqual({ ok: true });
+    expect((await receipt(id)).usedAt).toBeNull();
+  });
+
+  it("a receipt for 12 Nov used on 14 Nov → manual; it stays usable for 12 Nov", async () => {
+    const id = await createDraftReceipt(ahmed(), { date: "2026-11-12", source: "voice", fileId: null }, NOW_14);
+    expect(await saveClose(ahmed(), full(), { today: TODAY, now: NOW_14, draftId: id })).toEqual({ ok: true });
+    expect(await sourceOn(TODAY)).toBe("manual");
+    expect((await receipt(id)).usedAt).toBeNull();
+    expect(await saveClose(ahmed(), full("2026-11-12"), { today: TODAY, now: NOW_14, draftId: id })).toEqual({ ok: true });
+    expect(await sourceOn("2026-11-12")).toBe("voice");
+  });
+
+  it("a receipt 25 hours old → manual", async () => {
+    const id = await createDraftReceipt(ahmed(), { date: TODAY, source: "voice", fileId: null }, new Date(NOW_14.getTime() - 25 * 3_600_000));
+    expect(await saveClose(ahmed(), full(), { today: TODAY, now: NOW_14, draftId: id })).toEqual({ ok: true });
+    expect(await sourceOn(TODAY)).toBe("manual");
+    expect((await receipt(id)).usedAt).toBeNull();
+  });
+
+  it("an unknown or malformed draftId → manual", async () => {
+    expect(await saveClose(ahmed(), full(), { today: TODAY, now: NOW_14, draftId: "0".repeat(32) })).toEqual({ ok: true });
+    expect(await sourceOn(TODAY)).toBe("manual");
+    expect(await saveClose(ahmed(), full(), { today: TODAY, now: NOW_14, draftId: "' or 1=1 --" })).toEqual({ ok: true });
+    expect(await sourceOn(TODAY)).toBe("manual");
+  });
+
+  it("a receipt adds no trust: the form is validated exactly as before and the receipt is not spent on a refusal", async () => {
+    const id = await createDraftReceipt(ahmed(), { date: TODAY, source: "voice", fileId: null }, NOW_14);
+    const bad = full();
+    bad.lines = { ...bad.lines, bev: -1, zzz: 5 };
+    expect(await saveClose(ahmed(), bad, { today: TODAY, now: NOW_14, draftId: id })).toEqual({
+      ok: false,
+      errors: { "lines.bev": "negative", "lines.zzz": "unknown" },
+    });
+    expect((await receipt(id)).usedAt).toBeNull();
+    expect(await sourceOn(TODAY)).toBeUndefined();
+  });
+
+  it("two saves racing with one receipt: it is consumed exactly once", async () => {
+    const id = await createDraftReceipt(ahmed(), { date: TODAY, source: "voice", fileId: null }, NOW_14);
+    const hits = await Promise.all([1, 2].map(() => db.transaction((tx) => consumeDraftReceipt(tx as unknown as Db, ahmed(), { id, date: TODAY }, NOW_14))));
+    expect(hits.filter((h) => h !== null)).toEqual([{ source: "voice", fileId: null }]);
+  });
+
+  describe("a photo receipt", () => {
+    let root: string;
+    let store: FileStore;
+    beforeEach(async () => {
+      root = await mkdtemp(path.join(tmpdir(), "close-receipt-"));
+      store = localStore(root);
+    });
+    afterEach(async () => {
+      await rm(root, { recursive: true, force: true });
+    });
+    async function reportPhoto(): Promise<string> {
+      const jpeg = new Uint8Array(await sharp({ create: { width: 64, height: 48, channels: 3, background: { r: 9, g: 9, b: 9 } } }).jpeg().toBuffer());
+      const r = await saveUpload(ahmed(), { kind: "report", date: TODAY, bytes: jpeg }, { store, today: TODAY, now: NOW_14 });
+      if (!r.ok) throw new Error(r.error);
+      return r.id;
+    }
+
+    it("attaches the report photo to the close", async () => {
+      const fileId = await reportPhoto();
+      const id = await createDraftReceipt(ahmed(), { date: TODAY, source: "photo", fileId }, NOW_14);
+      expect(await saveClose(ahmed(), full(), { today: TODAY, now: NOW_14, draftId: id })).toEqual({ ok: true });
+      const [f] = await db.select().from(s.files).where(eq(s.files.id, fileId));
+      const [close] = await db.select().from(s.dailyCloses).where(and(eq(s.dailyCloses.userId, "ahmed"), eq(s.dailyCloses.date, TODAY)));
+      expect(f).toMatchObject({ closeId: close!.id, kind: "report", deletedAt: null, returnPos: null });
+      expect(close!.source).toBe("photo");
+      // Re-saving the close (return photos are synced) leaves the report photo attached.
+      expect(await saveClose(ahmed(), full(), { today: TODAY, now: NOW_14 })).toEqual({ ok: true });
+      const [again] = await db.select().from(s.files).where(eq(s.files.id, fileId));
+      expect(again).toMatchObject({ closeId: close!.id, deletedAt: null });
+    });
+
+    it("a report photo removed meanwhile: the close is still saved as photo, the photo stays unattached", async () => {
+      const fileId = await reportPhoto();
+      const id = await createDraftReceipt(ahmed(), { date: TODAY, source: "photo", fileId }, NOW_14);
+      expect(await removeOwnFile(ahmed(), fileId)).toEqual({ ok: true });
+      expect(await saveClose(ahmed(), full(), { today: TODAY, now: NOW_14, draftId: id })).toEqual({ ok: true });
+      expect(await sourceOn(TODAY)).toBe("photo");
+      const [f] = await db.select().from(s.files).where(eq(s.files.id, fileId));
+      expect(f!.closeId).toBeNull();
+    });
+  });
+});
+
+describe("sweepDrafts (R28, R59)", () => {
+  const T = new Date("2026-11-14T07:00:00Z");
+  it("deletes receipts whose expiry is at least 24 hours past, across companies, and returns the count", async () => {
+    const old = await createDraftReceipt(ahmed(), { date: "2026-11-12", source: "voice", fileId: null }, new Date(T.getTime() - 48 * 3_600_000));
+    const young = await createDraftReceipt(ahmed(), { date: "2026-11-12", source: "voice", fileId: null }, new Date(T.getTime() - 47 * 3_600_000));
+    const fresh = await createDraftReceipt(ahmed(), { date: TODAY, source: "voice", fileId: null }, T);
+    const other = await createDraftReceipt(await otherRep(), { date: TODAY, source: "voice", fileId: null }, new Date(T.getTime() - 72 * 3_600_000));
+    expect(await sweepDrafts(db, T)).toBe(2);
+    const left = (await db.select({ id: s.aiDrafts.id }).from(s.aiDrafts)).map((r) => r.id).sort();
+    expect(left).toEqual([young, fresh].sort());
+    expect(left).not.toContain(old);
+    expect(left).not.toContain(other);
+    expect(await sweepDrafts(db, T)).toBe(0);
+  });
+
+  it("a receipt's file can be deleted: file_id becomes null (ON DELETE SET NULL)", async () => {
+    await db.insert(s.files).values({
+      id: "f".repeat(32),
+      companyId: seed.companyId,
+      userId: "ahmed",
+      kind: "report",
+      date: TODAY,
+      storageKey: `demo-co/ahmed/${TODAY}/report-${"f".repeat(32)}.jpg`,
+      bytes: 1,
+      width: 1,
+      height: 1,
+    });
+    const id = await createDraftReceipt(ahmed(), { date: TODAY, source: "photo", fileId: "f".repeat(32) }, T);
+    await db.delete(s.files).where(eq(s.files.id, "f".repeat(32)));
+    expect((await db.select().from(s.aiDrafts).where(eq(s.aiDrafts.id, id)))[0]!.fileId).toBeNull();
+  });
+
+  it("createDraftReceipt refuses a repCtx context", async () => {
+    const tagged = await repCtx({ ...ahmed(), userId: seed.supervisorId, role: "supervisor" }, "ahmed");
+    await expect(createDraftReceipt(tagged!, { date: TODAY, source: "voice", fileId: null }, T)).rejects.toThrow(Forbidden);
   });
 });

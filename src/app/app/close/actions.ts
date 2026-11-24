@@ -46,7 +46,7 @@ export async function saveCloseAction(_prev: CloseState, data: FormData): Promis
     .filter((l) => isDailyLine(l) && isOptionalLine(l.createdOn, date))
     .map((l) => l.lineId);
   const form = zeroEmptiedLines(parsed.form, optionalIds, optionalIds.length ? await getClose(ctx, date) : null);
-  const result = await saveClose(ctx, form, { today });
+  const result = await saveClose(ctx, form, { today, draftId: parsed.draftId });
   if (!result.ok) return { errors: formFieldErrors(result.errors, returnIndexes(data)) };
   redirect("/app");
 }

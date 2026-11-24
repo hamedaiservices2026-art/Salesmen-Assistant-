@@ -5,7 +5,8 @@ import { isFileId } from "@/domain/files";
 import type { CloseForm, ReturnReason } from "@/server/repos/closes";
 
 export type ParseResult =
-  | { ok: true; form: CloseForm }
+  /** `draftId`: the hidden receipt id of an AI draft, beside the form (R52); null when absent or not id-shaped. */
+  | { ok: true; form: CloseForm; draftId: string | null }
   | { ok: false; errors: Record<string, "required" | "invalid"> };
 
 const REASONS: readonly string[] = ["expired", "damaged", "other"];
@@ -94,8 +95,10 @@ export function parseCloseForm(
   }
 
   if (Object.keys(errors).length > 0) return { ok: false, errors };
+  const posted = text(data, "draftId");
   return {
     ok: true,
+    draftId: isFileId(posted) ? posted : null,
     form: {
       date: text(data, "date"),
       lines: lineAmounts,

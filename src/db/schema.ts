@@ -518,3 +518,28 @@ export const files = pgTable(
     index("files_sweep_retention").on(t.kind, t.date).where(sql`${t.sweepAttempts} < 5`),
   ],
 );
+
+/**
+ * A receipt for a close draft read by AI (plan 3, decision 3). It holds no extracted value: the
+ * values live in the rep's browser. When the rep confirms his close with the receipt's id, the
+ * close is stamped `photo` or `voice` (once; `used_at`), and a photo receipt's report photo is
+ * attached to it. A receipt is valid for 24 hours, for its own company, rep and date only.
+ * `file_id` is set null when the photo is swept (R28).
+ */
+export const aiDrafts = pgTable(
+  "ai_drafts",
+  {
+    id: id(),
+    companyId: companyId(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id),
+    date: date("date", { mode: "string" }).notNull(),
+    source: text("source", { enum: ["photo", "voice"] }).notNull(),
+    fileId: text("file_id").references(() => files.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+  },
+  (t) => [index("ai_drafts_company_user_date").on(t.companyId, t.userId, t.date), index("ai_drafts_expires").on(t.expiresAt)],
+);

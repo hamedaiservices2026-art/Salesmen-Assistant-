@@ -11,6 +11,7 @@ import { isDailyLine } from "@/domain/lines";
 import { loadCalendar, loadLines } from "./month-data";
 import { isFileId } from "@/domain/files";
 import { CLOSE_PHOTOS_MAX, RETURN_PHOTOS_MAX, attachFiles, inRetention } from "@/server/files/files";
+import { consumeDraftReceipt } from "@/server/ai/drafts";
 
 export type ReturnReason = "expired" | "damaged" | "other";
 
@@ -110,16 +111,24 @@ function isRealDate(date: string): boolean {
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === date;
 }
 
+/**
+ * Why a close cannot be made for `date`, or null: not a real `YYYY-MM-DD` date (`invalid`), after
+ * `today` (`future`), or not a selling day of the caller's company (`not_selling_day`). The same
+ * checks for a typed close and for a photo or voice draft (Task 11).
+ */
+export async function closeDateError(ctx: Ctx, date: string, today: ISODate): Promise<"invalid" | "future" | "not_selling_day" | null> {
+  if (typeof date !== "string" || !isRealDate(date)) return "invalid";
+  if (date > today) return "future";
+  const [year, month] = date.split("-").map(Number) as [number, number];
+  const cal = await loadCalendar(ctx, year, month);
+  return cal.selling.includes(date) ? null : "not_selling_day";
+}
+
 async function validate(ctx: Ctx, form: CloseForm, today: ISODate, now: Date): Promise<Record<string, string>> {
   const errors: Record<string, string> = {};
 
-  if (!isRealDate(form.date)) errors.date = "invalid";
-  else if (form.date > today) errors.date = "future";
-  else {
-    const [year, month] = form.date.split("-").map(Number) as [number, number];
-    const cal = await loadCalendar(ctx, year, month);
-    if (!cal.selling.includes(form.date)) errors.date = "not_selling_day";
-  }
+  const dateError = await closeDateError(ctx, form.date, today);
+  if (dateError) errors.date = dateError;
 
   const lineUnits = new Map<string, Unit>((await loadLines(ctx)).filter(isDailyLine).map((l) => [l.lineId, l.unit]));
   for (const [id, n] of Object.entries(form.lines)) {
@@ -228,8 +237,17 @@ class PhotosMissing extends Error {
   }
 }
 
-/** Validates and upserts the rep's close for form.date, replacing its line, focus and return rows. */
-export async function saveClose(ctx: Ctx, form: CloseForm, opts?: { today?: ISODate; now?: Date }): Promise<SaveCloseResult> {
+/**
+ * Validates and upserts the rep's close for form.date, replacing its line, focus and return rows.
+ * `draftId` names the receipt of an AI draft the rep reviewed (Task 11): it is used inside the same
+ * transaction, after the form has passed exactly the checks a typed close passes (a receipt adds no
+ * trust), and only stamps the close's `source`; any miss saves the close as `manual`.
+ */
+export async function saveClose(
+  ctx: Ctx,
+  form: CloseForm,
+  opts?: { today?: ISODate; now?: Date; draftId?: string | null },
+): Promise<SaveCloseResult> {
   assertOwnContext(ctx);
   const today = opts?.today ?? currentDay(ctx.timeZone);
   const now = opts?.now ?? new Date();
@@ -246,7 +264,7 @@ export async function saveClose(ctx: Ctx, form: CloseForm, opts?: { today?: ISOD
     note: form.note === "" ? null : form.note,
   };
   try {
-    return await saveInTransaction(ctx, form, today, now, values);
+    return await saveInTransaction(ctx, form, today, now, values, opts?.draftId ?? null);
   } catch (e) {
     if (e instanceof PhotosMissing) return { ok: false, errors: e.errors };
     throw e;
@@ -258,13 +276,19 @@ async function saveInTransaction(
   form: CloseForm,
   today: ISODate,
   now: Date,
-  values: Omit<typeof s.dailyCloses.$inferInsert, "id" | "companyId" | "userId" | "date">,
+  base: Omit<typeof s.dailyCloses.$inferInsert, "id" | "companyId" | "userId" | "date">,
+  draftId: string | null,
 ): Promise<SaveCloseResult> {
   const companyId = ctx.companyId;
   return ctx.db.transaction(async (tx): Promise<SaveCloseResult> => {
     // Validated inside the transaction so what is checked is what is written.
     const errors = await validate({ ...ctx, db: tx as unknown as Db }, form, today, now);
     if (Object.keys(errors).length > 0) return { ok: false, errors };
+
+    // The receipt is used only once the form is valid, in this transaction: a save that is rolled
+    // back (a return photo gone) leaves it unused. A miss is silent; the close is then `manual`.
+    const receipt = draftId !== null && isFileId(draftId) ? await consumeDraftReceipt(tx as unknown as Db, ctx, { id: draftId, date: form.date }, now) : null;
+    const values = receipt ? { ...base, source: receipt.source } : base;
 
     const [close] = await tx
       .insert(s.dailyCloses)
@@ -361,6 +385,13 @@ async function saveInTransaction(
         );
     }
     await syncReturnPhotos(tx as unknown as Db, ctx, closeId, form, now);
+    if (receipt?.source === "photo" && receipt.fileId !== null) {
+      // The report photo goes with the close (one conditional UPDATE: his, a report, not deleted,
+      // inside retention, unattached or on this close). If it is gone (swept or removed), the close
+      // is still saved: it is the rep's own reviewed figures, and the photo is only its evidence.
+      const { missing } = await attachFiles(tx as unknown as Db, ctx, closeId, [{ id: receipt.fileId, kind: "report", returnPos: null }], now);
+      if (missing.length > 0) console.error("report photo not attached: gone before the close was confirmed");
+    }
     return { ok: true };
   });
 }
