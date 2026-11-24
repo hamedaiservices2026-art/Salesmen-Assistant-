@@ -20,11 +20,11 @@ const FTYP_SIG = [0x66, 0x74, 0x79, 0x70]; // "ftyp"
 const OGG_SIG = [0x4f, 0x67, 0x67, 0x53]; // "OggS"
 
 /**
- * Brands of an ISO base media file that hold a picture (HEIC, HEIF, AVIF) and never a recording.
- * Any other brand (`M4A `, `isom`, `mp42`, `iso2`, `dash`, `3gp4`, ...) is an MP4 container.
+ * Brands of an ISO base media file that are audio recordings. Any other brand (picture brands such
+ * as heic, mif1/mif2, avif, heif, miaf, MiHE, jp2, jpx, crx, and `qt  `) is refused.
  */
-const IMAGE_BRANDS: ReadonlySet<string> = new Set([
-  "heic", "heix", "heim", "heis", "hevc", "hevx", "hevm", "hevs", "mif1", "msf1", "avif", "avis", "avci", "avcs", "jpeg", "jpgs",
+const AUDIO_BRANDS: ReadonlySet<string> = new Set([
+  "M4A ", "M4B ", "M4P ", "isom", "iso2", "iso3", "iso4", "iso5", "iso6", "mp41", "mp42", "dash", "3gp4", "3gp5", "3gp6", "3g2a", "f4a ",
 ]);
 
 /**
@@ -37,7 +37,7 @@ export function sniffAudio(head: Uint8Array): AudioMime | null {
   if (startsWith(head, 0, OGG_SIG)) return "audio/ogg";
   if (startsWith(head, 4, FTYP_SIG) && head.length >= 12) {
     const brand = String.fromCharCode(head[8]!, head[9]!, head[10]!, head[11]!);
-    return IMAGE_BRANDS.has(brand.toLowerCase()) ? null : "audio/mp4";
+    return AUDIO_BRANDS.has(brand) ? "audio/mp4" : null;
   }
   return null;
 }

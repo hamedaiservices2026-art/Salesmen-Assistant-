@@ -8,7 +8,9 @@ export type AiUnavailableReason =
   | "rate_limited"
   | "quota"
   | "failed"
-  | "unreadable";
+  | "unreadable"
+  | "audio_type"
+  | "timeout";
 
 /** One line saying why the smart feature is not usable now and what to do instead. */
 export function AiUnavailable({ reason, className = "" }: { reason: AiUnavailableReason; className?: string }) {

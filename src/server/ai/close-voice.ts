@@ -64,7 +64,8 @@ function addModelFields(base: CloseDraft, model: CloseDraft): { draft: CloseDraf
   const fields: CloseDraft["fields"] = { ...base.fields };
   let added = 0;
   for (const [key, f] of Object.entries(model.fields) as [DraftKey, NonNullable<CloseDraft["fields"][DraftKey]>][]) {
-    if (Object.hasOwn(fields, key)) continue;
+    // A key the parser filled, or rejected (a problem on it), is not the model's to fill.
+    if (Object.hasOwn(fields, key) || base.problems.some((p) => p.key === key)) continue;
     fields[key] = { ...f, confidence: Math.min(f.confidence, MODEL_FIELD_MAX_CONFIDENCE), low: true };
     added += 1;
   }
@@ -141,7 +142,7 @@ export async function draftFromVoice(ctx: Ctx, input: { date: ISODate; bytes: Ui
   return { ok: true, draft, draftId, transcript, usedModel };
 
   async function transcribeWithBudget() {
-    if (deadlineAt - clock() < MIN_PROVIDER_MS) return { ok: false as const, reason: "failed" as const };
+    if (deadlineAt - clock() < MIN_PROVIDER_MS) return { ok: false as const, reason: "timeout" as const };
     return transcribe(ctx, { bytes: input.bytes, feature: "close_voice" }, { now, config, providers: opts.providers, deps: opts.deps, deadlineAt });
   }
 }
@@ -164,6 +165,8 @@ const STATUS: Record<CloseVoiceFail["reason"], number> = {
   too_large: 413,
   unsupported_type: 400,
   empty: 422,
+  audio_type: 400,
+  timeout: 504,
   nothing_heard: 422,
 };
 

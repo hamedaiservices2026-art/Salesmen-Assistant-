@@ -119,6 +119,16 @@ describe("gemini adapter", () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
+  it("stt: an empty or whitespace-only transcript is a successful empty text, not invalid_output (R32)", async () => {
+    for (const text of ["", "  \n"]) {
+      const { fetchImpl } = recorder(() => json({ candidates: [{ content: { parts: [{ text }] }, finishReason: "STOP" }] }));
+      const r = await geminiProvider(CFG.gemini, fetchImpl).stt({ audio: AUDIO, mime: "audio/webm", language: "ar" }, signal());
+      expect(r.text).toBe("");
+    }
+    const none = recorder(() => json({ candidates: [{ finishReason: "SAFETY" }] }));
+    expect((await code(geminiProvider(CFG.gemini, none.fetchImpl).stt({ audio: AUDIO, mime: "audio/webm", language: "ar" }, signal()))).code).toBe("invalid_output");
+  });
+
   it("a reply with no text → invalid_output; missing usage → null counts", async () => {
     const empty = recorder(() => json({ candidates: [{ finishReason: "SAFETY" }] }));
     expect((await code(geminiProvider(CFG.gemini, empty.fetchImpl).chat(chatReq, signal()))).code).toBe("invalid_output");
@@ -216,6 +226,18 @@ describe("groq adapter", () => {
     expect((await code(p.vision(visionReq, signal()))).code).toBe("bad_request");
     expect((await code(p.chat(chatReq, signal()))).code).toBe("bad_request");
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("an empty or whitespace-only text is a successful empty transcript (R32); a missing or non-string text is invalid_output", async () => {
+    for (const text of ["", "   "]) {
+      const { fetchImpl } = recorder(() => json({ text }));
+      const r = await groqProvider(CFG.groq, fetchImpl).stt({ audio: AUDIO, mime: "audio/webm", language: "en" }, signal());
+      expect(r.text).toBe("");
+    }
+    for (const body of [{ text: 5 }, {}]) {
+      const { fetchImpl } = recorder(() => json(body));
+      expect((await code(groqProvider(CFG.groq, fetchImpl).stt({ audio: AUDIO, mime: "audio/webm", language: "en" }, signal()))).code).toBe("invalid_output");
+    }
   });
 
   it("a reply without text → invalid_output", async () => {

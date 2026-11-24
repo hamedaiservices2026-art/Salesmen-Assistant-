@@ -13,6 +13,8 @@ import { repCtx } from "@/server/admin/rep-ctx";
 import { AI_NOTICE_VERSION } from "./availability";
 import { readAiConfig } from "./config";
 import { fakeProvider } from "./fake";
+import { geminiProvider } from "./gemini";
+import { EXTRACTION_FIRST_LINE } from "./fake";
 import { CLOSE_VOICE_MAX_BODY, draftFromVoice, handleCloseVoicePost } from "./close-voice";
 import { transcribe } from "./transcribe";
 import type { AiProvider, ChatRequest, SttRequest } from "./types";
@@ -113,6 +115,68 @@ describe("transcribe", () => {
     await expect(transcribe(ctxOf("demo-admin", "admin"), { bytes: webm(), feature: "close_voice" }, opts())).rejects.toBeInstanceOf(Forbidden);
     const tagged = await repCtx(ctxOf("sami", "supervisor"), "ahmed");
     await expect(transcribe(tagged!, { bytes: webm(), feature: "close_voice" }, opts())).rejects.toBeInstanceOf(Forbidden);
+  });
+});
+
+describe("unusable audio type and empty transcripts", () => {
+  it("no provider takes the sniffed type (Gemini only, MP4) → audio_type, no usage row, no counter spent", async () => {
+    const gemini = geminiProvider(readAiConfig({ GEMINI_API_KEY: "k-123" }).gemini, vi.fn() as unknown as typeof fetch);
+    const r = await transcribe(ahmed(), { bytes: mp4(), feature: "close_voice" }, opts({ providers: [gemini] }));
+    expect(r).toEqual({ ok: false, reason: "audio_type" });
+    const v = await draftFromVoice(ahmed(), { date: TODAY, bytes: mp4() }, opts({ providers: [gemini] }));
+    expect(v).toEqual({ ok: false, reason: "audio_type" });
+    expect(await usageRows()).toEqual([]);
+    expect(await db.select().from(s.aiCounters)).toEqual([]);
+    // webm is listed for Gemini: that one reaches the provider.
+    expect(gemini.acceptsAudio("audio/webm")).toBe(true);
+  });
+
+  it("no provider at all stays no_provider", async () => {
+    expect(await transcribe(ahmed(), { bytes: webm(), feature: "close_voice" }, opts({ providers: [] }))).toEqual({ ok: false, reason: "no_provider" });
+  });
+
+  it("a provider returning an empty transcript → empty, one usage row, one provider call", async () => {
+    const sp = spied({ transcript: "" });
+    const sp2 = spied({ transcript: "never" });
+    const r = await draftFromVoice(ahmed(), { date: TODAY, bytes: webm() }, opts({ providers: [sp.provider, sp2.provider] }));
+    expect(r).toEqual({ ok: false, reason: "empty" });
+    expect(sp.stt).toHaveLength(1);
+    expect(sp2.stt).toEqual([]);
+    expect(await usageRows()).toHaveLength(1);
+  });
+
+  it("the budget under 5 s before speech to text → timeout, nothing spent", async () => {
+    const sp = spied();
+    const r = await draftFromVoice(ahmed(), { date: TODAY, bytes: webm() }, opts({ providers: [sp.provider], deadlineAt: Date.now() + 2_000 }));
+    expect(r).toEqual({ ok: false, reason: "timeout" });
+    expect(sp.stt).toEqual([]);
+    expect(await usageRows()).toEqual([]);
+  });
+
+  it("a key the parser rejected stays rejected: the model cannot fill it", async () => {
+    // "تحصيل" said with two different numbers is spoiled (a problem-free drop); use a parser-rejected key via a reply on a key with a base problem.
+    const sp = spied({ transcript: "مشروبات 99999999999 وبعت كمان 300", chat: () => JSON.stringify({ reportDate: null, fields: [{ key: "line:bev", value: "50", confidence: 0.9 }, { key: "line:food", value: "300", confidence: 0.9 }] }) });
+    const r = await draftFromVoice(ahmed(), { date: TODAY, bytes: webm() }, opts({ providers: [sp.provider] }));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.draft.problems).toContainEqual({ key: "line:bev", problem: "too_large" });
+    expect(r.draft.fields["line:bev"]).toBeUndefined();
+    expect(r.draft.fields["line:food"]).toBeDefined();
+  });
+
+  it("voice prompt: the system text is the fixed extraction text (no labels, no transcript); the transcript is only in the user message", async () => {
+    const transcript = "مشروبات مية وعشرين وبعت كمان 300";
+    const sp = spied({ transcript });
+    await draftFromVoice(ahmed(), { date: TODAY, bytes: webm() }, opts({ providers: [sp.provider] }));
+    const req = sp.chat[0]!;
+    expect(req.system.split("\n")[0]).toBe(EXTRACTION_FIRST_LINE);
+    expect(req.system).not.toContain(transcript);
+    expect(req.system).not.toContain("Fields:");
+    for (const label of ["مشروبات", "أغذية", "تحصيل", "نقدي"]) expect(req.system).not.toContain(label);
+    expect(req.system).toContain("transcript of a sales rep's spoken");
+    expect(req.messages).toHaveLength(1);
+    expect(req.messages[0]!.text).toContain("Fields:");
+    expect(req.messages[0]!.text.endsWith(transcript)).toBe(true);
   });
 });
 

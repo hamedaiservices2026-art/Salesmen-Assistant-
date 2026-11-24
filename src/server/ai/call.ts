@@ -82,6 +82,13 @@ export async function aiCall<T>(
   const available = await aiAvailability(ctx, kind, config, opts.providers);
   if (!available.ok) return { ok: false, reason: available.reason };
 
+  // A recording no provider can take (its type is not on any provider's list; R48) is refused here,
+  // before a counter moves and without a usage row: it would only burn a request.
+  const providersFor = opts.providers ?? getProviders(kind, config);
+  if (spec.audioMime !== undefined && !providersFor.some((p) => p.modelFor(kind) !== null && p.acceptsAudio(spec.audioMime as AudioMime))) {
+    return { ok: false, reason: "no_provider" };
+  }
+
   const quota = await reserveAi(ctx, kind, now, { day: config.globalDay[kind], minute: config.globalMinute[kind] });
   if (quota === "rate_limited") return { ok: false, reason: "rate_limited" };
   if (quota !== "ok") {
@@ -104,7 +111,7 @@ export async function aiCall<T>(
   };
   let r: Awaited<ReturnType<typeof runAi<T>>>;
   try {
-    const providers = opts.providers ?? getProviders(kind, config);
+    const providers = providersFor;
     r = await runAi(
       { kind, providers, call: spec.call, parse: spec.parse, deadlineAt: opts.deadlineAt, audioMime: spec.audioMime },
       opts.deps,

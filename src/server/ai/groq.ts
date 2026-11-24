@@ -35,8 +35,9 @@ export function groqProvider(cfg: AiConfig["groq"], fetchImpl: typeof fetch = fe
         "groq",
         fetchImpl,
       )) as { text?: unknown } | null;
-      if (typeof json?.text !== "string" || json.text === "") throw new AiError("invalid_output", "groq");
-      return { text: json.text, usage: { tokensIn: null, tokensOut: null } };
+      if (typeof json?.text !== "string") throw new AiError("invalid_output", "groq");
+      // An empty or blank transcript is a successful (empty) reading, not an invalid reply (R32).
+      return { text: json.text.trim() === "" ? "" : json.text, usage: { tokensIn: null, tokensOut: null } };
     },
   };
 }

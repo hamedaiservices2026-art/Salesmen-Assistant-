@@ -369,7 +369,7 @@ describe("a reserved slot always gets a log row (R67)", () => {
 });
 
 describe("audioMime reaches the runner (R48)", () => {
-  it("an stt job whose only provider refuses the type is skipped with no request", async () => {
+  it("an stt job whose only provider refuses the type is refused as no_provider with no request, no row and no counter", async () => {
     await acceptNotice();
     const base = fakeProvider();
     const sttSpy = vi.fn(base.stt);
@@ -381,9 +381,11 @@ describe("audioMime reaches the runner (R48)", () => {
       call: (p: AiProvider, signal: AbortSignal) => p.stt({ audio: new Uint8Array([1]), mime: audioMime ?? "audio/webm", language: "ar" }, signal),
       parse: (t: string) => t || null,
     });
-    expect(await aiCall(ahmed(), job("audio/mp4"), { now: T0, config: FAKE, providers: [picky], deps: noSleep })).toEqual({ ok: false, reason: "failed" });
+    expect(await aiCall(ahmed(), job("audio/mp4"), { now: T0, config: FAKE, providers: [picky], deps: noSleep })).toEqual({ ok: false, reason: "no_provider" });
     expect(sttSpy).not.toHaveBeenCalled();
-    expect((await usageRows())[0]).toMatchObject({ outcome: "provider_error", attempts: 0, provider: null });
+    // Refused before the quota: no usage row and no counter (fix round 1).
+    expect(await usageRows()).toEqual([]);
+    expect(await db.select().from(s.aiCounters)).toEqual([]);
     expect((await aiCall(ahmed(), job("audio/webm"), { now: T0, config: FAKE, providers: [picky], deps: noSleep })).ok).toBe(true);
     expect(sttSpy).toHaveBeenCalledTimes(1);
   });

@@ -2,11 +2,13 @@ import { AUDIO_MAX_BYTES, sniffAudio, TRANSCRIPT_MAX } from "@/domain/ai/audio";
 import { assertOwnContext, assertRole } from "@/server/auth/roles";
 import type { Ctx } from "@/server/ctx";
 import { aiCall, type AiCallFail } from "./call";
-import type { AiConfig } from "./config";
 import type { RunDeps } from "./run";
+import { getProviders } from "./providers";
+import { readAiConfig, type AiConfig } from "./config";
 import type { AiProvider } from "./types";
 
-export type TranscribeFail = { ok: false; reason: AiCallFail["reason"] | "too_large" | "unsupported_type" | "empty" };
+/** `audio_type`: providers exist but none takes this recording's type. `timeout`: too little time was left to start. */
+export type TranscribeFail = { ok: false; reason: AiCallFail["reason"] | "too_large" | "unsupported_type" | "empty" | "audio_type" | "timeout" };
 export type TranscribeOpts = {
   now?: Date;
   config?: AiConfig;
@@ -54,7 +56,14 @@ export async function transcribe(
     },
     { now: opts.now, config: opts.config, providers: opts.providers, deps: opts.deps, deadlineAt: opts.deadlineAt },
   );
-  if (!r.ok) return r;
+  if (!r.ok) {
+    if (r.reason === "no_provider") {
+      // Some provider exists for speech to text, so the cause is this recording's type.
+      const config = opts.config ?? readAiConfig(process.env);
+      if ((opts.providers ?? getProviders("stt", config)).some((p) => p.modelFor("stt") !== null)) return { ok: false, reason: "audio_type" };
+    }
+    return r;
+  }
   if (r.value === "") return { ok: false, reason: "empty" };
   return { ok: true, transcript: r.value };
 }

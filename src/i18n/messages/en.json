@@ -1231,6 +1231,8 @@
       "stale": "The notice was updated. Read it again and agree to it."
     },
     "unavailable": {
+      "audio_type": "This recording type is not supported on your device right now. Type it by hand.",
+      "timeout": "We ran out of time before hearing the recording. Try again or type it by hand.",
       "disabled": "Smart reading is off right now. Type it in yourself.",
       "company_off": "Smart reading is off right now. Type it in yourself.",
       "no_provider": "Smart reading is off right now. Type it in yourself.",

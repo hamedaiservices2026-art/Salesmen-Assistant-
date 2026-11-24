@@ -47,7 +47,7 @@ function thinkingConfig(setting: string | undefined): Record<string, unknown> | 
   return Number.isSafeInteger(n) && n >= 0 ? { thinkingBudget: n } : { thinkingBudget: 0 };
 }
 
-function textOf(json: unknown, provider: "gemini"): TextResult {
+function textOf(json: unknown, provider: "gemini", allowEmpty = false): TextResult {
   const root = json as {
     candidates?: { content?: { parts?: { text?: unknown }[] } }[];
     usageMetadata?: { promptTokenCount?: unknown; candidatesTokenCount?: unknown; thoughtsTokenCount?: unknown };
@@ -55,11 +55,13 @@ function textOf(json: unknown, provider: "gemini"): TextResult {
   const parts = root?.candidates?.[0]?.content?.parts;
   const text = Array.isArray(parts) ? parts.map((p) => (typeof p?.text === "string" ? p.text : "")).join("") : "";
   // No text, whether blocked or cut off (finishReason MAX_TOKENS), is an unreadable reply.
-  if (text === "") throw new AiError("invalid_output", provider);
+  // A speech-to-text reply whose parts are present but blank is an empty transcript (R32).
+  const blankOk = allowEmpty && Array.isArray(parts) && parts.length > 0 && text.trim() === "";
+  if (text === "" && !blankOk) throw new AiError("invalid_output", provider);
   const out = asCount(root?.usageMetadata?.candidatesTokenCount);
   const thought = asCount(root?.usageMetadata?.thoughtsTokenCount);
   const tokensOut = out === null && thought === null ? null : (out ?? 0) + (thought ?? 0);
-  return { text, usage: { tokensIn: asCount(root?.usageMetadata?.promptTokenCount), tokensOut } };
+  return { text: blankOk ? "" : text, usage: { tokensIn: asCount(root?.usageMetadata?.promptTokenCount), tokensOut } };
 }
 
 export function geminiProvider(cfg: AiConfig["gemini"], fetchImpl: typeof fetch = fetch): AiProvider {
@@ -84,7 +86,7 @@ export function geminiProvider(cfg: AiConfig["gemini"], fetchImpl: typeof fetch 
     if (system !== null) body.systemInstruction = { parts: [{ text: system }] };
     // The key is revealed here, once, to build the header; it is never in the URL or the body.
     const json = await postJson(url, { [KEY_HEADER]: cfg.key.reveal() }, body, signal, "gemini", fetchImpl);
-    return textOf(json, "gemini");
+    return textOf(json, "gemini", kind === "stt");
   }
 
   return {
