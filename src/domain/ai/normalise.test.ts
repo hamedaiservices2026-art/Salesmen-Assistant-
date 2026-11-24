@@ -32,3 +32,22 @@ describe("normaliseArabic", () => {
     expect(normaliseArabic("ﻻ")).toBe("لا");
   });
 });
+
+describe("normaliseArabic: Urdu letters and Arabic separators (Task 12)", () => {
+  it("maps Urdu kaf, farsi yeh, yeh barree and heh goal to their Arabic letters", () => {
+    expect(normaliseArabic("کیےہ")).toBe("كييه");
+    expect(normaliseArabic("وصولی")).toBe("وصولي");
+    expect(normaliseArabic("اشیائے")).toBe(normaliseArabic("اشيائي"));
+  });
+
+  it("reads the Arabic decimal and thousands separators between digits", () => {
+    expect(normaliseArabic("١٬١٤٠")).toBe("1,140");
+    expect(normaliseArabic("٣٫٥")).toBe("3.5");
+    expect(normaliseArabic("7٬900٫50")).toBe("7,900.50");
+  });
+
+  it("turns the Arabic separators into a space when not between two digits", () => {
+    expect(normaliseArabic("مشروبات٬ اغذية٫")).toBe("مشروبات اغذيه");
+    expect(normaliseArabic("12٬ 5")).toBe("12 5");
+  });
+});

@@ -102,6 +102,45 @@ describe("ZWNJ and ZWJ (R73a)", () => {
   });
 });
 
+describe("stripInvisible: one-pass version equals the per-code-point rule (Task 12)", () => {
+  // The rule as first written (R73): per code point, joiners kept only between letters or marks.
+  const reference = (text: string): string => {
+    const chars = Array.from(text);
+    let out = "";
+    chars.forEach((c, i) => {
+      if (c === "\u200C" || c === "\u200D") {
+        const prev = chars[i - 1];
+        const next = chars[i + 1];
+        if (prev !== undefined && next !== undefined && /^[\p{L}\p{M}]$/u.test(prev) && /^[\p{L}\p{M}]$/u.test(next)) out += c;
+        return;
+      }
+      if (!/[\p{Cc}\p{Cf}\p{Co}]/u.test(c)) out += c;
+    });
+    return out;
+  };
+  it("agrees on 5000 random strings of letters, marks, joiners, controls, astral and lone surrogates", () => {
+    const alphabet = ["a", "ب", "\u064E", "\u200C", "\u200D", "\u200B", "\u202E", "\n", " ", "1", "\u{1D400}", "\u{E0041}", "\uD800", "\uDC00", "\uE000", "|"];
+    let seed = 12345;
+    const next = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+    for (let round = 0; round < 5000; round++) {
+      let s = "";
+      const n = Math.floor(next() * 12);
+      for (let i = 0; i < n; i++) s += alphabet[Math.floor(next() * alphabet.length)];
+      expect(stripInvisible(s)).toBe(reference(s));
+    }
+  });
+  it("is fast on long text", () => {
+    const text = "مشر\u200Bوبات\u200C مية ".repeat(50_000);
+    let ms = Infinity;
+    for (let run = 0; run < 3; run++) {
+      const t0 = performance.now();
+      stripInvisible(text);
+      ms = Math.min(ms, performance.now() - t0);
+    }
+    expect(ms).toBeLessThan(200);
+  });
+});
+
 describe("cleanLabelLenient (R73b)", () => {
   it("replaces unsafe characters by spaces", () => {
     expect(cleanLabelLenient("Cola [330]")).toBe("Cola 330");

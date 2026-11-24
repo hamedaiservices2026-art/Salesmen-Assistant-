@@ -21,18 +21,26 @@ const JOINERS = new Set(["\u200C", "\u200D"]);
  * every label text: aliases here and, in Task 12, the transcript before it is matched against labels.
  */
 export function stripInvisible(text: string): string {
-  const chars = Array.from(text);
-  let out = "";
-  chars.forEach((c, i) => {
-    if (JOINERS.has(c)) {
-      const prev = chars[i - 1];
-      const next = chars[i + 1];
-      if (prev !== undefined && next !== undefined && LETTER_OR_MARK.test(prev) && LETTER_OR_MARK.test(next)) out += c;
-      return;
-    }
-    if (!INVISIBLE.test(c)) out += c;
+  // One regex pass (Task 12: a transcript can be long); the neighbours of a joiner are read in the
+  // original text, as code points.
+  return text.replace(STRIP, (c: string, offset: number, whole: string) => {
+    if (!JOINERS.has(c)) return "";
+    const prev = codePointBefore(whole, offset);
+    const next = offset + c.length < whole.length ? String.fromCodePoint(whole.codePointAt(offset + c.length)!) : undefined;
+    return prev !== undefined && next !== undefined && LETTER_OR_MARK.test(prev) && LETTER_OR_MARK.test(next) ? c : "";
   });
-  return out;
+}
+
+const STRIP = new RegExp(INVISIBLE.source, "gu");
+
+function codePointBefore(s: string, i: number): string | undefined {
+  if (i <= 0) return undefined;
+  const low = s.charCodeAt(i - 1);
+  if (low >= 0xdc00 && low <= 0xdfff && i >= 2) {
+    const high = s.charCodeAt(i - 2);
+    if (high >= 0xd800 && high <= 0xdbff) return s.slice(i - 2, i);
+  }
+  return s[i - 1];
 }
 
 /** True when the text holds nothing a person could see (empty, spaces, invisible characters). */
