@@ -19,6 +19,7 @@ export const UNIT_WORDS: ReadonlySet<string> = new Set(
 const INVISIBLE_OR_JOINER = /\p{C}/u;
 const ZW_JOINERS = /[\u200C\u200D]/g;
 const WHITESPACE = /[\s\u0085]+/gu;
+const LEADING_DOT = /(^|[^0-9\u0660-\u0669\u06F0-\u06F9])[.\u066B](?=[0-9\u0660-\u0669\u06F0-\u06F9])/gu;
 
 function isLatin(c: string | undefined): boolean {
   return c !== undefined && c >= "a" && c <= "z";
@@ -36,6 +37,9 @@ export function spokenTokens(text: string): string[] {
   // Whitespace (a newline or tab included) becomes a space before control characters are removed,
   // so removing them never glues two words together. `normaliseArabic` applies NFKC.
   if (INVISIBLE_OR_JOINER.test(clean)) clean = stripInvisible(clean.replace(WHITESPACE, " ")).replace(ZW_JOINERS, "");
+  // A decimal mark with no digit before it (`.5`, `٫٥`) would vanish in `normaliseArabic`; it
+  // becomes `#` so the token stays unreadable instead of turning into 5 (R76).
+  if (clean.includes(".") || clean.includes("\u066B")) clean = clean.replace(LEADING_DOT, "$1#");
   let norm = normaliseArabic(clean);
   if (norm.includes("-")) {
     let out = "";
@@ -53,20 +57,30 @@ export function spokenTokens(text: string): string[] {
 // ---------------------------------------------------------------------------------------------
 // Words
 
-type Kind = "unit" | "ten" | "teen" | "tens" | "hundreds" | "hundredWord" | "teenSuffix" | "scale";
+type Kind = "unit" | "ten" | "teen" | "tens" | "hundreds" | "hundredWord" | "teenSuffix" | "scale" | "thousands";
 type Lang = "ar" | "en";
 type Form = "one" | "dual" | "plural" | "en";
 /**
  * `short`: a short unit (`خمس`, `تلات`) counts only before what it counts (plural scale, `مية`,
- * `عشر`, a unit word); `preTeen` (`احد`, `اثنا`) only before `عشر`; `ashar` is `عشر`, `ashara` is `عشرة`;
- * `article` is English `a` before hundred, thousand or million.
+ * `عشر`, a unit word), and is unreadable at the end of the speech; `third` is `تلت`, which before
+ * `ألف`, `مليون` or a hundred word may mean a third, so it is unreadable there; `preTeen` (`احد`,
+ * `اثنا`) only before `عشر`; `ashar` is `عشر`, `ashara` is `عشرة`; `construct` is `ميت` (and
+ * `خمسميت`…), read only before `ألف`/`مليون`; `article` is English `a` before hundred, thousand or
+ * million.
  */
-type Cond = "short" | "preTeen" | "ashar" | "ashara" | "article";
+type Cond = "short" | "third" | "preTeen" | "ashar" | "ashara" | "construct" | "article";
 type Word = { kind: Kind; value: number; lang: Lang; form?: Form; cond?: Cond };
 
 const WORDS = new Map<string, Word>();
 function add(spellings: string[], word: Word): void {
   for (const s of spellings) WORDS.set(normaliseArabic(s), word);
+}
+/** Generated spellings never replace a listed word. */
+function addNew(spellings: string[], word: Word): void {
+  for (const s of spellings) {
+    const k = normaliseArabic(s);
+    if (!WORDS.has(k)) WORDS.set(k, word);
+  }
 }
 
 const AR_UNITS: [string[], number][] = [
@@ -82,19 +96,22 @@ const AR_UNITS: [string[], number][] = [
 ];
 for (const [s, v] of AR_UNITS) add(s, { kind: "unit", value: v, lang: "ar" });
 const AR_SHORT: [string[], number][] = [
-  [["ثلاث", "تلات", "تلت"], 3],
+  [["ثلاث", "تلات"], 3],
   [["أربع"], 4],
   [["خمس"], 5],
   [["ست"], 6],
   [["سبع"], 7],
-  [["ثمان", "تمان", "تمن", "ثمن"], 8],
+  [["ثمان", "تمان", "تمن", "ثمن", "ثماني", "تماني"], 8],
   [["تسع"], 9],
 ];
 for (const [s, v] of AR_SHORT) add(s, { kind: "unit", value: v, lang: "ar", cond: "short" });
+add(["تلت"], { kind: "unit", value: 3, lang: "ar", cond: "third" });
 add(["أحد"], { kind: "unit", value: 1, lang: "ar", cond: "preTeen" });
 add(["اثنا", "اثني"], { kind: "unit", value: 2, lang: "ar", cond: "preTeen" });
 add(["عشر"], { kind: "ten", value: 10, lang: "ar", cond: "ashar" });
 add(["عشرة"], { kind: "ten", value: 10, lang: "ar", cond: "ashara" });
+
+// Teens: the listed spellings, then each stem with each Egyptian, Gulf and MSA ending.
 const AR_TEENS: [string[], number][] = [
   [["حداشر", "احداشر", "احدعشر", "إحدعشر", "حدعش", "احدعش"], 11],
   [["اتناشر", "اطناشر", "اثناعشر", "اثنعش", "ثنعش"], 12],
@@ -107,6 +124,24 @@ const AR_TEENS: [string[], number][] = [
   [["تسعتاشر", "تسعطعش", "تسعتعش"], 19],
 ];
 for (const [s, v] of AR_TEENS) add(s, { kind: "teen", value: v, lang: "ar" });
+const TEEN_ENDINGS = ["تاشر", "طاشر", "تعشر", "طعشر", "تعش", "طعش"];
+const ELEVEN_TWELVE_ENDINGS = ["اشر", "عشر", "عش"];
+const TEEN_STEMS: [string[], number][] = [
+  [["حد", "احد"], 11],
+  [["اتن", "اطن", "اثن", "ثن", "اتنا", "اثنا"], 12],
+  [["تلا", "تل", "تلات", "تلت", "ثلاث", "ثلث", "ثل"], 13],
+  [["اربع", "ربع"], 14],
+  [["خمس"], 15],
+  [["ست", "س"], 16],
+  [["سبع"], 17],
+  [["تمن", "تمان", "ثمن", "ثمان"], 18],
+  [["تسع"], 19],
+];
+for (const [stems, v] of TEEN_STEMS) {
+  const endings = v <= 12 ? ELEVEN_TWELVE_ENDINGS : TEEN_ENDINGS;
+  addNew(stems.flatMap((st) => endings.map((e) => st + e)), { kind: "teen", value: v, lang: "ar" });
+}
+
 const AR_TENS: [string[], number][] = [
   [["عشرين", "عشرون"], 20],
   [["تلاتين", "ثلاثين", "ثلاثون"], 30],
@@ -120,6 +155,7 @@ const AR_TENS: [string[], number][] = [
 for (const [s, v] of AR_TENS) add(s, { kind: "tens", value: v, lang: "ar" });
 const HUNDRED_SUFFIXES = ["مية", "مائة", "مئة", "ماية"];
 add(HUNDRED_SUFFIXES, { kind: "hundredWord", value: 100, lang: "ar" });
+add(["ميت"], { kind: "hundredWord", value: 100, lang: "ar", cond: "construct" });
 add(["ميتين", "مائتين", "مئتين", "مايتين", "متين", "مائتان", "مئتان"], { kind: "hundreds", value: 200, lang: "ar" });
 const HUNDRED_PREFIXES: [string[], number][] = [
   [["تلت", "تلات", "ثلاث", "ثلث"], 3],
@@ -127,11 +163,12 @@ const HUNDRED_PREFIXES: [string[], number][] = [
   [["خمس"], 5],
   [["ست"], 6],
   [["سبع"], 7],
-  [["تمن", "تمان", "ثمان", "ثمن"], 8],
+  [["تمن", "تمان", "ثمان", "ثمن", "ثماني", "تماني"], 8],
   [["تسع"], 9],
 ];
 for (const [prefixes, v] of HUNDRED_PREFIXES) {
   add(prefixes.flatMap((p) => HUNDRED_SUFFIXES.map((s) => p + s)), { kind: "hundreds", value: v * 100, lang: "ar" });
+  addNew(prefixes.map((p) => p + "ميت"), { kind: "hundreds", value: v * 100, lang: "ar", cond: "construct" });
 }
 add(["ألف"], { kind: "scale", value: 1000, lang: "ar", form: "one" });
 add(["ألفين", "ألفان"], { kind: "scale", value: 1000, lang: "ar", form: "dual" });
@@ -139,6 +176,21 @@ add(["آلاف", "تلاف", "ألاف"], { kind: "scale", value: 1000, lang: "a
 add(["مليون"], { kind: "scale", value: 1_000_000, lang: "ar", form: "one" });
 add(["مليونين", "مليونان"], { kind: "scale", value: 1_000_000, lang: "ar", form: "dual" });
 add(["ملايين"], { kind: "scale", value: 1_000_000, lang: "ar", form: "plural" });
+// Glued thousands (`خمستلاف`, `تلاتلاف`, `عشرتلاف`): a whole group of n × 1000.
+const THOUSAND_STEMS: [string[], number][] = [
+  [["تلت", "تلات", "ثلاث", "ثلث"], 3],
+  [["اربع"], 4],
+  [["خمس"], 5],
+  [["ست"], 6],
+  [["سبع"], 7],
+  [["تمن", "تمان", "ثمان", "ثمن"], 8],
+  [["تسع"], 9],
+  [["عشر"], 10],
+];
+for (const [stems, v] of THOUSAND_STEMS) {
+  const forms = stems.flatMap((st) => [st + "تلاف", st + "تالاف", st + "الاف", ...(st.endsWith("ت") ? [st + "لاف"] : [])]);
+  addNew(forms, { kind: "thousands", value: v * 1000, lang: "ar" });
+}
 
 const EN_UNITS = ["one", "two", "three", "four", "five", "six", "seven", "eight", "nine"];
 EN_UNITS.forEach((w, i) => add([w], { kind: "unit", value: i + 1, lang: "en" }));
@@ -156,18 +208,59 @@ const W = (s: string) => normaliseArabic(s);
 const WAW = W("و");
 const HALF_WORDS = new Set([W("نص"), W("نصف")]);
 const AND = "and";
-const SHORT_NEXT = new Set([...["آلاف", "تلاف", "ألاف", "ملايين", "عشر", "عشرة", ...HUNDRED_SUFFIXES].map(W), ...UNIT_WORDS]);
+const SHORT_NEXT = new Set([...["آلاف", "تلاف", "ألاف", "ملايين", "عشر", "عشرة", "ميت", ...HUNDRED_SUFFIXES].map(W), ...UNIT_WORDS]);
 const TEEN_NEXT = new Set([W("عشر"), W("عشرة")]);
 const ASHAR_TEN_NEXT = new Set([...["آلاف", "تلاف", "ألاف", "ملايين"].map(W), ...UNIT_WORDS]);
 const ARTICLE_NEXT = new Set(["hundred", "thousand", "million"]);
+const SINGULAR_SCALES = new Set([W("ألف"), W("مليون")]);
+const HUNDRED_WORDS = new Set([...HUNDRED_SUFFIXES, "ميت"].map(W));
+/** Scale and hundred words: a fraction word (`نص`, `ربع`) before one is a part of it, not a count. */
+const SCALE_OR_HUNDRED = new Set([
+  ...["ألف", "ألفين", "آلاف", "تلاف", "ألاف", "مليون", "مليونين", "ملايين", "ميت", ...HUNDRED_SUFFIXES].map(W),
+  "hundred",
+  "thousand",
+  "million",
+]);
+const FRACTION_WORDS = new Set([W("نص"), W("نصف"), W("ربع"), "half", "quarter", "third"]);
+
+// Number-like tokens the tables do not read (R76): a known count stem with a hundred, thousand or
+// teen ending. They are unreadable atoms, never filler, so they claim their label and are counted.
+const COUNT_STEMS = new Set(
+  [
+    ...AR_UNITS.flatMap(([s]) => s),
+    ...AR_SHORT.flatMap(([s]) => s),
+    ...TEEN_STEMS.flatMap(([s]) => s),
+    "تلت",
+    "عشر",
+    "عشرة",
+    "",
+  ].map(W),
+);
+const NUMBER_ENDINGS = [...HUNDRED_SUFFIXES, "ميت", "تلاف", "تالاف", "الاف", "لاف", ...TEEN_ENDINGS, ...ELEVEN_TWELVE_ENDINGS].map(W);
+
+function looksLikeNumber(base: string): boolean {
+  for (const e of NUMBER_ENDINGS) {
+    if (base.length > e.length && base.endsWith(e) && COUNT_STEMS.has(base.slice(0, base.length - e.length))) return true;
+  }
+  return false;
+}
 
 // ---------------------------------------------------------------------------------------------
 // Atoms: one number word or digit token, or a half, with whether a `و`/`and` joins it to the one before.
 
-type Atom =
-  | { kind: Kind; value: number; lang: Lang; form?: Form; joined: boolean; start: number; end: number }
-  | { kind: "digits"; value: number; fraction: "none" | "half"; lang: "d"; joined: boolean; start: number; end: number }
-  | { kind: "half" | "bad"; value: 0; lang: "x"; joined: boolean; start: number; end: number };
+type WordAtom = { kind: Kind; value: number; lang: Lang; form?: Form; joined: boolean; start: number; end: number };
+type DigitAtom = {
+  kind: "digits";
+  value: number;
+  fraction: "none" | "half";
+  /** Exactly three digits, no separator, no fraction: the tail of a spaced thousands group. */
+  three: boolean;
+  lang: "d";
+  joined: boolean;
+  start: number;
+  end: number;
+};
+type Atom = WordAtom | DigitAtom | { kind: "half" | "bad"; value: 0; lang: "x"; joined: boolean; start: number; end: number };
 
 const MAX_SAFE = BigInt(Number.MAX_SAFE_INTEGER);
 
@@ -182,11 +275,11 @@ function allDigits(s: string): boolean {
 
 /**
  * A digit token: plain digits, or groups of three after a first group of 1 to 3 (the grouping
- * rule of `parseAmount`), then an optional `.` fraction that is zero or a half (`.5`, `.50`).
- * Null when the token holds no digit; `bad` when it holds one but is not such a number, or is
- * beyond `Number.MAX_SAFE_INTEGER`.
+ * rule of `parseAmount`), then an optional fraction `.0`, `.00` (none) or `.5`, `.50` (a half).
+ * Null when the token holds no digit; `bad` when it holds one but is not such a number (`5.000`,
+ * `1.25`, `8250,50`), or is beyond `Number.MAX_SAFE_INTEGER`.
  */
-function readDigitToken(t: string): { value: number; fraction: "none" | "half" } | "bad" | null {
+function readDigitToken(t: string): { value: number; fraction: "none" | "half"; three: boolean } | "bad" | null {
   let any = false;
   for (let i = 0; i < t.length && !any; i++) any = isDigit(t[i]);
   if (!any) return null;
@@ -194,7 +287,6 @@ function readDigitToken(t: string): { value: number; fraction: "none" | "half" }
   if (dot !== t.lastIndexOf(".")) return "bad";
   const whole = dot < 0 ? t : t.slice(0, dot);
   const fraction = dot < 0 ? "" : t.slice(dot + 1);
-  if (dot >= 0 && !allDigits(fraction)) return "bad";
   let digits: string;
   if (whole.includes(",")) {
     const groups = whole.split(",");
@@ -207,14 +299,14 @@ function readDigitToken(t: string): { value: number; fraction: "none" | "half" }
     digits = whole;
   }
   let half: boolean;
-  if (fraction === "" || /^0+$/.test(fraction)) half = false;
+  if (dot < 0 || fraction === "0" || fraction === "00") half = false;
   else if (fraction === "5" || fraction === "50") half = true;
   else return "bad";
   let start = 0;
   while (start < digits.length - 1 && digits[start] === "0") start++;
   const significant = digits.slice(start);
   if (significant.length > 16 || BigInt(significant) > MAX_SAFE) return "bad";
-  return { value: Number(significant), fraction: half ? "half" : "none" };
+  return { value: Number(significant), fraction: half ? "half" : "none", three: dot < 0 && whole.length === 3 && !whole.includes(",") };
 }
 
 /** The word a token names, with a leading `و` taken as a joiner when the whole token is not a word. */
@@ -239,21 +331,35 @@ function halfAt(tokens: string[], k: number, to: number): number {
   return 0;
 }
 
+function badAt(k: number): Atom {
+  return { kind: "bad", value: 0, lang: "x", joined: false, start: k, end: k + 1 };
+}
+
 function atomAt(tokens: string[], k: number, from: number, to: number): Atom | null {
   const t = tokens[k]!;
   const joinedDigits = t.length > 1 && t.startsWith(WAW) && isDigit(t[WAW.length]);
   const d = readDigitToken(joinedDigits ? t.slice(WAW.length) : t);
-  if (d === "bad") return { kind: "bad", value: 0, lang: "x", joined: false, start: k, end: k + 1 };
-  if (d !== null) return { kind: "digits", value: d.value, fraction: d.fraction, lang: "d", joined: joinedDigits, start: k, end: k + 1 };
+  if (d === "bad") return badAt(k);
+  if (d !== null) return { kind: "digits", value: d.value, fraction: d.fraction, three: d.three, lang: "d", joined: joinedDigits, start: k, end: k + 1 };
 
-  const found = lookup(t);
-  if (!found) return null;
-  const { word, joined } = found;
   const next = k + 1 < to ? tokens[k + 1]! : undefined;
+  const found = lookup(t);
+  if (!found) {
+    const base = t.length > 1 && t.startsWith(WAW) ? t.slice(WAW.length) : t;
+    if (FRACTION_WORDS.has(base) && next !== undefined && SCALE_OR_HUNDRED.has(next)) return badAt(k);
+    if (looksLikeNumber(base) || looksLikeNumber(t)) return badAt(k);
+    return null;
+  }
+  const { word, joined } = found;
   let kind: Kind = word.kind;
   switch (word.cond) {
     case "short":
-      if (next === undefined || !SHORT_NEXT.has(next)) return null;
+      if (next === undefined) return badAt(k);
+      if (!SHORT_NEXT.has(next)) return null;
+      break;
+    case "third":
+      if (next === undefined || SINGULAR_SCALES.has(next) || HUNDRED_WORDS.has(next)) return badAt(k);
+      if (!SHORT_NEXT.has(next)) return null;
       break;
     case "preTeen":
       if (next === undefined || !TEEN_NEXT.has(next)) return null;
@@ -261,15 +367,25 @@ function atomAt(tokens: string[], k: number, from: number, to: number): Atom | n
     case "article":
       if (joined || next === undefined || !ARTICLE_NEXT.has(next)) return null;
       break;
+    case "construct":
+      if (next === undefined || !SINGULAR_SCALES.has(next)) return badAt(k);
+      break;
     case "ashar":
     case "ashara": {
       const prev = k - 1 >= from ? lookup(tokens[k - 1]) : null;
       if (!joined && prev !== null && prev.word.kind === "unit" && prev.word.lang === "ar") kind = "teenSuffix";
-      else if (word.cond === "ashar" && (next === undefined || !ASHAR_TEN_NEXT.has(next))) return null;
+      else if (word.cond === "ashar" && !joined && (next === undefined || !ASHAR_TEN_NEXT.has(next))) return badAt(k);
       break;
     }
   }
   return { kind, value: word.value, lang: word.lang, form: word.form, joined, start: k, end: k + 1 };
+}
+
+/** True when a token reads as a number (a word, a digit token or a number-like token) or joins one. */
+export function isNumberToken(t: string): boolean {
+  if (t === WAW || t === AND) return true;
+  const base = t.length > 1 && t.startsWith(WAW) ? t.slice(WAW.length) : t;
+  return lookup(t) !== null || readDigitToken(base) !== null || looksLikeNumber(base) || HALF_WORDS.has(base);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -278,13 +394,13 @@ function atomAt(tokens: string[], k: number, from: number, to: number): Atom | n
 type Parsed = { value: number; half: boolean; next: number; pureDigits: boolean; digits: boolean };
 type Part = { value: number; next: number };
 
-/** A half after a round hundred or a scale (`ألف ونص` is 1500 in speech, `مية ونص` 150) is ambiguous. */
+/** A half after a round hundred or a scale (`ألف ونص` is 1500 in speech, `مية ونص` 150) is ambiguous (R75). */
 function ambiguousHalf(value: number): boolean {
   return value >= 100 && value % 100 === 0;
 }
 
-function wordAtom(a: Atom | undefined, lang: Lang): (Atom & { kind: Kind }) | null {
-  return a !== undefined && a.lang === lang ? (a as Atom & { kind: Kind }) : null;
+function wordAtom(a: Atom | undefined, lang: Lang): WordAtom | null {
+  return a !== undefined && a.lang === lang ? (a as WordAtom) : null;
 }
 
 /** 1 to 99: Arabic `خمسة وعشرين` (units before tens), `خمس عشر`, a teen, tens, ten; English `twenty five`. */
@@ -310,24 +426,8 @@ function below100(run: Atom[], p: number, lang: Lang): Part | null {
   return null;
 }
 
-/** 1 to 999: hundreds, then (joined by `و`; in English `and` is optional) the part below 100. */
-function small(run: Atom[], p: number, lang: Lang): Part | null {
-  const a = wordAtom(run[p], lang);
-  if (a === null) return null;
-  const b = wordAtom(run[p + 1], lang);
-  let hundreds = 0;
-  let j = p;
-  if (a.kind === "hundreds") {
-    hundreds = a.value;
-    j = p + 1;
-  } else if (a.kind === "unit" && b !== null && b.kind === "hundredWord" && !b.joined && (lang === "en" || a.value >= 3)) {
-    hundreds = a.value * 100;
-    j = p + 2;
-  } else if (a.kind === "hundredWord") {
-    hundreds = 100;
-    j = p + 1;
-  }
-  if (hundreds === 0) return below100(run, p, lang);
+/** After a hundreds part ending at `j`: the part below 100 (joined by `و`; in English `and` is optional). */
+function withBelow100(run: Atom[], hundreds: number, j: number, lang: Lang): Part {
   const rest = wordAtom(run[j], lang);
   if (rest !== null && (lang === "en" || rest.joined)) {
     const r = below100(run, j, lang);
@@ -336,11 +436,24 @@ function small(run: Atom[], p: number, lang: Lang): Part | null {
   return { value: hundreds, next: j };
 }
 
+/** 1 to 999: hundreds, then the part below 100. */
+function small(run: Atom[], p: number, lang: Lang): Part | null {
+  const a = wordAtom(run[p], lang);
+  if (a === null) return null;
+  const b = wordAtom(run[p + 1], lang);
+  if (a.kind === "hundreds") return withBelow100(run, a.value, p + 1, lang);
+  if (a.kind === "unit" && b !== null && b.kind === "hundredWord" && !b.joined && (lang === "en" || a.value >= 3)) {
+    return withBelow100(run, a.value * 100, p + 2, lang);
+  }
+  if (a.kind === "hundredWord") return withBelow100(run, 100, p + 1, lang);
+  return below100(run, p, lang);
+}
+
 /**
  * The value of `count` (or no count) of a scale word. Arabic agreement: `ألف`/`مليون` alone or after
  * 11 to 999, `ألفين` alone, `آلاف`/`ملايين` after 3 to 10. English: alone or after 1 to 999.
  */
-function scaled(count: number | null, scale: Atom & { kind: Kind }): number | null {
+function scaled(count: number | null, scale: WordAtom): number | null {
   const s = scale.value;
   switch (scale.form) {
     case "en":
@@ -356,15 +469,44 @@ function scaled(count: number | null, scale: Atom & { kind: Kind }): number | nu
   }
 }
 
-/** One group: `[count] scale` or a small number (scale 1). Its scale must be below `lastScale`. */
+/**
+ * Digits times a scale, exactly in integers: `2 مليون`, `5 ألف` (any 1 to 999 before the singular),
+ * `5 آلاف` (3 to 10 before the plural), `1.5 مليون` = 1 500 000. Never with the dual.
+ */
+function scaledDigits(a: DigitAtom, scale: WordAtom): number | null {
+  const s = scale.value;
+  if (scale.form === "dual") return null;
+  if (scale.form === "plural") return a.fraction === "none" && a.value >= 3 && a.value <= 10 ? a.value * s : null;
+  if (a.value > 999) return null;
+  if (a.fraction === "half") return a.value * s + s / 2;
+  return a.value >= 1 ? a.value * s : null;
+}
+
+/** One group: `[count] scale`, a glued thousands word, or a small number (scale 1), below `lastScale`. */
 function group(run: Atom[], p: number, lang: Lang, lastScale: number): { value: number; scale: number; next: number; digits: boolean } | null {
   const a = run[p];
   if (a === undefined) return null;
+  if (a.kind === "thousands") {
+    if (a.lang !== lang || 1000 >= lastScale) return null;
+    return { value: a.value, scale: 1000, next: p + 1, digits: false };
+  }
   let count: Part | null = null;
   let digits = false;
   if (a.kind === "digits") {
+    const nx = wordAtom(run[p + 1], lang);
+    if (nx !== null && !nx.joined && nx.kind === "scale") {
+      if (nx.value >= lastScale) return null;
+      const v = scaledDigits(a, nx);
+      return v === null ? null : { value: v, scale: nx.value, next: p + 2, digits: true };
+    }
     if (a.fraction !== "none") return null;
-    count = { value: a.value, next: p + 1 };
+    if (nx !== null && !nx.joined && nx.kind === "hundredWord") {
+      // `3 مية` is 300; any other number before a hundred word is not a clean number.
+      if (a.value < 1 || a.value > 9) return null;
+      count = withBelow100(run, a.value * 100, p + 2, lang);
+    } else {
+      count = { value: a.value, next: p + 1 };
+    }
     digits = true;
   } else {
     count = small(run, p, lang);
@@ -406,12 +548,13 @@ function parseNumber(run: Atom[], i: number): Parsed | null {
   const first = run[i]!;
   if (first.lang === "x") return null; // a half or an unreadable token cannot start a number
   if (first.lang === "d") {
-    const s = run[i + 1];
-    if (s !== undefined && s.kind === "scale" && !s.joined) {
-      if (first.fraction !== "none") return null;
-      const v = scaled(first.value, s);
-      return v === null ? null : rest(run, i + 2, v, s.value, s.lang, true);
+    const nx = run[i + 1];
+    if (nx !== undefined && !nx.joined && (nx.kind === "scale" || nx.kind === "hundredWord") && (nx.lang === "ar" || nx.lang === "en")) {
+      const g = group(run, i, nx.lang, Infinity);
+      return g === null ? null : rest(run, g.next, g.value, g.scale, nx.lang, true);
     }
+    // `20 000`, `1 200 000`: a thousands group split by a space is not two numbers (R76).
+    if (nx !== undefined && nx.kind === "digits" && !nx.joined && nx.three) return null;
     let half = first.fraction === "half";
     let next = i + 1;
     if (run[next]?.kind === "half") {
@@ -429,15 +572,23 @@ function parseNumber(run: Atom[], i: number): Parsed | null {
 /**
  * A run becomes numbers left to right. After a complete digit number, or before a digit token, the
  * next number starts (`300 و 500` is two numbers). Anything else left over makes the rest of the run
- * one bad run.
+ * one bad run. The whole run is bad when it starts with a joined atom (`ومية`), when it starts with a
+ * bare `ألف`/`مليون` that does not follow a label, a unit word or the start of the gap (an unread
+ * count may be in front of it), or when `bad` is set.
  */
-function parseRun(run: Atom[], numbers: NumberToken[], bad: BadRun[]): void {
+function parseRun(run: Atom[], afterBoundary: boolean, bad: boolean, numbers: NumberToken[], bads: BadRun[]): void {
+  const first = run[0]!;
+  const bareScale = first.kind === "scale" && ((first as WordAtom).form === "one" || (first as WordAtom).form === "en");
+  if (bad || first.joined || (bareScale && !afterBoundary)) {
+    bads.push({ start: first.start, end: run[run.length - 1]!.end });
+    return;
+  }
   let i = 0;
   while (i < run.length) {
     const p = parseNumber(run, i);
     const ok = p !== null && (p.next === run.length || p.pureDigits || run[p.next]!.kind === "digits");
     if (!ok) {
-      bad.push({ start: run[i]!.start, end: run[run.length - 1]!.end });
+      bads.push({ start: run[i]!.start, end: run[run.length - 1]!.end });
       return;
     }
     numbers.push({ start: run[i]!.start, end: run[p.next - 1]!.end, value: p.value, half: p.half, digits: p.digits });
@@ -448,22 +599,30 @@ function parseRun(run: Atom[], numbers: NumberToken[], bad: BadRun[]): void {
 /**
  * Numbers and bad runs in `tokens[from..to)`. A run is a sequence of number atoms side by side or
  * joined by a `و`/`and` token, with a half at its end (a unit word just before the half is skipped).
+ * A unit word followed by a joined number (`ألف ريال وخمسمية`) keeps the run going and makes it bad.
  */
 export function scanNumbers(tokens: string[], from = 0, to = tokens.length): { numbers: NumberToken[]; bad: BadRun[] } {
   const numbers: NumberToken[] = [];
   const bad: BadRun[] = [];
   let run: Atom[] = [];
   let pendingJoin = false;
+  let afterBoundary = false;
+  let runBad = false;
   const flush = () => {
-    if (run.length > 0) parseRun(run, numbers, bad);
+    if (run.length > 0) parseRun(run, afterBoundary, runBad, numbers, bad);
     run = [];
     pendingJoin = false;
+    runBad = false;
+  };
+  const push = (a: Atom, k: number) => {
+    if (run.length === 0) afterBoundary = k === from || UNIT_WORDS.has(tokens[k - 1]!);
+    run.push(a);
   };
   let k = from;
   while (k < to) {
     const h = halfAt(tokens, k, to);
     if (h > 0) {
-      run.push({ kind: "half", value: 0, lang: "x", joined: true, start: k, end: k + h });
+      push({ kind: "half", value: 0, lang: "x", joined: true, start: k, end: k + h }, k);
       pendingJoin = false;
       k += h;
       continue;
@@ -472,7 +631,7 @@ export function scanNumbers(tokens: string[], from = 0, to = tokens.length): { n
     if (a !== null) {
       if (pendingJoin) a.joined = true;
       pendingJoin = false;
-      run.push(a);
+      push(a, k);
       k += 1;
       continue;
     }
@@ -482,9 +641,18 @@ export function scanNumbers(tokens: string[], from = 0, to = tokens.length): { n
       k += 1;
       continue;
     }
-    if (run.length > 0 && UNIT_WORDS.has(t) && k + 1 < to && halfAt(tokens, k + 1, to) > 0) {
-      k += 1;
-      continue;
+    if (run.length > 0 && UNIT_WORDS.has(t) && k + 1 < to) {
+      if (halfAt(tokens, k + 1, to) > 0) {
+        k += 1;
+        continue;
+      }
+      const n = tokens[k + 1]!;
+      const joinedNext = atomAt(tokens, k + 1, from, to)?.joined === true || ((n === WAW || n === AND) && k + 2 < to && atomAt(tokens, k + 2, from, to) !== null);
+      if (joinedNext) {
+        runBad = true;
+        k += 1;
+        continue;
+      }
     }
     flush();
     k += 1;

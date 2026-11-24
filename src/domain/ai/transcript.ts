@@ -3,10 +3,16 @@
 // when nothing else could claim it; ambiguous speech gives no field rather than a guess. Pure.
 import type { Unit } from "@/domain/money";
 import type { DraftKey } from "./draft";
-import { scanNumbers, spokenTokens, UNIT_WORDS } from "./spoken-numbers";
+import { isNumberToken, scanNumbers, spokenTokens, UNIT_WORDS } from "./spoken-numbers";
+import { normaliseArabic } from "./normalise";
 
 export const BEFORE_CONFIDENCE = 0.9;
 export const AFTER_CONFIDENCE = 0.6;
+/** Below LOW_CONFIDENCE (0.8), so the rep must check it: a half on money, or a second number after it (R76). */
+export const SHAKY_CONFIDENCE = 0.5;
+
+/** A correction or a decimal word after a label makes what follows it unreliable (R76). */
+const CORRECTIONS = new Set([..."لا لأ قصدي اقصد أقصد بدل مش فاصلة فاصله".split(" ").map(normaliseArabic), "no", "point"]);
 
 type Label = { tokens: string[]; keys: DraftKey[] };
 type Item =
@@ -22,7 +28,9 @@ function labelIndex(vocab: { key: DraftKey; labels: string[] }[]): Map<string, L
   for (const entry of vocab) {
     for (const label of entry.labels) {
       const tokens = spokenTokens(label);
-      if (tokens.length === 0) continue;
+      // A label that reads as a number (a line named `مية`, a code `330`) cannot be told apart from
+      // a number, so it is not used (R76).
+      if (tokens.length === 0 || tokens.every(isNumberToken)) continue;
       const text = tokens.join(" ");
       const known = byText.get(text);
       if (known === undefined) byText.set(text, { tokens, keys: [entry.key] });
@@ -118,7 +126,9 @@ export function parseSpokenClose(
     if (it.t === "mention") return;
     const prev = items[i - 1];
     if (prev?.t === "mention") {
-      claim(i - 1, i, BEFORE_CONFIDENCE);
+      // Another number (or unreadable run) later in the same gap: the speaker may have corrected it.
+      const after = items[i + 1];
+      claim(i - 1, i, after !== undefined && after.t !== "mention" ? SHAKY_CONFIDENCE : BEFORE_CONFIDENCE);
       return;
     }
     const next = items[i + 1];
@@ -136,7 +146,7 @@ export function parseSpokenClose(
   for (const [mi, list] of claims) {
     const mention = items[mi] as Extract<Item, { t: "mention" }>;
     const it = items[list[0]!.item]!;
-    if (list.length !== 1 || mention.keys.length !== 1 || it.t !== "number") {
+    if (list.length !== 1 || mention.keys.length !== 1 || it.t !== "number" || corrected(tokens, mention.end, nextMentionStart(items, mi, tokens.length))) {
       for (const key of mention.keys) spoiled.add(key);
       continue;
     }
@@ -156,14 +166,30 @@ export function parseSpokenClose(
     if (unit === undefined) continue;
     if (first.half && unit !== "value") continue;
     used += got.length;
+    const confidence = got.reduce((low, g) => Math.min(low, g.confidence), 1);
     fields.push({
       key,
       value: String(first.value) + (first.half ? ".50" : ""),
-      confidence: got.reduce((low, g) => Math.min(low, g.confidence), 1),
+      // A half on money is easy to mishear (`ونص` after a small number); the rep confirms it (R76).
+      confidence: first.half ? Math.min(confidence, SHAKY_CONFIDENCE) : confidence,
       at: first.at,
     });
   }
   fields.sort((a, b) => a.at - b.at);
   const spoken = items.filter((it) => it.t !== "mention").length;
   return { fields: fields.map(({ key, value, confidence }) => ({ key, value, confidence })), unassigned: spoken - used };
+}
+
+function nextMentionStart(items: Item[], mi: number, end: number): number {
+  for (let i = mi + 1; i < items.length; i++) if (items[i]!.t === "mention") return items[i]!.start;
+  return end;
+}
+
+/** True when `tokens[from..to)` (a label's gap) holds a correction or decimal word, or "I mean". */
+function corrected(tokens: string[], from: number, to: number): boolean {
+  for (let k = from; k < to; k++) {
+    const t = tokens[k]!;
+    if (CORRECTIONS.has(t) || (t === "mean" && tokens[k - 1] === "i")) return true;
+  }
+  return false;
 }

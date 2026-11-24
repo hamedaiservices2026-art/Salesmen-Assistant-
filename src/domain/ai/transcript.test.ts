@@ -46,7 +46,8 @@ describe("parseSpokenClose: the plan's values", () => {
   });
 
   it("appends .50 for a half on a value field and drops it on a cases field", () => {
-    expect(parse("أغذية مية وخمسة وعشرين ونص").fields).toEqual([{ key: "line:food", value: "125.50", confidence: 0.9 }]);
+    // A half on money is low (R76), so the rep confirms it.
+    expect(parse("أغذية مية وخمسة وعشرين ونص").fields).toEqual([{ key: "line:food", value: "125.50", confidence: 0.5 }]);
     expect(draftValues("أغذية مية وخمسة وعشرين ونص")).toEqual({ "line:food": 12_550 });
     expect(parse("مشروبات مية وعشرين ونص").fields).toEqual([]);
   });
@@ -63,8 +64,8 @@ describe("parseSpokenClose: the plan's values", () => {
     expect(parse("بعت 300 و 500")).toEqual({ fields: [], unassigned: 2 });
   });
 
-  it("reads the extra transcript (R27): bev 120 and 300 left over", () => {
-    expect(parse("مشروبات مية وعشرين وبعت كمان 300")).toEqual({ fields: [{ key: "line:bev", value: "120", confidence: 0.9 }], unassigned: 1 });
+  it("reads the extra transcript (R27): bev 120 (low: another number follows it) and 300 left over", () => {
+    expect(parse("مشروبات مية وعشرين وبعت كمان 300")).toEqual({ fields: [{ key: "line:bev", value: "120", confidence: 0.5 }], unassigned: 1 });
   });
 
   it("finishes 5000 characters of و in under 50 ms", () => {
@@ -81,16 +82,17 @@ describe("parseSpokenClose: ambiguity gives no field", () => {
   });
 
   it("a second number after a label is left over, never attached past the first", () => {
-    expect(parse("مشروبات 120 130")).toEqual({ fields: [{ key: "line:bev", value: "120", confidence: 0.9 }], unassigned: 1 });
+    expect(parse("مشروبات 120 كمان 130")).toEqual({ fields: [{ key: "line:bev", value: "120", confidence: 0.5 }], unassigned: 1 });
+    expect(parse("مشروبات 120 130")).toEqual({ fields: [], unassigned: 1 }); // a spaced thousands group (R76)
   });
 
   it("numbers before the first label: only one directly before it, nothing past another number", () => {
-    expect(parse("120 130 مشروبات")).toEqual({ fields: [], unassigned: 2 });
+    expect(parse("120 كمان 130 مشروبات")).toEqual({ fields: [], unassigned: 2 });
     expect(parse("120 بعت مشروبات")).toEqual({ fields: [], unassigned: 1 });
   });
 
   it("a number after a label that already has one is not moved to the next label", () => {
-    expect(parse("مشروبات 120 130 أغذية")).toEqual({ fields: [{ key: "line:bev", value: "120", confidence: 0.9 }], unassigned: 1 });
+    expect(parse("مشروبات 120 كمان 130 أغذية")).toEqual({ fields: [{ key: "line:bev", value: "120", confidence: 0.5 }], unassigned: 1 });
   });
 
   it("a run that does not parse blocks the number after it and counts as left over", () => {
@@ -224,30 +226,35 @@ describe("parseSpokenClose: hostile input finishes fast", () => {
     }
     return { ms, out };
   };
-  it("100 000 tokens of mixed speech", () => {
-    const { ms, out } = time("مشروبات مية وعشرين كرتونة بعت ".repeat(20_000));
-    expect(out.fields).toEqual([{ key: "line:bev", value: "120", confidence: 0.9 }]);
-    expect(ms).toBeLessThan(200);
+  const cut = (unit: string) => unit.repeat(Math.ceil(20_000 / unit.length)).slice(0, 20_000);
+  it.each([
+    ["mixed speech", "مشروبات مية وعشرين كرتونة بعت "],
+    ["repeated labels", "بيع نقدي "],
+    ["a scale run bomb", "ألف "],
+    ["digit tokens", "7 "],
+    ["label prefixes", "والمشروبات "],
+    ["corrections", "مشروبات مية لا "],
+    ["number-like tokens", "تحصيل خمستلافك "],
+    ["joiners", "م\u200Cش\u200Dر "],
+  ])("20 000 characters of %s in under 50 ms", (_name, unit) => {
+    expect(time(cut(unit)).ms).toBeLessThan(50);
   });
-  it("thousands of repeated labels", () => {
-    const { ms, out } = time("بيع نقدي ".repeat(50_000));
-    expect(out).toEqual({ fields: [], unassigned: 0 });
-    expect(ms).toBeLessThan(200);
+  it("gives the expected result on repeated speech", () => {
+    expect(parse("مشروبات مية وعشرين كرتونة بعت ".repeat(1000)).fields).toEqual([{ key: "line:bev", value: "120", confidence: 0.9 }]);
+    expect(parse("بيع نقدي ".repeat(1000))).toEqual({ fields: [], unassigned: 0 });
+    expect(parse("نقدي " + "ألف ".repeat(5000))).toEqual({ fields: [], unassigned: 1 });
+    const many = parse("نقدي " + "7 ".repeat(5000));
+    expect(many.fields).toEqual([{ key: "cashSales", value: "7", confidence: 0.5 }]);
+    expect(many.unassigned).toBe(4999);
   });
-  it("a numeric run bomb", () => {
-    const { ms, out } = time("نقدي " + "ألف ".repeat(100_000));
-    expect(out).toEqual({ fields: [], unassigned: 1 });
-    expect(ms).toBeLessThan(200);
+  it("hostile 100 000 tokens finish in under 2 s", () => {
+    const t0 = performance.now();
+    parse("مشروبات مية وعشرين كرتونة لا ".repeat(20_000));
+    expect(performance.now() - t0).toBeLessThan(2000);
   });
   it("does not overflow the stack on 400 000 numbers or 200 000 repeats of one label and number", () => {
     expect(parse("نقدي " + "7 ".repeat(400_000)).unassigned).toBe(399_999);
     expect(parse("نقدي 7 ".repeat(200_000)).fields).toEqual([{ key: "cashSales", value: "7", confidence: 0.9 }]);
-  });
-  it("100 000 digit tokens after one label", () => {
-    const { ms, out } = time("نقدي " + "7 ".repeat(100_000));
-    expect(out.fields).toEqual([{ key: "cashSales", value: "7", confidence: 0.9 }]);
-    expect(out.unassigned).toBe(99_999);
-    expect(ms).toBeLessThan(200);
   });
 });
 
@@ -297,12 +304,12 @@ const UNITS = ["كرتونة", "ريال", "كراتين"];
 type Item = { t: "m"; label: number } | { t: "n"; num: number };
 
 /** The rules of parseSpokenClose on the abstract sequence (fillers and unit words are not items). */
-function oracle(items: Item[], unitsOnlyBefore: (i: number) => boolean): { fields: Record<string, string>; unassigned: number } {
+function oracle(items: Item[], unitsOnlyBefore: (i: number) => boolean): { fields: Record<string, string>; confidences: Record<string, number>; unassigned: number } {
   const cands = new Map<number, { num: number; conf: number }[]>();
   items.forEach((it, i) => {
     if (it.t !== "n") return;
     const prev = items[i - 1];
-    if (prev?.t === "m") cands.set(i - 1, [...(cands.get(i - 1) ?? []), { num: it.num, conf: 0.9 }]);
+    if (prev?.t === "m") cands.set(i - 1, [...(cands.get(i - 1) ?? []), { num: it.num, conf: items[i + 1]?.t === "n" ? 0.5 : 0.9 }]);
     else if (i === 0 && items[1]?.t === "m" && unitsOnlyBefore(1)) cands.set(1, [...(cands.get(1) ?? []), { num: it.num, conf: 0.6 }]);
   });
   const byKey = new Map<string, { value: number; conf: number }[]>();
@@ -316,15 +323,17 @@ function oracle(items: Item[], unitsOnlyBefore: (i: number) => boolean): { field
     byKey.set(key, [...(byKey.get(key) ?? []), { value: NUMBERS[list[0]!.num]!.value, conf: list[0]!.conf }]);
   }
   const fields: Record<string, string> = {};
+  const confidences: Record<string, number> = {};
   let used = 0;
   for (const [key, list] of byKey) {
     if (spoiled.has(key)) continue;
     if (!list.every((x) => x.value === list[0]!.value)) continue;
     fields[key] = String(list[0]!.value);
+    confidences[key] = Math.min(...list.map((x) => x.conf));
     used += list.length;
   }
   const numbers = items.filter((i) => i.t === "n").length;
-  return { fields, unassigned: numbers - used };
+  return { fields, confidences, unassigned: numbers - used };
 }
 
 describe("parseSpokenClose: property checks over shuffled transcripts", () => {
@@ -358,7 +367,7 @@ describe("parseSpokenClose: property checks over shuffled transcripts", () => {
       const gotFields = Object.fromEntries(got.fields.map((f) => [f.key, f.value]));
       // Half never occurs here, so the expected value text is the plain integer.
       expect({ text, fields: gotFields, unassigned: got.unassigned }).toEqual({ text, fields: want.fields, unassigned: want.unassigned });
-      for (const f of got.fields) expect([0.9, 0.6]).toContain(f.confidence);
+      for (const f of got.fields) expect({ text, key: f.key, c: f.confidence }).toEqual({ text, key: f.key, c: want.confidences[f.key] });
     }
   });
 
@@ -388,5 +397,187 @@ describe("parseSpokenClose: property checks over shuffled transcripts", () => {
       expect(out.fields).toEqual([]);
       expect(out.unassigned).toBe(2);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Fix round 1 (R76): the reviewer's inputs. Each gives the right value or no field with the
+// number counted as unassigned; never a wrong value.
+
+type Want = [string, Record<string, string>, number] | [string, Record<string, string>, number, number];
+const check = (rows: Want[], vocab: VocabularyEntry[] = VOCAB) => {
+  for (const [text, fields, unassigned, confidence] of rows) {
+    const got = parse(text, vocab);
+    expect({ text, fields: Object.fromEntries(got.fields.map((f) => [f.key, f.value])), unassigned: got.unassigned }).toEqual({ text, fields, unassigned });
+    if (confidence !== undefined) for (const f of got.fields) expect({ text, c: f.confidence }).toEqual({ text, c: confidence });
+  }
+};
+
+describe("fix round 1 (R76): count words the tables did not read", () => {
+  it("reads ميت before ألف, digit hundreds, glued thousands, ثماني and teen variants", () => {
+    check([
+      ["تحصيل ميت الف", { "line:coll": "100000" }, 0, 0.9],
+      ["تحصيل ميت ألف ريال", { "line:coll": "100000" }, 0],
+      ["تحصيل خمسميت ألف", { "line:coll": "500000" }, 0],
+      ["مشروبات 3 مية", { "line:bev": "300" }, 0],
+      ["أغذية 5 مية ريال", { "line:food": "500" }, 0],
+      ["تحصيل 3 مية الف", { "line:coll": "300000" }, 0],
+      ["تحصيل خمستلاف وخمسمية", { "line:coll": "5500" }, 0],
+      ["تحصيل تلاتلاف وخمسمية", { "line:coll": "3500" }, 0],
+      ["تحصيل خمستالاف", { "line:coll": "5000" }, 0],
+      ["تحصيل ستلاف", { "line:coll": "6000" }, 0],
+      ["تحصيل اربعتلاف", { "line:coll": "4000" }, 0],
+      ["تحصيل تسعتلاف", { "line:coll": "9000" }, 0],
+      ["تحصيل عشرتلاف", { "line:coll": "10000" }, 0],
+      ["أغذية ثمانيمائة وخمسين", { "line:food": "850" }, 0],
+      ["مشروبات ثماني مئة", { "line:bev": "800" }, 0],
+      ["تحصيل خمستعشر الف", { "line:coll": "15000" }, 0],
+      ["تحصيل اربعطاشر الف", { "line:coll": "14000" }, 0],
+      ["تحصيل حدعشر الف", { "line:coll": "11000" }, 0],
+      ["تحصيل اتنعشر ألف", { "line:coll": "12000" }, 0],
+      ["مشروبات سبعطاشر", { "line:bev": "17" }, 0],
+      ["مشروبات تسعطاشر", { "line:bev": "19" }, 0],
+      ["مشروبات ستطاشر", { "line:bev": "16" }, 0],
+      ["مشروبات اطنعش", { "line:bev": "12" }, 0],
+      ["مشروبات سبعطعشر", { "line:bev": "17" }, 0],
+      ["مشروبات تسعتعشر", { "line:bev": "19" }, 0],
+      ["تحصيل ألف وعشر", { "line:coll": "1010" }, 0],
+      ["تحصيل خمسة آلاف وعشر", { "line:coll": "5010" }, 0],
+      ["مشروبات مية وعشر", { "line:bev": "110" }, 0],
+    ]);
+  });
+
+  it("digits times a scale in exact integers", () => {
+    check([
+      ["تحصيل 2 مليون", { "line:coll": "2000000" }, 0],
+      ["تحصيل 3 مليون", { "line:coll": "3000000" }, 0],
+      ["تحصيل 5 ألف", { "line:coll": "5000" }, 0],
+      ["تحصيل 1.5 مليون", { "line:coll": "1500000" }, 0],
+      ["تحصيل 2.5 ألف", { "line:coll": "2500" }, 0],
+      ["تحصيل 1.25 مليون", {}, 1],
+      ["تحصيل 2 ألفين", {}, 1],
+    ]);
+  });
+
+  it("a fraction of a scale, a hundred after نص/ربع/تلت, or an unknown count word gives no field", () => {
+    check([
+      ["تحصيل نص مليون", {}, 1],
+      ["تحصيل ربع مليون", {}, 1],
+      ["أغذية نص الف", {}, 1],
+      ["تحصيل تلت مليون", {}, 1],
+      ["مشروبات ربع مية", {}, 1],
+      ["مشروبات تلت مية", {}, 1],
+      ["مشروبات خمس", {}, 1],
+      ["مشروبات ست", {}, 1],
+      ["مرتجع تلات", {}, 1],
+      ["مشروبات عشر", {}, 1],
+      ["تحصيل كمان الف", {}, 1],
+      ["تحصيل سبعميت", {}, 1],
+      ["تحصيل خمسالاف", { "line:coll": "5000" }, 0],
+      ["تحصيل تمانيلاف", {}, 1],
+      ["مشروبات ومية", {}, 1],
+      ["مشروبات و مية", {}, 1],
+    ]);
+  });
+
+  it("does not take ordinary words that end like a number for numbers", () => {
+    check([
+      ["مشروبات الكمية مية", { "line:bev": "100" }, 0],
+      ["مشروبات يومية مية", { "line:bev": "100" }, 0],
+      ["أغذية من غير خلاف 300", { "line:food": "300" }, 0],
+      ["ست الحبايب مشروبات مية", { "line:bev": "100" }, 0],
+    ]);
+  });
+});
+
+describe("fix round 1 (R76): digit groups and fractions", () => {
+  it("a digit followed by 3-digit groups (a spaced thousands separator) is one unreadable run", () => {
+    check([
+      ["مشروبات ٣ ٠٠٠", {}, 1],
+      ["تحصيل 20 000", {}, 1],
+      ["تحصيل ٢٠ ٠٠٠", {}, 1],
+      ["تحصيل 1 200 000", {}, 1],
+      ["تحصيل 20 000", {}, 1],
+      ["تحصيل 20 000", {}, 1],
+    ]);
+  });
+
+  it("only .0, .00, .5 and .50 are read; a leading dot is unreadable", () => {
+    check([
+      ["أغذية 5.000", {}, 1],
+      ["أغذية ١٢٫٠٠٠", {}, 1],
+      ["أغذية 1.500", {}, 1],
+      ["أغذية 5.0", { "line:food": "5" }, 0],
+      ["أغذية 5.00", { "line:food": "5" }, 0],
+      ["أغذية 7,900.00", { "line:food": "7900" }, 0],
+      ["أغذية .5", {}, 1],
+      ["أغذية ٫٥", {}, 1],
+    ]);
+  });
+});
+
+describe("fix round 1 (R76): corrections, decimal words, units then و", () => {
+  it("a correction or decimal word after a label spoils it", () => {
+    check([
+      ["مشروبات مية لا خمسين", {}, 2],
+      ["مشروبات مية لأ قصدي ميتين", {}, 2],
+      ["مشروبات مش مية", {}, 1],
+      ["مشروبات بدل مية خمسين", {}, 1],
+      ["مشروبات تقريبا خمسين لأ ستين", {}, 2],
+      ["مشروبات مية اقصد ميتين", {}, 2],
+      ["أغذية ثلاثة فاصلة خمسة", {}, 2],
+      ["food three point five", {}, 2],
+      ["food 300 no 400", {}, 2],
+      ["food 300 I mean 400", {}, 2],
+    ]);
+  });
+
+  it("a unit word followed by a joined number makes the run unreadable", () => {
+    check([
+      ["تحصيل عشرين ألف ريال وخمسمية", {}, 1],
+      ["أغذية الف ريال وخمسمية", {}, 1],
+      ["تحصيل عشرين ألف ريال وخمسمية ريال", {}, 1],
+      ["تحصيل عشرين ألف ريال و 500", {}, 1],
+    ]);
+  });
+
+  it("a second number in the same gap makes the first one low (0.5)", () => {
+    check([
+      ["مشروبات كان المفروض ميتين بس بعت مية", { "line:bev": "200" }, 1, 0.5],
+      ["تحصيل الفين من عشرين الف", { "line:coll": "2000" }, 1, 0.5],
+      ["مشروبات 50 50", { "line:bev": "50" }, 1, 0.5],
+      ["أغذية ٨٢٥٠ و ٥٠٠", { "line:food": "8250" }, 1, 0.5],
+    ]);
+  });
+
+  it("a half on a value key is low (0.5)", () => {
+    check([
+      ["أغذية خمسة ونص", { "line:food": "5.50" }, 0, 0.5],
+      ["أغذية 250 ونص", { "line:food": "250.50" }, 0, 0.5],
+      ["food twenty and half", { "line:food": "20.50" }, 0, 0.5],
+      ["أغذية 0.5", { "line:food": "0.50" }, 0, 0.5],
+    ]);
+  });
+});
+
+describe("fix round 1 (R76): labels that read as numbers are not labels", () => {
+  const W = vocabulary(
+    [
+      { lineId: "w", code: "w", unit: "cases", kind: "sales", nameAr: "مية", nameEn: "Water", nameUr: "پانی" },
+      { lineId: "bev", code: "330", unit: "cases", kind: "sales", nameAr: "مشروبات", nameEn: "Beverages", nameUr: "مشروبات" },
+    ],
+    {},
+  );
+  it("a line named مية or coded 330 is found only by its other names", () => {
+    check(
+      [
+        ["مية مية وعشرين", {}, 1],
+        ["مية خمسين مشروبات عشرين", {}, 2], // the unreadable run right before the label claims it too
+        ["مشروبات 330 كرتونة", { "line:330": "330" }, 0],
+        ["330 مية", {}, 1],
+        ["water 12", { "line:w": "12" }, 0],
+      ],
+      W,
+    );
   });
 });

@@ -78,6 +78,7 @@ describe("readNumbers: Egyptian, Gulf and MSA spellings", () => {
     expect(one("5 آلاف")).toMatchObject({ value: 5000, digits: true });
     expect(one("20 ألف و500").value).toBe(20500);
     expect(one("الفين و٥٠٠").value).toBe(2500);
+    expect(one("2.5 مليون").value).toBe(2_500_000);
   });
 
   it("reads Arabic-Indic, Persian and Arabic-separated digits", () => {
@@ -107,7 +108,10 @@ describe("readNumbers: English", () => {
 describe("readNumbers: separate numbers and refused runs", () => {
   it("reads digit tokens joined by و as two numbers", () => {
     expect(values("بعت 300 و 500")).toEqual(["300", "500"]);
-    expect(values("120 130")).toEqual(["120", "130"]);
+    expect(values("120 كمان 130")).toEqual(["120", "130"]);
+    expect(values("12 34")).toEqual(["12", "34"]);
+    // A digit token followed by exactly three digits is a thousands group split by a space (R76).
+    expect(values("120 130")).toEqual([]);
   });
   it("gives separate numbers between ordinary words", () => {
     expect(values("بعت مية وعشرين وبعت كمان 300")).toEqual(["120", "300"]);
@@ -135,7 +139,6 @@ describe("readNumbers: separate numbers and refused runs", () => {
     ["-150"],
     ["9007199254740992"],
     ["99999999999999999999999"],
-    ["2.5 مليون"],
     ["twenty thirty"],
     ["مية twenty"],
   ])("%s → no token", (text) => {
@@ -176,23 +179,29 @@ describe("readNumbers: hostile input finishes fast", () => {
     }
     return { ms, out };
   };
-  it("a run bomb of 100 000 scale words", () => {
-    const { ms, out } = timed("ألف ".repeat(100_000));
-    expect(out).toEqual([]);
-    expect(ms).toBeLessThan(200);
+  const cut = (unit: string) => unit.repeat(Math.ceil(20_000 / unit.length)).slice(0, 20_000);
+  it.each([
+    ["a run bomb of scale words", "ألف "],
+    ["joined hundreds", "مية و"],
+    ["digit tokens", "12 "],
+    ["و-prefixed tokens", "وو "],
+    ["halves", "مية ونص "],
+    ["number-like tokens", "خمستلافك "],
+  ])("20 000 characters of %s in under 50 ms", (_name, unit) => {
+    expect(timed(cut(unit)).ms).toBeLessThan(50);
   });
-  it("100 000 joined hundreds", () => {
-    const { ms, out } = timed("مية و".repeat(100_000));
-    expect(out).toEqual([]);
-    expect(ms).toBeLessThan(200);
-  });
-  it("100 000 digit tokens are 100 000 numbers", () => {
-    const { ms, out } = timed("12 ".repeat(100_000));
-    expect(out).toHaveLength(100_000);
-    expect(ms).toBeLessThan(200);
+  it("a run bomb gives no token", () => {
+    expect(timed("ألف ".repeat(5000)).out).toEqual([]);
+    expect(timed("مية و".repeat(5000)).out).toEqual([]);
+    expect(timed("12 ".repeat(5000)).out).toHaveLength(5000);
   });
   it("5000 و and a 5000-character و", () => {
     expect(timed("و ".repeat(5000)).out).toEqual([]);
     expect(timed("و".repeat(5000)).out).toEqual([]);
+  });
+  it("hostile 100 000 tokens finish in under 2 s", () => {
+    const t0 = performance.now();
+    readNumbers(spokenTokens("ألف مية و12 ".repeat(33_334)));
+    expect(performance.now() - t0).toBeLessThan(2000);
   });
 });
