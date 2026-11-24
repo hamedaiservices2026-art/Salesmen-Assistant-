@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readNumbers, spokenTokens, type NumberToken } from "./spoken-numbers";
+import { readNumbers, scanNumbers, spokenTokens, type NumberToken } from "./spoken-numbers";
 
 const read = (text: string): NumberToken[] => readNumbers(spokenTokens(text));
 /** The values (with `.5` for a half) of every number token read from `text`. */
@@ -203,5 +203,27 @@ describe("readNumbers: hostile input finishes fast", () => {
     const t0 = performance.now();
     readNumbers(spokenTokens("ألف مية و12 ".repeat(33_334)));
     expect(performance.now() - t0).toBeLessThan(2000);
+  });
+});
+
+describe("fix round 2 (R77): accusative thousands, feminine teens, fractions", () => {
+  it("reads accusative thousand forms with their count", () => {
+    expect(values("خمسين ألفا")).toEqual(["50000"]);
+    expect(values("ثلاثمئة وخمسون ألفا")).toEqual(["350000"]);
+    expect(values("اثنا عشر ألفا")).toEqual(["12000"]);
+    expect(values("أربعة وخمسين ألفا وخمسمائة")).toEqual(["54500"]);
+    expect(values("ألفا")).toEqual([]);
+    expect(scanNumbers(spokenTokens("ألفا")).bad).toHaveLength(1);
+  });
+  it("reads إحدى/اثنتا/اثنتي عشرة and never 10 for them", () => {
+    expect(values("إحدى عشرة")).toEqual(["11"]);
+    expect(values("اثنتا عشرة")).toEqual(["12"]);
+    expect(values("اثنتي عشرة")).toEqual(["12"]);
+    expect(values("اثنتان عشرة")).toEqual([]);
+  });
+  it("a quarter, a third or a half before a scale makes the whole run unreadable", () => {
+    for (const t of ["ألف وربع", "ثلاثة أرباع", "100 وربع", "half a million", "one and a quarter", "ألف إلا ربع"]) {
+      expect({ t, v: values(t) }).toEqual({ t, v: t === "ألف إلا ربع" ? ["1000"] : [] });
+    }
   });
 });

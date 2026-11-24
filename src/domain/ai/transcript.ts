@@ -3,7 +3,7 @@
 // when nothing else could claim it; ambiguous speech gives no field rather than a guess. Pure.
 import type { Unit } from "@/domain/money";
 import type { DraftKey } from "./draft";
-import { isNumberToken, scanNumbers, spokenTokens, UNIT_WORDS } from "./spoken-numbers";
+import { FILLER_WORDS, isNumberToken, scanNumbers, spokenTokens, UNIT_WORDS } from "./spoken-numbers";
 import { normaliseArabic } from "./normalise";
 
 export const BEFORE_CONFIDENCE = 0.9;
@@ -13,6 +13,15 @@ export const SHAKY_CONFIDENCE = 0.5;
 
 /** A correction or a decimal word after a label makes what follows it unreliable (R76). */
 const CORRECTIONS = new Set([..."لا لأ قصدي اقصد أقصد بدل مش فاصلة فاصله".split(" ").map(normaliseArabic), "no", "point"]);
+
+/**
+ * Negations, subtractions and signs in a label's gap (R77): the number may be the opposite of what
+ * the speaker means (`ناقص مية`, `ألف إلا ربع`, `- 100`), so the label gets no field and the numbers
+ * count as unassigned.
+ */
+const NEGATIONS = new Set(
+  [..."ما مو مب ليس ليست غير ناقص زائد زايد سالب الا ماكانتش ماكانش - + − – —".split(" ").map(normaliseArabic), "minus", "negative", "not", "plus"],
+);
 
 type Label = { tokens: string[]; keys: DraftKey[] };
 type Item =
@@ -126,16 +135,18 @@ export function parseSpokenClose(
     if (it.t === "mention") return;
     const prev = items[i - 1];
     if (prev?.t === "mention") {
-      // Another number (or unreadable run) later in the same gap: the speaker may have corrected it.
       const after = items[i + 1];
-      claim(i - 1, i, after !== undefined && after.t !== "mention" ? SHAKY_CONFIDENCE : BEFORE_CONFIDENCE);
+      // Another number (or unreadable run) later in the same gap: the speaker may have corrected it.
+      // Words other than filler between the label and the number, or right after it, lower it too (R77).
+      const tidy = onlyFiller(tokens, prev.end, it.start) && onlyFiller(tokens, it.end, after?.start ?? tokens.length);
+      claim(i - 1, i, after !== undefined && after.t !== "mention" ? SHAKY_CONFIDENCE : tidy ? BEFORE_CONFIDENCE : SHAKY_CONFIDENCE);
       return;
     }
     const next = items[i + 1];
     if (i === 0 && next?.t === "mention") {
       let onlyUnits = true;
       for (let k = it.end; k < next.start && onlyUnits; k++) onlyUnits = UNIT_WORDS.has(tokens[k]!);
-      if (onlyUnits) claim(i + 1, i, AFTER_CONFIDENCE);
+      if (onlyUnits && !hasNegation(tokens, 0, it.start)) claim(i + 1, i, AFTER_CONFIDENCE);
     }
   });
 
@@ -177,7 +188,12 @@ export function parseSpokenClose(
   }
   fields.sort((a, b) => a.at - b.at);
   const spoken = items.filter((it) => it.t !== "mention").length;
-  return { fields: fields.map(({ key, value, confidence }) => ({ key, value, confidence })), unassigned: spoken - used };
+  // A label no number was claimed for (`تحصيل شوية`, a label alone) also counts, so the model is asked.
+  let bare = 0;
+  items.forEach((it, i) => {
+    if (it.t === "mention" && !claims.has(i)) bare += 1;
+  });
+  return { fields: fields.map(({ key, value, confidence }) => ({ key, value, confidence })), unassigned: spoken - used + bare };
 }
 
 function nextMentionStart(items: Item[], mi: number, end: number): number {
@@ -185,11 +201,22 @@ function nextMentionStart(items: Item[], mi: number, end: number): number {
   return end;
 }
 
-/** True when `tokens[from..to)` (a label's gap) holds a correction or decimal word, or "I mean". */
+/** True when `tokens[from..to)` (a label's gap) holds a correction, a decimal word, "I mean" or a negation. */
 function corrected(tokens: string[], from: number, to: number): boolean {
   for (let k = from; k < to; k++) {
     const t = tokens[k]!;
-    if (CORRECTIONS.has(t) || (t === "mean" && tokens[k - 1] === "i")) return true;
+    if (CORRECTIONS.has(t) || NEGATIONS.has(t) || (t === "mean" && tokens[k - 1] === "i")) return true;
   }
   return false;
+}
+
+function hasNegation(tokens: string[], from: number, to: number): boolean {
+  for (let k = from; k < to; k++) if (NEGATIONS.has(tokens[k]!)) return true;
+  return false;
+}
+
+/** True when every token of `tokens[from..to)` is on the filler list (R77). */
+function onlyFiller(tokens: string[], from: number, to: number): boolean {
+  for (let k = from; k < to; k++) if (!FILLER_WORDS.has(tokens[k]!)) return false;
+  return true;
 }

@@ -16,6 +16,23 @@ export const UNIT_WORDS: ReadonlySet<string> = new Set(
   ),
 );
 
+/**
+ * Words that may stand between a label and its number, or right after the number, without lowering
+ * its confidence (R77): the unit words, `و`, the `ب`/`ال` prefixes alone, a few neutral verbs and
+ * English glue. Any other word there lowers the field to 0.5. Approximators (`حوالي`, `تقريبا`, `about`)
+ * and comparators are deliberately not here.
+ */
+export const FILLER_WORDS: ReadonlySet<string> = new Set([
+  ...UNIT_WORDS,
+  ...["و", "ب", "ال", "كان", "كانت", "يعني", "النهارده", "اليوم", "طلع", "طلعت", "بعت", "كتبت", "معايا", "عندي"].map((w) => normaliseArabic(w)),
+  "and",
+  "is",
+  "was",
+  "the",
+  "a",
+  "of",
+]);
+
 const INVISIBLE_OR_JOINER = /\p{C}/u;
 const ZW_JOINERS = /[\u200C\u200D]/g;
 const WHITESPACE = /[\s\u0085]+/gu;
@@ -59,7 +76,7 @@ export function spokenTokens(text: string): string[] {
 
 type Kind = "unit" | "ten" | "teen" | "tens" | "hundreds" | "hundredWord" | "teenSuffix" | "scale" | "thousands";
 type Lang = "ar" | "en";
-type Form = "one" | "dual" | "plural" | "en";
+type Form = "one" | "dual" | "plural" | "en" | "acc";
 /**
  * `short`: a short unit (`خمس`, `تلات`) counts only before what it counts (plural scale, `مية`,
  * `عشر`, a unit word), and is unreadable at the end of the speech; `third` is `تلت`, which before
@@ -106,8 +123,8 @@ const AR_SHORT: [string[], number][] = [
 ];
 for (const [s, v] of AR_SHORT) add(s, { kind: "unit", value: v, lang: "ar", cond: "short" });
 add(["تلت"], { kind: "unit", value: 3, lang: "ar", cond: "third" });
-add(["أحد"], { kind: "unit", value: 1, lang: "ar", cond: "preTeen" });
-add(["اثنا", "اثني"], { kind: "unit", value: 2, lang: "ar", cond: "preTeen" });
+add(["أحد", "إحدى"], { kind: "unit", value: 1, lang: "ar", cond: "preTeen" });
+add(["اثنا", "اثني", "اثنتا", "اثنتي"], { kind: "unit", value: 2, lang: "ar", cond: "preTeen" });
 add(["عشر"], { kind: "ten", value: 10, lang: "ar", cond: "ashar" });
 add(["عشرة"], { kind: "ten", value: 10, lang: "ar", cond: "ashara" });
 
@@ -171,6 +188,9 @@ for (const [prefixes, v] of HUNDRED_PREFIXES) {
   addNew(prefixes.map((p) => p + "ميت"), { kind: "hundreds", value: v * 100, lang: "ar", cond: "construct" });
 }
 add(["ألف"], { kind: "scale", value: 1000, lang: "ar", form: "one" });
+// Accusative `ألفا`/`ألفاً`: the count is always in front of it (`خمسين ألفا`), never alone.
+add(["ألفا", "ألفاً"], { kind: "scale", value: 1000, lang: "ar", form: "acc" });
+add(["آلافا", "آلافاً"], { kind: "scale", value: 1000, lang: "ar", form: "plural" });
 add(["ألفين", "ألفان"], { kind: "scale", value: 1000, lang: "ar", form: "dual" });
 add(["آلاف", "تلاف", "ألاف"], { kind: "scale", value: 1000, lang: "ar", form: "plural" });
 add(["مليون"], { kind: "scale", value: 1_000_000, lang: "ar", form: "one" });
@@ -208,20 +228,21 @@ const W = (s: string) => normaliseArabic(s);
 const WAW = W("و");
 const HALF_WORDS = new Set([W("نص"), W("نصف")]);
 const AND = "and";
-const SHORT_NEXT = new Set([...["آلاف", "تلاف", "ألاف", "ملايين", "عشر", "عشرة", "ميت", ...HUNDRED_SUFFIXES].map(W), ...UNIT_WORDS]);
+const SHORT_NEXT = new Set([...["آلاف", "آلافا", "تلاف", "ألاف", "ملايين", "عشر", "عشرة", "ميت", ...HUNDRED_SUFFIXES].map(W), ...UNIT_WORDS]);
 const TEEN_NEXT = new Set([W("عشر"), W("عشرة")]);
-const ASHAR_TEN_NEXT = new Set([...["آلاف", "تلاف", "ألاف", "ملايين"].map(W), ...UNIT_WORDS]);
+const ASHAR_TEN_NEXT = new Set([...["آلاف", "آلافا", "تلاف", "ألاف", "ملايين"].map(W), ...UNIT_WORDS]);
 const ARTICLE_NEXT = new Set(["hundred", "thousand", "million"]);
-const SINGULAR_SCALES = new Set([W("ألف"), W("مليون")]);
+const SINGULAR_SCALES = new Set([W("ألف"), W("ألفا"), W("مليون")]);
 const HUNDRED_WORDS = new Set([...HUNDRED_SUFFIXES, "ميت"].map(W));
 /** Scale and hundred words: a fraction word (`نص`, `ربع`) before one is a part of it, not a count. */
 const SCALE_OR_HUNDRED = new Set([
-  ...["ألف", "ألفين", "آلاف", "تلاف", "ألاف", "مليون", "مليونين", "ملايين", "ميت", ...HUNDRED_SUFFIXES].map(W),
+  ...["ألف", "ألفا", "ألفين", "آلاف", "آلافا", "تلاف", "ألاف", "مليون", "مليونين", "ملايين", "ميت", ...HUNDRED_SUFFIXES].map(W),
   "hundred",
   "thousand",
   "million",
 ]);
-const FRACTION_WORDS = new Set([W("نص"), W("نصف"), W("ربع"), "half", "quarter", "third"]);
+/** A fraction word anywhere makes its run unreadable (R77): a half or quarter before a scale or after a number is never a clean value. */
+const FRACTION_WORDS = new Set([...["نص", "نصف", "ربع", "ربعين", "ارباع", "ثلث", "ثلثين", "تلتين"].map(W), "half", "quarter", "quarters", "third", "thirds"]);
 
 // Number-like tokens the tables do not read (R76): a known count stem with a hundred, thousand or
 // teen ending. They are unreadable atoms, never filler, so they claim their label and are counted.
@@ -309,6 +330,11 @@ function readDigitToken(t: string): { value: number; fraction: "none" | "half"; 
   return { value: Number(significant), fraction: half ? "half" : "none", three: dot < 0 && whole.length === 3 && !whole.includes(",") };
 }
 
+/** A token that may stand in front of a bare `عشر`/`عشرة` without making it unreadable: a joiner, a unit or filler word, a number. */
+function isGlue(t: string): boolean {
+  return t === WAW || t === AND || FILLER_WORDS.has(t) || lookup(t) !== null;
+}
+
 /** The word a token names, with a leading `و` taken as a joiner when the whole token is not a word. */
 function lookup(t: string | undefined): { word: Word; joined: boolean } | null {
   if (t === undefined) return null;
@@ -328,6 +354,21 @@ function halfAt(tokens: string[], k: number, to: number): number {
   if (t === WAW && k + 1 < to && HALF_WORDS.has(tokens[k + 1]!)) return 2;
   if (t === AND && k + 1 < to && tokens[k + 1] === "half") return 2;
   if (t === AND && k + 2 < to && tokens[k + 1] === "a" && tokens[k + 2] === "half") return 3;
+  return 0;
+}
+
+/** The tokens a fraction word takes at `k` (`ربع`, `وربع`, `و ربع`, `and a quarter`, `a half`), or 0. */
+function fractionAt(tokens: string[], k: number, to: number): number {
+  const isFraction = (i: number) => {
+    if (i >= to) return false;
+    const t = tokens[i]!;
+    return FRACTION_WORDS.has(t) || (t.length > 1 && t.startsWith(WAW) && FRACTION_WORDS.has(t.slice(WAW.length)));
+  };
+  const t = tokens[k]!;
+  if (isFraction(k)) return 1;
+  if ((t === WAW || t === AND) && isFraction(k + 1)) return 2;
+  if (t === AND && k + 2 < to && tokens[k + 1] === "a" && isFraction(k + 2)) return 3;
+  if (t === "a" && isFraction(k + 1)) return 2;
   return 0;
 }
 
@@ -374,6 +415,7 @@ function atomAt(tokens: string[], k: number, from: number, to: number): Atom | n
     case "ashara": {
       const prev = k - 1 >= from ? lookup(tokens[k - 1]) : null;
       if (!joined && prev !== null && prev.word.kind === "unit" && prev.word.lang === "ar") kind = "teenSuffix";
+      else if (!joined && prev === null && k - 1 >= from && !isGlue(tokens[k - 1]!)) return badAt(k); // `اثنتان عشرة`: an unread word before it (R77)
       else if (word.cond === "ashar" && !joined && (next === undefined || !ASHAR_TEN_NEXT.has(next))) return badAt(k);
       break;
     }
@@ -462,6 +504,8 @@ function scaled(count: number | null, scale: WordAtom): number | null {
       return count === null ? 2 * s : null;
     case "one":
       return count === null ? s : count >= 11 && count <= 999 ? count * s : null;
+    case "acc":
+      return count !== null && count >= 11 && count <= 999 ? count * s : null;
     case "plural":
       return count !== null && count >= 3 && count <= 10 ? count * s : null;
     default:
@@ -627,6 +671,16 @@ export function scanNumbers(tokens: string[], from = 0, to = tokens.length): { n
       k += h;
       continue;
     }
+    // A fraction (`وربع`, `ثلاثة أرباع`, `half a million`, a lone `نص`) is never a clean value: it
+    // spoils the run it sits in, or stands as an unreadable run of its own (R77).
+    const f = fractionAt(tokens, k, to);
+    if (f > 0) {
+      push({ kind: "bad", value: 0, lang: "x", joined: false, start: k, end: k + f }, k);
+      pendingJoin = false;
+      runBad = true;
+      k += f;
+      continue;
+    }
     const a = atomAt(tokens, k, from, to);
     if (a !== null) {
       if (pendingJoin) a.joined = true;
@@ -647,7 +701,7 @@ export function scanNumbers(tokens: string[], from = 0, to = tokens.length): { n
         continue;
       }
       const n = tokens[k + 1]!;
-      const joinedNext = atomAt(tokens, k + 1, from, to)?.joined === true || ((n === WAW || n === AND) && k + 2 < to && atomAt(tokens, k + 2, from, to) !== null);
+      const joinedNext = fractionAt(tokens, k + 1, to) > 0 || atomAt(tokens, k + 1, from, to)?.joined === true || ((n === WAW || n === AND) && k + 2 < to && atomAt(tokens, k + 2, from, to) !== null);
       if (joinedNext) {
         runBad = true;
         k += 1;
