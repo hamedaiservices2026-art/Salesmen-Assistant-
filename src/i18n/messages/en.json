@@ -97,7 +97,6 @@
     "methodPhoto": "Report photo",
     "methodVoice": "Say it",
     "methodType": "Type it",
-    "soon": "Soon",
     "linesTitle": "Today's sales",
     "moneyTitle": "Money",
     "focusTitle": "Focus items (optional)",
@@ -170,6 +169,50 @@
         "removeFailed": "We could not remove the photo. Try again"
       },
       "hint": "Return photos are kept 180 days and your supervisor and the admin can see them."
+    },
+    "draft": {
+      "banner": "We read the report photo. Check the numbers and fix any mistake.",
+      "bannerVoice": "We heard your recording. Check the numbers and fix any mistake.",
+      "heard": "What we heard",
+      "fromPhoto": "From the photo",
+      "fromVoice": "From the recording",
+      "check": "Check this number",
+      "ok": "Right",
+      "okFor": "Right, I checked {label}",
+      "notRead": "Not read, type it",
+      "photoRead": "The photo read {amount}",
+      "voiceRead": "The recording read {amount}",
+      "dateMismatch": "This report is dated {date}",
+      "openThatDay": "Open that day's close",
+      "clear": "Clear what was read",
+      "problems": "{n, plural, =1 {1 field could not be read} other {# fields could not be read}}",
+      "needsReview": "Check the marked fields before confirming",
+      "reading": "Reading the photo…",
+      "listening": "Listening to the recording…",
+      "nothingHeard": "We did not hear clear numbers. Say the field name and then the number, or type it in.",
+      "unreadable": "We could not read the photo. Take it again in good light or type it in."
+    },
+    "voice": {
+      "start": "Tap and start talking",
+      "stop": "Done",
+      "denied": "The microphone is blocked. Allow it in the browser settings or type it in.",
+      "hint": "Say for example: beverages one hundred twenty, cash five thousand",
+      "pickFile": "Choose a recording",
+      "failed": "We could not record. Try again, choose a recording, or type it in.",
+      "recording": "Recording",
+      "cancel": "Cancel"
+    },
+    "read": {
+      "errors": {
+        "bad_date": "That day is not valid. Open the close again and retry.",
+        "not_selling_day": "That is not a selling day, so there is no close to record.",
+        "too_large": "The photo is too large. Take it again or type it in.",
+        "audio_too_large": "The recording is too long. Shorten it or type it in.",
+        "unsupported_type": "That file type is not supported. Photograph the report with the camera or type it in.",
+        "too_many_pixels": "The photo's dimensions are too large. Take it again from a little farther or type it in.",
+        "corrupt": "That photo does not open. Take it again or type it in.",
+        "busy": "The service is busy right now. Try again in a moment."
+      }
     }
   },
   "commission": {

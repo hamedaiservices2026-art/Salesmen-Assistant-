@@ -1,5 +1,7 @@
+import { createHash } from "node:crypto";
 import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
+import { draftContextKey } from "@/domain/ai/draft";
 import { formatAmount, inputValue, type Unit } from "@/domain/money";
 import { requireCtx } from "@/server/auth/guard";
 import { getCompanyPrefs } from "@/server/repos/company";
@@ -7,7 +9,10 @@ import { focusName } from "@/domain/focus";
 import { isDailyLine, lineName as localLineName } from "@/domain/lines";
 import type { Locale } from "@/i18n/config";
 import { unitLabel as labelFor } from "@/ui/unit-label";
+import { AI_NOTICE_VERSION } from "@/server/ai/availability";
+import { aiStatus } from "@/server/ai/consent";
 import { getClose } from "@/server/repos/closes";
+import { loadCalendar } from "@/server/repos/month-data";
 import { getMonthView } from "@/server/repos/month-view";
 import { currentDay } from "@/server/today";
 import { AppHeader } from "@/ui/components/AppHeader";
@@ -16,29 +21,6 @@ import { INTL_TAG } from "@/ui/intl-tag";
 import { closeMonth, focusOn, resolveCloseDate } from "./close-date";
 import { CloseForm, type FormItem } from "./close-form";
 import { isOptionalLine } from "./parse-form";
-
-/** The three ways to record the day; only typing exists so far. */
-function Methods({ labels }: { labels: { group: string; photo: string; voice: string; type: string; soon: string } }) {
-  const base = "flex min-h-16 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-2 text-[13px]";
-  const off = `${base} border border-line bg-white font-medium text-muted opacity-70`;
-  return (
-    <div role="group" aria-label={labels.group} className="grid grid-cols-3 gap-2 px-5 pt-[18px]">
-      {[labels.photo, labels.voice].map((l) => (
-        <button key={l} type="button" disabled className={off}>
-          {l}
-          <span className="text-xs">{labels.soon}</span>
-        </button>
-      ))}
-      <button
-        type="button"
-        aria-pressed="true"
-        className={`${base} border-2 border-brand bg-brand-tint font-bold text-brand`}
-      >
-        {labels.type}
-      </button>
-    </div>
-  );
-}
 
 export default async function ClosePage({ searchParams }: { searchParams: Promise<{ date?: string | string[] }> }) {
   const ctx = await requireCtx();
@@ -87,7 +69,19 @@ export default async function ClosePage({ searchParams }: { searchParams: Promis
   }
 
   const { year, month } = closeMonth(date, today);
-  const [view, saved] = await Promise.all([getMonthView(ctx, { year, month, today }), getClose(ctx, date)]);
+  const [prevYear, prevMonth] = month === 1 ? [year - 1, 12] : [year, month - 1];
+  const [view, saved, vision, stt, thisMonth, lastMonth] = await Promise.all([
+    getMonthView(ctx, { year, month, today }),
+    getClose(ctx, date),
+    aiStatus(ctx, "vision"),
+    aiStatus(ctx, "stt"),
+    loadCalendar(ctx, year, month),
+    loadCalendar(ctx, prevYear, prevMonth),
+  ]);
+  // Past selling days a report's date may point to, so "open that day's close" is offered only for a day that opens.
+  const pastSellingDays = [...lastMonth.selling, ...thisMonth.selling].filter((d) => d < today);
+  // A hash of the user, so two reps on one phone never share a stored draft.
+  const userKey = createHash("sha256").update(`${ctx.companyId}:${ctx.userId}`).digest("hex").slice(0, 24);
   const lineName = (l: { nameAr: string; nameEn: string; nameUr: string }) => localLineName(l, locale as Locale);
 
   const dailyLines = view.lines.filter(isDailyLine);
@@ -109,7 +103,12 @@ export default async function ClosePage({ searchParams }: { searchParams: Promis
     optional: isOptionalLine(l.createdOn, date),
     notes: adminNotes(l.lineId, l.unit),
     adminAmount: saved?.admin[l.lineId]?.amount,
+    line: { lineId: l.lineId, code: l.code, unit: l.unit, kind: l.kind },
   }));
+  const contextKey = draftContextKey(
+    dailyLines.map((l) => ({ lineId: l.lineId, code: l.code, unit: l.unit, kind: l.kind })),
+    date,
+  );
   const focusItems: FormItem[] = focusOn(view.focus, date).map((f) => ({
     name: `focus.${f.id}`,
     label: focusName(f, locale as Locale),
@@ -152,26 +151,21 @@ export default async function ClosePage({ searchParams }: { searchParams: Promis
   return (
     <>
       <AppHeader greeting={title} dateLine={dateLine} notificationsLabel={home("notifications")} />
-      <Methods
-        labels={{
-          group: t("methodLabel"),
-          photo: t("methodPhoto"),
-          voice: t("methodVoice"),
-          type: t("methodType"),
-          soon: t("soon"),
-        }}
+      <CloseForm
+        date={date}
+        lineItems={lineItems}
+        focusItems={focusItems}
+        initial={initial}
+        initialReturns={initialReturns}
+        currencyLabel={label("value")}
+        stockUnitLabel={label("cases")}
+        vision={vision}
+        stt={stt}
+        noticeVersion={AI_NOTICE_VERSION}
+        userKey={userKey}
+        contextKey={contextKey}
+        pastSellingDays={pastSellingDays}
       />
-      <main className="flex flex-1 flex-col gap-3 px-5 pb-4 pt-3">
-        <CloseForm
-          date={date}
-          lineItems={lineItems}
-          focusItems={focusItems}
-          initial={initial}
-          initialReturns={initialReturns}
-          currencyLabel={label("value")}
-          stockUnitLabel={label("cases")}
-        />
-      </main>
     </>
   );
 }

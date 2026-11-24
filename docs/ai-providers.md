@@ -129,3 +129,7 @@ The rep notice and the admin page say the services are free during the trial and
 ## What a close's source means (R74)
 
 `daily_closes.source` labels the last confirmed save. `photo` or `voice` means a draft was read for this rep and day, and the rep confirmed with that draft's receipt within 24 hours. It is not evidence of where the figures came from, because the rep reviews and may change every field before he confirms. A later confirm without a receipt (or a second confirm with the same, already used receipt) sets the close back to `manual`. A close confirmed by photo keeps one report photo: the one the figures were last read from. Earlier report photos of that close are deleted.
+
+## Voice recording on iOS Safari (Task 14): NOT verified on a real device
+
+The recorder picks `audio/webm;codecs=opus`, then `audio/mp4`, then `audio/ogg;codecs=opus` (`src/ui/recorder.ts`); iOS Safari is expected to give `audio/mp4`, and a browser without a microphone API or `MediaRecorder` (or an insecure page) gets a file picker (`accept="audio/*"`, no `capture`) instead. This was checked only in Chromium with a fake microphone (webm) and by unit tests of the type choice. No iPhone or Safari was available, so recording as `audio/mp4`, the permission prompt, the stop on a hidden page and the file-picker fallback on iOS are **unverified**; the server's MP4 sniffing is covered by tests, and Groq and Gemini acceptance of iOS recordings is covered by the smoke note above (also unverified).

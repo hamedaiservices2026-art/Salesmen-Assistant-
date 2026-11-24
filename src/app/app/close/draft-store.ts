@@ -1,0 +1,96 @@
+// The draft being reviewed, kept in sessionStorage so a reload does not lose it (24 hours, one per
+// rep and day). It is validated with zod when read back and must belong to the same day, the same
+// rep and the same set of lines; anything else is removed. Values never reach the server from here:
+// the form's own fields are what is posted. Browser-only; every storage call is guarded.
+import { z } from "zod";
+import type { CloseDraft } from "@/domain/ai/draft";
+import { parseStoredDraft } from "@/domain/ai/draft-schema";
+import { isFileId } from "@/domain/files";
+
+export const DRAFT_LIFETIME_MS = 24 * 3_600_000;
+/** A save time this far ahead of the clock is a wrong clock or a forged entry. */
+const SKEW_MS = 5 * 60_000;
+const VERSION = 1;
+
+export type StoredDraft = {
+  draft: CloseDraft;
+  draftId: string;
+  savedAt: number;
+  /** `draftContextKey(lines, date)`: what the draft was read against. */
+  contextKey: string;
+  /** What was heard, for a voice draft. */
+  transcript?: string;
+};
+
+const Entry = z
+  .object({
+    v: z.literal(VERSION),
+    draft: z.unknown(),
+    draftId: z.string().refine(isFileId),
+    savedAt: z.number().finite(),
+    contextKey: z.string().max(4000),
+    transcript: z.string().max(2000).optional(),
+  })
+  .strict();
+
+const TOKEN = /^[A-Za-z0-9_-]{1,64}$/;
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+function storageKey(userKey: string, date: string): string | null {
+  return TOKEN.test(userKey) && DATE.test(date) ? `close-draft:${userKey}:${date}` : null;
+}
+
+function remove(storage: Storage, key: string): void {
+  try {
+    storage.removeItem(key);
+  } catch {
+    // storage may be blocked
+  }
+}
+
+export function saveDraft(storage: Storage, userKey: string, d: StoredDraft): void {
+  const key = storageKey(userKey, d.draft.date);
+  if (!key) return;
+  try {
+    const entry = { v: VERSION, draft: d.draft, draftId: d.draftId, savedAt: d.savedAt, contextKey: d.contextKey, ...(d.transcript ? { transcript: d.transcript } : {}) };
+    storage.setItem(key, JSON.stringify(entry));
+  } catch {
+    // a full or blocked storage only means a reload loses the draft
+  }
+}
+
+/**
+ * The stored draft for this rep and day, or null. The entry is removed when it is expired, belongs
+ * to another day or another set of lines, or is not exactly what `saveDraft` writes.
+ */
+export function loadDraft(storage: Storage, userKey: string, date: string, now: number, contextKey: string): { draft: CloseDraft; draftId: string; transcript?: string } | null {
+  const key = storageKey(userKey, date);
+  if (!key) return null;
+  let text: string | null;
+  try {
+    text = storage.getItem(key);
+  } catch {
+    return null;
+  }
+  if (text === null) return null;
+  try {
+    const entry = Entry.safeParse(JSON.parse(text));
+    if (entry.success) {
+      const e = entry.data;
+      const draft = parseStoredDraft(e.draft);
+      const fresh = now - e.savedAt <= DRAFT_LIFETIME_MS && e.savedAt - now <= SKEW_MS;
+      if (draft && draft.date === date && e.contextKey === contextKey && fresh) {
+        return { draft, draftId: e.draftId, ...(e.transcript ? { transcript: e.transcript } : {}) };
+      }
+    }
+  } catch {
+    // broken JSON falls through to the removal below
+  }
+  remove(storage, key);
+  return null;
+}
+
+export function clearDraft(storage: Storage, userKey: string, date: string): void {
+  const key = storageKey(userKey, date);
+  if (key) remove(storage, key);
+}
