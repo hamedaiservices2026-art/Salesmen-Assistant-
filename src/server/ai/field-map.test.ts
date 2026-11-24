@@ -148,4 +148,26 @@ describe("loadVocabulary", () => {
     await db.update(s.targetLines).set({ active: false }).where(eq(s.targetLines.id, "food"));
     expect((await loadVocabulary(ahmed())).some((e) => e.key === "line:food")).toBe(false);
   });
+  it("keeps stored aliases of keys that are not current draft keys (R73)", async () => {
+    await db.insert(s.aiFieldMaps).values({ companyId: "demo-co", aliases: { "line:food": ["Food Sales"], cashSales: ["Old"] }, version: 1, updatedBy: seed.adminId });
+    await db.update(s.targetLines).set({ active: false }).where(eq(s.targetLines.id, "food"));
+    expect((await getFieldMap(admin())).aliases).toEqual({ cashSales: ["Old"] });
+    expect(await saveFieldMap(admin(), { version: 1, aliases: { cashSales: ["New"] } })).toEqual({ ok: true, version: 2 });
+    const [row] = await db.select().from(s.aiFieldMaps).where(eq(s.aiFieldMaps.companyId, "demo-co"));
+    expect(row!.aliases).toEqual({ cashSales: ["New"], "line:food": ["Food Sales"] });
+    await db.update(s.targetLines).set({ active: true }).where(eq(s.targetLines.id, "food"));
+    expect((await getFieldMap(admin())).aliases["line:food"]).toEqual(["Food Sales"]);
+    expect(await labelsOf(ahmed(), "line:food")).toContain("Food Sales");
+  });
+});
+
+describe("getFieldMap shape", () => {
+  it("lists a deactivated line nowhere and names lines in the given locale", async () => {
+    await db.update(s.targetLines).set({ active: false }).where(eq(s.targetLines.id, "food"));
+    const m = await getFieldMap(admin(), "en");
+    expect(m.keys.map((k) => k.key)).not.toContain("line:food");
+    expect(m.keys.find((k) => k.key === "line:bev")).toEqual({ key: "line:bev", label: "Beverages", defaults: ["مشروبات", "Beverages", "bev"] });
+    expect((await getFieldMap(admin(), "ar")).keys.find((k) => k.key === "line:bev")!.label).toBe("مشروبات");
+    expect(Object.keys(m).sort()).toEqual(["aliases", "keys", "version"]);
+  });
 });

@@ -10,8 +10,30 @@ export const ALIAS_MAX = 60;
 const FORBIDDEN = /[<>{}[\]`|]/u;
 /** Line and paragraph separators (after NFKC); any of them would start a new line in the prompt. */
 const LINE_BREAK = /[\n\r\v\f\u0085\u2028\u2029]/u;
-/** Control, format (bidi marks and overrides, zero-width, tag characters), private-use and unassigned code points. */
-const INVISIBLE = /[\p{Cc}\p{Cf}\p{Co}\p{Cn}\p{Cs}]/gu;
+/** Control, format (bidi marks and overrides, zero-width, tag characters) and private-use code points. */
+const INVISIBLE = /[\p{Cc}\p{Cf}\p{Co}]/u;
+const LETTER_OR_MARK = /^[\p{L}\p{M}]$/u;
+const JOINERS = new Set(["\u200C", "\u200D"]);
+
+/**
+ * Removes control, format, bidi, zero-width, tag and private-use code points. ZWNJ and ZWJ stay only
+ * between two letters or marks (they are part of Persian and Urdu spelling). The one normaliser for
+ * every label text: aliases here and, in Task 12, the transcript before it is matched against labels.
+ */
+export function stripInvisible(text: string): string {
+  const chars = Array.from(text);
+  let out = "";
+  chars.forEach((c, i) => {
+    if (JOINERS.has(c)) {
+      const prev = chars[i - 1];
+      const next = chars[i + 1];
+      if (prev !== undefined && next !== undefined && LETTER_OR_MARK.test(prev) && LETTER_OR_MARK.test(next)) out += c;
+      return;
+    }
+    if (!INVISIBLE.test(c)) out += c;
+  });
+  return out;
+}
 
 /** True when the text holds nothing a person could see (empty, spaces, invisible characters). */
 export function isBlankAlias(s: string): boolean {
@@ -27,11 +49,26 @@ export function cleanAlias(input: string): string | null {
   if (typeof input !== "string") return null;
   const text = input.toWellFormed().normalize("NFKC");
   if (LINE_BREAK.test(text)) return null;
-  const cleaned = text.replace(INVISIBLE, "").replace(/\s+/gu, " ").trim();
+  const cleaned = stripInvisible(text).replace(/\s+/gu, " ").trim();
   if (cleaned === "") return null;
   if (FORBIDDEN.test(cleaned)) return null;
   if (Array.from(cleaned).length > ALIAS_MAX) return null;
   return cleaned;
+}
+
+/**
+ * A built-in name or code (from the company's own lines): the unsafe characters become spaces instead
+ * of refusing the name, then spaces collapse. Null when nothing is left. Capped at 60 code points.
+ */
+export function cleanLabelLenient(input: string): string | null {
+  if (typeof input !== "string") return null;
+  const text = input.toWellFormed().normalize("NFKC").replace(LINE_BREAK, " ");
+  const cleaned = stripInvisible(text)
+    .replace(new RegExp(FORBIDDEN.source, "gu"), " ")
+    .replace(/\s+/gu, " ")
+    .trim();
+  if (cleaned === "") return null;
+  return Array.from(cleaned).slice(0, ALIAS_MAX).join("").trim() || null;
 }
 
 export const DEFAULT_ALIASES: Record<(typeof MONEY_KEYS)[number] | (typeof STOCK_KEYS)[number], string[]> = {
@@ -69,7 +106,7 @@ export function vocabulary(lines: VocabularyLine[], custom: Record<string, strin
     const seen = new Set<string>();
     const line = byCode.get(key);
     const base: string[] = line ? [line.nameAr, line.nameEn, line.nameUr, line.code] : [...DEFAULT_ALIASES[key as keyof typeof DEFAULT_ALIASES]];
-    for (const b of base) addUnique(labels, seen, cleanAlias(b));
+    for (const b of base) addUnique(labels, seen, cleanLabelLenient(b));
     const own = Object.hasOwn(custom, key) ? custom[key] : undefined;
     if (Array.isArray(own)) {
       let taken = 0;

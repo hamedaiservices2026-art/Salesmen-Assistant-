@@ -3,6 +3,7 @@ import * as s from "@/db/schema";
 import { ALIASES_PER_FIELD, cleanAlias, isBlankAlias, vocabulary, type VocabularyEntry, type VocabularyLine } from "@/domain/ai/aliases";
 import { draftKeys, lineKey, type DraftKey } from "@/domain/ai/draft";
 import { lineName } from "@/domain/lines";
+import type { Locale } from "@/i18n/config";
 import { assertRole } from "@/server/auth/roles";
 import type { Ctx } from "@/server/ctx";
 
@@ -35,14 +36,14 @@ async function loadStored(ctx: Ctx): Promise<{ version: number; aliases: Record<
 }
 
 /** What the mapping page shows: the saved labels, the version to send back, and each field with its built-in labels. Admin only. */
-export async function getFieldMap(ctx: Ctx): Promise<FieldMapView> {
+export async function getFieldMap(ctx: Ctx, locale: Locale = ctx.locale): Promise<FieldMapView> {
   assertRole(ctx, ["admin"]);
   const [lines, stored] = await Promise.all([loadLines(ctx), loadStored(ctx)]);
   const vocab = vocabulary(lines, {});
   const byKey = new Map(lines.map((l) => [lineKey(l.code), l]));
   const keys = vocab.map((e) => {
     const line = byKey.get(e.key);
-    return { key: e.key, label: line ? lineName(line, ctx.locale) : e.key, defaults: e.labels };
+    return { key: e.key, label: line ? lineName(line, locale) : e.key, defaults: e.labels };
   });
   const aliases: Record<string, string[]> = {};
   for (const { key } of keys) {
@@ -99,18 +100,27 @@ export async function saveFieldMap(ctx: Ctx, input: { version: number; aliases: 
   }
   if (Object.keys(errors).length > 0) return { ok: false, errors };
   if (!Number.isInteger(input.version) || input.version < 0) return { ok: false, error: "stale" };
+  // Labels stored for keys the company does not have right now (a line turned off) are carried through
+  // unchanged, so turning the line back on restores them (R73).
+  const stored = await loadStored(ctx);
+  const kept: Record<string, string[]> = {};
+  for (const [key, list] of Object.entries(stored.aliases)) {
+    if (allowed.has(key) || !Array.isArray(list)) continue;
+    kept[key] = list.filter((a): a is string => typeof a === "string");
+  }
+  const merged = { ...clean, ...kept };
 
   if (input.version === 0) {
     const inserted = await ctx.db
       .insert(s.aiFieldMaps)
-      .values({ companyId: ctx.companyId, aliases: clean, version: 1, updatedBy: ctx.userId })
+      .values({ companyId: ctx.companyId, aliases: merged, version: 1, updatedBy: ctx.userId })
       .onConflictDoNothing()
       .returning({ version: s.aiFieldMaps.version });
     return inserted[0] ? { ok: true, version: inserted[0].version } : { ok: false, error: "stale" };
   }
   const [updated] = await ctx.db
     .update(s.aiFieldMaps)
-    .set({ aliases: clean, version: sql`${s.aiFieldMaps.version} + 1`, updatedBy: ctx.userId, updatedAt: new Date() })
+    .set({ aliases: merged, version: sql`${s.aiFieldMaps.version} + 1`, updatedBy: ctx.userId, updatedAt: new Date() })
     .where(and(eq(s.aiFieldMaps.companyId, ctx.companyId), eq(s.aiFieldMaps.version, input.version)))
     .returning({ version: s.aiFieldMaps.version });
   return updated ? { ok: true, version: updated.version } : { ok: false, error: "stale" };

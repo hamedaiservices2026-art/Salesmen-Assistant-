@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
-import { getTranslations } from "next-intl/server";
+import { getLocale, getTranslations } from "next-intl/server";
+import type { Locale } from "@/i18n/config";
 import { getFieldMap } from "@/server/ai/field-map";
 import { requireRole } from "@/server/auth/guard";
 import { Card } from "@/ui/admin/Card";
@@ -10,7 +11,8 @@ import { MappingForm } from "./mapping-form";
 
 export default async function AiMappingPage({ searchParams }: { searchParams: Promise<{ saved?: string }> }) {
   const ctx = await requireRole(["admin"]);
-  const [t, { saved }, map] = await Promise.all([getTranslations("admin.ai.mapping"), searchParams, getFieldMap(ctx)]);
+  const locale = (await getLocale()) as Locale;
+  const [t, { saved }, map] = await Promise.all([getTranslations("admin.ai.mapping"), searchParams, getFieldMap(ctx, locale)]);
   return (
     <main className="flex flex-col gap-5">
       <PageHeader

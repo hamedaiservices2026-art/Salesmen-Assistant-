@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Plus } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
@@ -37,8 +37,20 @@ export function MappingForm({
   const nameOf = (f: MappingField) => (f.key.startsWith("line:") ? f.label : t(`keys.${f.key}`));
   const setRow = (key: string, i: number, value: string) =>
     setRows((r) => ({ ...r, [key]: (r[key] ?? []).map((v, j) => (j === i ? value : v)) }));
-  const addRow = (key: string) =>
+  // After "Add another" the new input takes focus.
+  const focusNext = useRef<string | null>(null);
+  const addRow = (key: string) => {
+    focusNext.current = `${key}:${(rows[key] ?? []).length}`;
     setRows((r) => ((r[key] ?? []).length < ALIASES_PER_FIELD ? { ...r, [key]: [...(r[key] ?? []), ""] } : r));
+  };
+  useEffect(() => {
+    const target = focusNext.current;
+    if (!target) return;
+    focusNext.current = null;
+    for (const el of document.querySelectorAll<HTMLInputElement>("input[data-row]")) {
+      if (el.dataset.row === target) el.focus();
+    }
+  }, [rows]);
 
   return (
     <form action={action} className={`flex flex-col gap-4 px-5 pb-5 ${lead}`}>
@@ -84,6 +96,7 @@ export function MappingForm({
                   <input
                     key={i}
                     name={`alias:${f.key}`}
+                    data-row={`${f.key}:${i}`}
                     value={value}
                     onChange={(e) => setRow(f.key, i, e.currentTarget.value)}
                     maxLength={ALIAS_MAX * 2}

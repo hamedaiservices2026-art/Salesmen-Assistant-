@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { ALIASES_PER_FIELD, ALIAS_MAX, DEFAULT_ALIASES, cleanAlias, vocabulary } from "./aliases";
+import { ALIASES_PER_FIELD, ALIAS_MAX, DEFAULT_ALIASES, cleanAlias, cleanLabelLenient, stripInvisible, vocabulary } from "./aliases";
+import type { VocabularyLine } from "./aliases";
 import type { DraftLine } from "./draft";
 
 const LINES = [
@@ -80,6 +81,39 @@ describe("cleanAlias", () => {
   });
 });
 
+describe("ZWNJ and ZWJ (R73a)", () => {
+  it("keeps one between two letters", () => {
+    expect(cleanAlias("می\u200Cخواهم")).toBe("می\u200Cخواهم");
+    expect(cleanAlias("a\u200Db")).toBe("a\u200Db");
+  });
+  it("removes leading, trailing and doubled ones", () => {
+    expect(cleanAlias("\u200Cابc")).toBe("ابc");
+    expect(cleanAlias("abc\u200C")).toBe("abc");
+    expect(cleanAlias("a\u200C\u200Cb")).toBe("ab");
+    expect(cleanAlias("a \u200C b")).toBe("a b");
+    expect(cleanAlias("1\u200C2")).toBe("12");
+  });
+  it("still rejects a bracket the joiner hid", () => {
+    expect(cleanAlias("<\u200C/b>")).toBeNull();
+    expect(cleanAlias("a\u200C|\u200Db")).toBeNull();
+  });
+  it("other invisible characters go even between letters; unassigned code points are not stripped", () => {
+    expect(stripInvisible("a\u200Bb\u2060c\u00ADd\u{E0041}e")).toBe("abcde");
+  });
+});
+
+describe("cleanLabelLenient (R73b)", () => {
+  it("replaces unsafe characters by spaces", () => {
+    expect(cleanLabelLenient("Cola [330]")).toBe("Cola 330");
+    expect(cleanLabelLenient("Beer | Soda")).toBe("Beer Soda");
+    expect(cleanLabelLenient("a\nb")).toBe("a b");
+    expect(cleanLabelLenient("<<>>")).toBeNull();
+  });
+  it("caps at 60 code points", () => {
+    expect(Array.from(cleanLabelLenient("x".repeat(100))!)).toHaveLength(60);
+  });
+});
+
 describe("DEFAULT_ALIASES", () => {
   it("has the bare spoken forms (R29)", () => {
     expect(DEFAULT_ALIASES.cashSales).toContain("نقدي");
@@ -132,5 +166,16 @@ describe("vocabulary", () => {
   it("tolerates a non-array value in stored data", () => {
     const v = vocabulary(LINES, { cashSales: "x" as unknown as string[] });
     expect(v.find((e) => e.key === "cashSales")!.labels).toEqual([...DEFAULT_ALIASES.cashSales]);
+  });
+  it("cleans built-in names leniently (R73b) and still emits a key with no labels", () => {
+    const odd = [
+      { lineId: "a", code: "a", unit: "cases", kind: "sales", nameAr: "Cola [330]", nameEn: "Beer | Soda", nameUr: "x\ny" },
+      { lineId: "b", code: "b", unit: "cases", kind: "sales", nameAr: "<>", nameEn: "[]", nameUr: "{}" },
+    ] satisfies VocabularyLine[];
+    const v = vocabulary(odd, {});
+    expect(v.find((e) => e.key === "line:a")!.labels).toEqual(["Cola 330", "Beer Soda", "x y", "a"]);
+    expect(v.find((e) => e.key === "line:b")!.labels).toEqual(["b"]);
+    const none = vocabulary([{ lineId: "c", code: "<>", unit: "cases", kind: "sales", nameAr: "<>", nameEn: "[]", nameUr: "{}" }], {});
+    expect(none.find((e) => e.key === "line:<>")).toEqual({ key: "line:<>", unit: "cases", labels: [] });
   });
 });
