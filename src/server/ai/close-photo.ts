@@ -63,7 +63,7 @@ export type ClosePhotoOpts = {
 const fail = (reason: ClosePhotoFail["reason"]): ClosePhotoFail => ({ ok: false, reason });
 
 /** The company's daily lines in use, as a draft knows them. */
-async function draftLines(ctx: Ctx): Promise<DraftLine[]> {
+export async function draftLines(ctx: Ctx): Promise<DraftLine[]> {
   return (await loadLines(ctx)).filter(isDailyLine).map((l) => ({ lineId: l.lineId, code: l.code, unit: l.unit, kind: l.kind }));
 }
 

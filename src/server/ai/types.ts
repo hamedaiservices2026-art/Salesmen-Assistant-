@@ -1,9 +1,10 @@
+import type { AudioMime } from "@/domain/ai/audio";
 import type { Locale } from "@/i18n/config";
 import type { AiKind, ProviderName } from "./config";
 
 export type { AiKind, ProviderName };
 
-export type AudioMime = "audio/mp4" | "audio/webm" | "audio/ogg";
+export type { AudioMime };
 export type AiErrorCode = "timeout" | "rate_limited" | "provider_error" | "bad_request" | "invalid_output";
 
 /**
