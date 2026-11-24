@@ -1,5 +1,5 @@
 // The browser side of "read the report photo" and "read the voice note": one POST each, with the
-// custom header the server requires, a 60 s limit, and the reply checked again before the page
+// custom header the server requires, a 55 s limit, and the reply checked again before the page
 // uses it. Client-safe: only shared constants and types from src/domain (R43).
 import { AI_REQUESTED_WITH, type CloseDraft } from "@/domain/ai/draft";
 import { parseStoredDraft } from "@/domain/ai/draft-schema";
@@ -30,6 +30,8 @@ export const AI_READ_REASONS = [
   "empty",
   "timeout",
   "busy",
+  "unauthorized",
+  "bad_request",
 ] as const;
 export type ReadReason = (typeof AI_READ_REASONS)[number];
 
@@ -42,12 +44,15 @@ const ENDPOINT: Record<ReadKind, { url: string; field: string }> = {
   photo: { url: "/app/ai/close-photo", field: "file" },
   voice: { url: "/app/ai/close-voice", field: "audio" },
 };
-const TIMEOUT_MS = 60_000;
+const TIMEOUT_MS = 55_000;
 
+/** Other replies of the routes that mean "the request itself was wrong". */
+const BAD_REQUEST: ReadonlySet<unknown> = new Set(["forbidden", "no_file", "no_audio"]);
 const isReason = (r: unknown): r is ReadReason => typeof r === "string" && (AI_READ_REASONS as readonly string[]).includes(r);
 
 /** A reply without a usable reason code: what the status alone says (a 413 or 504 may come from the platform in front of the app). */
 function byStatus(status: number): ReadReason {
+  if (status === 401) return "unauthorized";
   if (status === 413) return "too_large";
   if (status === 422) return "unreadable";
   if (status === 429) return "rate_limited";
@@ -63,6 +68,8 @@ function byStatus(status: number): ReadReason {
  */
 export function readErrorKey(kind: ReadKind, reason: string): string {
   switch (reason) {
+    case "unauthorized":
+    case "bad_request":
     case "bad_date":
     case "not_selling_day":
     case "too_many_pixels":
@@ -93,10 +100,16 @@ export function readErrorKey(kind: ReadKind, reason: string): string {
   }
 }
 
+/** The caller's signal and a time limit as one signal; chained by hand so it works where `AbortSignal.any` does not exist. */
 function withTimeout(signal: AbortSignal | undefined): AbortSignal {
   const timeout = AbortSignal.timeout(TIMEOUT_MS);
   if (!signal) return timeout;
-  return typeof AbortSignal.any === "function" ? AbortSignal.any([signal, timeout]) : timeout;
+  const both = new AbortController();
+  for (const source of [signal, timeout]) {
+    if (source.aborted) both.abort(source.reason);
+    else source.addEventListener("abort", () => both.abort(source.reason), { once: true });
+  }
+  return both.signal;
 }
 
 const text = (v: unknown): string | undefined => (typeof v === "string" && v.trim() !== "" ? v.trim().slice(0, TRANSCRIPT_MAX) : undefined);
@@ -144,7 +157,7 @@ export async function readFromAi(kind: ReadKind, date: string, blob: Blob, opts:
     const transcript = text(reply.transcript);
     return { ok: true, draft, draftId: reply.draftId, ...(transcript ? { transcript } : {}) };
   }
-  const reason = reply && isReason(reply.reason) ? reply.reason : byStatus(res.status);
+  const reason = reply && isReason(reply.reason) ? reply.reason : reply && BAD_REQUEST.has(reply.reason) ? "bad_request" : byStatus(res.status);
   const transcript = reply ? text(reply.transcript) : undefined;
   return { ok: false, reason, ...(transcript ? { transcript } : {}) };
 }

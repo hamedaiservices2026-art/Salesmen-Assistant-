@@ -1,11 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Mic, Square, X } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { elapsedLabel, MAX_RECORD_MS, pickRecorderMime, recorderErrorKind, recorderSupport } from "@/ui/recorder";
-
-type Phase = "idle" | "asking" | "recording";
+import { elapsedLabel, MAX_RECORD_MS, recorderSupport } from "@/ui/recorder";
+import { createRecorder, type RecorderLike, type RecorderPhase, type StreamLike } from "@/ui/recorder-controller";
 
 const BTN =
   "inline-flex items-center justify-center gap-2 rounded-xl text-base font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand";
@@ -30,131 +29,57 @@ function browserSupport(): "ok" | "unsupported" {
  */
 export function VoiceRecorder({ onRecorded, disabled = false }: { onRecorded: (audio: Blob) => void; disabled?: boolean }) {
   const t = useTranslations("close.voice");
-  const [phase, setPhase] = useState<Phase>("idle");
+  const [phase, setPhase] = useState<RecorderPhase>("idle");
   const [error, setError] = useState<"denied" | "failed" | null>(null);
   const [elapsed, setElapsed] = useState(0);
+  // A recording cut short because the page was hidden: kept, and the rep decides what to do with it.
+  const [kept, setKept] = useState<Blob | null>(null);
   // What the browser supports is known only in the browser (null while rendering on the server).
   const support = useSyncExternalStore(noSubscription, browserSupport, serverSupport);
 
-  const stream = useRef<MediaStream | null>(null);
-  const recorder = useRef<MediaRecorder | null>(null);
-  const chunks = useRef<Blob[]>([]);
-  const timer = useRef<ReturnType<typeof setInterval> | null>(null);
-  // Each start gets a number; a start that was cancelled (or unmounted) before the microphone answered stops its stream at once.
-  const attempt = useRef(0);
+  const control = useRef<ReturnType<typeof createRecorder> | null>(null);
   const emit = useRef(onRecorded);
   useEffect(() => {
     emit.current = onRecorded;
   });
 
-  const release = useCallback(() => {
-    if (timer.current) clearInterval(timer.current);
-    timer.current = null;
-    stream.current?.getTracks().forEach((track) => track.stop());
-    stream.current = null;
-  }, []);
-
-  /** Stops recording; `keep` sends what was recorded, otherwise it is thrown away. */
-  const finish = useCallback(
-    (keep: boolean) => {
-      attempt.current += 1;
-      const r = recorder.current;
-      recorder.current = null;
-      if (r && r.state !== "inactive") {
-        if (!keep) r.ondataavailable = null;
-        r.onstop = () => {
-          const type = r.mimeType || "audio/webm";
-          const blob = new Blob(chunks.current, { type });
-          chunks.current = [];
-          release();
-          if (!keep) return;
-          if (blob.size === 0) setError("failed");
-          else emit.current(blob);
-        };
-        try {
-          r.stop();
-        } catch {
-          release();
-        }
-      } else {
-        chunks.current = [];
-        release();
-      }
-      setPhase("idle");
-      setElapsed(0);
-    },
-    [release],
-  );
-
   useEffect(() => {
-    // A page that is hidden (another app, a locked phone) stops the microphone; the recording is dropped.
+    const c = createRecorder(
+      {
+        getUserMedia: () => navigator.mediaDevices.getUserMedia({ audio: true }) as Promise<StreamLike>,
+        makeRecorder: (stream, mime) => new MediaRecorder(stream as MediaStream, mime ? { mimeType: mime } : undefined) as unknown as RecorderLike,
+        isTypeSupported: (m) => MediaRecorder.isTypeSupported(m),
+      },
+      {
+        onPhase: (p) => {
+          setPhase(p);
+          if (p === "idle") setElapsed(0);
+        },
+        onTick: setElapsed,
+        onResult: ({ blob, reason }) => {
+          if (reason === "hidden") setKept(blob);
+          else emit.current(blob);
+        },
+        onError: setError,
+      },
+    );
+    control.current = c;
+    // A page that is hidden (another app, a locked phone) stops the microphone; what was recorded is kept, never dropped silently.
     const onHidden = () => {
-      if (document.visibilityState === "hidden") finish(false);
+      if (document.visibilityState === "hidden") c.hidden();
     };
     document.addEventListener("visibilitychange", onHidden);
     return () => {
       document.removeEventListener("visibilitychange", onHidden);
-      attempt.current += 1;
-      const r = recorder.current;
-      recorder.current = null;
-      if (r && r.state !== "inactive") {
-        r.ondataavailable = null;
-        r.onstop = null;
-        try {
-          r.stop();
-        } catch {
-          // already stopped
-        }
-      }
-      release();
+      c.dispose();
+      control.current = null;
     };
-  }, [finish, release]);
+  }, []);
 
-  async function start() {
+  function start() {
     setError(null);
-    const mine = ++attempt.current;
-    setPhase("asking");
-    let media: MediaStream;
-    try {
-      media = await navigator.mediaDevices.getUserMedia({ audio: true });
-    } catch (e) {
-      if (mine !== attempt.current) return;
-      setPhase("idle");
-      setError(recorderErrorKind(e instanceof Error ? e.name : undefined));
-      return;
-    }
-    if (mine !== attempt.current) {
-      media.getTracks().forEach((track) => track.stop());
-      return;
-    }
-    stream.current = media;
-    try {
-      const mime = pickRecorderMime((m) => MediaRecorder.isTypeSupported(m));
-      const r = mime ? new MediaRecorder(media, { mimeType: mime }) : new MediaRecorder(media);
-      chunks.current = [];
-      r.ondataavailable = (e) => {
-        if (e.data.size > 0) chunks.current.push(e.data);
-      };
-      r.onerror = () => {
-        finish(false);
-        setError("failed");
-      };
-      recorder.current = r;
-      r.start();
-    } catch {
-      release();
-      setPhase("idle");
-      setError("failed");
-      return;
-    }
-    const startedAt = Date.now();
-    setElapsed(0);
-    setPhase("recording");
-    timer.current = setInterval(() => {
-      const ms = Date.now() - startedAt;
-      setElapsed(ms);
-      if (ms >= MAX_RECORD_MS) finish(true);
-    }, 250);
+    setKept(null);
+    void control.current?.start();
   }
 
   function picked(files: FileList | null) {
@@ -163,20 +88,48 @@ export function VoiceRecorder({ onRecorded, disabled = false }: { onRecorded: (a
   }
 
   const message = error === "denied" ? t("denied") : error === "failed" ? t("failed") : null;
+  const recording = phase === "recording" || phase === "stopping";
 
   return (
     <div className="flex flex-col gap-3 rounded-[14px] border border-line bg-white p-4">
-      {phase === "recording" ? (
+      {kept ? (
+        <div className="flex flex-col gap-3" role="group" aria-label={t("hiddenStopped")}>
+          <p role="status" className="m-0 rounded-xl bg-brand-tint px-3.5 py-2.5 text-[13.5px] font-semibold text-ink">
+            {t("hiddenStopped")}
+          </p>
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => {
+              const blob = kept;
+              setKept(null);
+              onRecorded(blob);
+            }}
+            className={`${BTN} min-h-[52px] border-0 bg-brand px-5 text-white hover:bg-brand-hover disabled:opacity-60`}
+          >
+            {t("sendKept")}
+          </button>
+          <button type="button" onClick={start} className={`${BTN} min-h-11 border border-line bg-white px-4 text-[14px] font-semibold text-ink`}>
+            <Mic aria-hidden="true" size={18} strokeWidth={2} />
+            {t("again")}
+          </button>
+        </div>
+      ) : recording ? (
         <div className="flex flex-col items-center gap-3" role="group" aria-label={t("recording")}>
           <p aria-live="off" dir="ltr" className="m-0 text-[28px] font-bold leading-none text-ink">
             {elapsedLabel(elapsed)}
             <span className="text-[16px] font-medium text-ink-2"> / {elapsedLabel(MAX_RECORD_MS)}</span>
           </p>
-          <button type="button" onClick={() => finish(true)} className={`${BTN} min-h-14 min-w-56 border-0 bg-brand px-6 text-white hover:bg-brand-hover`}>
+          <button
+            type="button"
+            disabled={phase === "stopping"}
+            onClick={() => control.current?.stop()}
+            className={`${BTN} min-h-14 min-w-56 border-0 bg-brand px-6 text-white hover:bg-brand-hover disabled:opacity-60`}
+          >
             <Square aria-hidden="true" size={20} strokeWidth={2.2} fill="currentColor" />
             {t("stop")}
           </button>
-          <button type="button" onClick={() => finish(false)} className={`${BTN} min-h-11 border border-line bg-white px-4 text-[14px] font-semibold text-ink`}>
+          <button type="button" onClick={() => control.current?.cancel()} className={`${BTN} min-h-11 border border-line bg-white px-4 text-[14px] font-semibold text-ink`}>
             <X aria-hidden="true" size={18} strokeWidth={2} />
             {t("cancel")}
           </button>

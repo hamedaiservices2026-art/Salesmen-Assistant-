@@ -33,7 +33,7 @@ export function DraftBanner({
       <div role="status" className="flex flex-col gap-2 rounded-xl bg-brand-tint px-3.5 py-2.5 text-[13.5px] font-medium text-brand">
         <p className="m-0 flex items-start gap-2.5">
           <CircleCheck aria-hidden="true" size={20} strokeWidth={2.2} className="mt-px shrink-0" />
-          <span>{source === "voice" ? t("bannerVoice") : t("banner")}</span>
+          <span className="text-balance">{source === "voice" ? t("bannerVoice") : t("banner")}</span>
         </p>
         {source === "voice" && transcript && (
           <p className="m-0 ps-[30px] font-normal text-ink">

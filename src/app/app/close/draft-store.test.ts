@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { draftContextKey, type CloseDraft, type DraftLine } from "@/domain/ai/draft";
-import { clearDraft, loadDraft, saveDraft } from "./draft-store";
+import { clearAllDrafts, clearDraft, loadDraft, saveDraft } from "./draft-store";
 
 class MemoryStorage implements Storage {
   private map = new Map<string, string>();
@@ -136,6 +136,18 @@ describe("draft store", () => {
     saveDraft(s, "u1", entry({}, "x"));
     expect(s.length).toBe(0);
     expect(loadDraft(s, "a:b", "2026-11-14", NOW, KEY)).toBeNull();
+  });
+
+  it("clearAllDrafts (sign-in, sign-out) removes every rep's drafts and nothing else", () => {
+    const s = new MemoryStorage();
+    saveDraft(s, "u1", entry());
+    saveDraft(s, "u2", entry({}, "2026-11-12"));
+    s.setItem("other", "keep");
+    clearAllDrafts(s);
+    expect(s.length).toBe(1);
+    expect(s.getItem("other")).toBe("keep");
+    const boom = { get length(): number { throw new Error("blocked"); } } as unknown as Storage;
+    expect(() => clearAllDrafts(boom)).not.toThrow();
   });
 
   it("a storage that throws is survived", () => {

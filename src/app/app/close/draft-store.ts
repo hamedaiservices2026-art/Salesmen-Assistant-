@@ -94,3 +94,17 @@ export function clearDraft(storage: Storage, userKey: string, date: string): voi
   const key = storageKey(userKey, date);
   if (key) remove(storage, key);
 }
+
+/** Removes every stored draft (sign-in and sign-out: no draft outlives the session it was read in). */
+export function clearAllDrafts(storage: Storage): void {
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < storage.length; i++) {
+      const k = storage.key(i);
+      if (k?.startsWith("close-draft:")) keys.push(k);
+    }
+    for (const k of keys) remove(storage, k);
+  } catch {
+    // storage may be blocked
+  }
+}

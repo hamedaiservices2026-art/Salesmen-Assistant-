@@ -1,6 +1,5 @@
 "use server";
 
-import { redirect } from "next/navigation";
 import { isDailyLine } from "@/domain/lines";
 import { requireCtx } from "@/server/auth/guard";
 import { saveClose } from "@/server/repos/closes";
@@ -12,7 +11,8 @@ import { getClose } from "@/server/repos/closes";
 import { isFileId } from "@/domain/files";
 import { removeOwnFile } from "@/server/files/files";
 
-export type CloseState = { errors: Record<string, string> };
+/** `saved`: the close was confirmed; the form clears its stored draft and goes home. */
+export type CloseState = { errors: Record<string, string>; saved?: true };
 
 /** Field names the form uses for the keys `saveClose` reports. */
 function formFieldErrors(errors: Record<string, string>, kept: number[]): Record<string, string> {
@@ -48,7 +48,7 @@ export async function saveCloseAction(_prev: CloseState, data: FormData): Promis
   const form = zeroEmptiedLines(parsed.form, optionalIds, optionalIds.length ? await getClose(ctx, date) : null);
   const result = await saveClose(ctx, form, { today, draftId: parsed.draftId });
   if (!result.ok) return { errors: formFieldErrors(result.errors, returnIndexes(data)) };
-  redirect("/app");
+  return { errors: {}, saved: true };
 }
 
 /**

@@ -1,10 +1,10 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { TriangleAlert } from "lucide-react";
 import { useTranslations } from "next-intl";
-import type { CloseDraft } from "@/domain/ai/draft";
-import { fillForm } from "@/domain/ai/apply-draft";
+import { applyRead, clearReading, type DraftRead, type SessionState } from "@/domain/ai/draft-session";
 import { fieldReview, reviewState } from "@/domain/ai/review";
 import type { LineKind } from "@/domain/lines";
 import { AmountField } from "@/ui/components/AmountField";
@@ -14,7 +14,7 @@ import { ReconciliationPanel } from "@/ui/components/ReconciliationPanel";
 import { ReturnsEditor, type ReturnRow } from "@/ui/components/ReturnsEditor";
 import { parseAmount, type Unit } from "@/domain/money";
 import { saveCloseAction, type CloseState } from "./actions";
-import { CloseMethods, type AiStatus, type DraftRead } from "./close-methods";
+import { CloseMethods, type AiStatus } from "./close-methods";
 import { clearDraft, loadDraft, saveDraft } from "./draft-store";
 
 export type FormItem = {
@@ -31,18 +31,6 @@ export type FormItem = {
   adminAmount?: number;
   /** A daily line: what a draft is matched against (the code) and read in (the unit). */
   line?: { lineId: string; code: string; unit: Unit; kind: LineKind };
-};
-
-/** A draft being reviewed: what it filled and what is still to look at. */
-type Review = {
-  draft: CloseDraft;
-  draftId: string;
-  transcript?: string;
-  marks: Record<string, "ai" | "low">;
-  /** The text the draft put in each field. */
-  filled: Record<string, string>;
-  skippedAdmin: Record<string, string>;
-  missing: string[];
 };
 
 const STOCK = ["loaded", "sold", "returned"];
@@ -93,52 +81,46 @@ export function CloseForm({
 }) {
   const t = useTranslations("close");
   const [state, action, pending] = useActionState<CloseState, FormData>(saveCloseAction, { errors: {} });
-  const [values, setValues] = useState(initial);
   const [rows, setRows] = useState(initialReturns);
   // Photos still uploading, per return row: the close waits for them (a confirm now would drop them; R71).
   const [busy, setBusy] = useState<Record<number, number>>({});
   const uploading = Object.values(busy).some((n) => n > 0);
 
-  const [review, setReview] = useState<Review | null>(null);
-  const [acked, setAcked] = useState<ReadonlySet<string>>(new Set());
+  // The draft being reviewed and what the rep has done with it (see `draft-session.ts`).
+  const [session, setSession] = useState<SessionState>({ values: initial, review: null, acked: new Set() });
   const [stockForced, setStockForced] = useState(false);
   // Fields the rep typed in since the page loaded: a draft never fills them.
   const touched = useRef(new Set<string>());
-  const latest = useRef({ values, review, initial });
+  const latest = useRef(session);
   const formEl = useRef<HTMLFormElement>(null);
   const focusNext = useRef(false);
-  const submitted = useRef(false);
-  const failedSave = useRef(false);
+  const router = useRouter();
+  const { values, review, acked } = session;
   useEffect(() => {
-    latest.current = { values, review, initial };
+    latest.current = session;
   });
+  const setValues = (update: (v: Record<string, string>) => Record<string, string>) => setSession((s) => ({ ...s, values: update(s.values) }));
 
   useEffect(() => {
-    if (Object.keys(state.errors).length > 0) {
-      failedSave.current = true;
-      document.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
-    }
+    if (Object.keys(state.errors).length > 0) document.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
   }, [state]);
+
+  // A confirmed close: the stored draft goes (only now that the save really succeeded) and the rep goes home.
+  useEffect(() => {
+    if (!state.saved) return;
+    const storage = sessionStore();
+    if (storage) clearDraft(storage, userKey, date);
+    router.push("/app");
+  }, [state, userKey, date, router]);
 
   const lines = lineItems.flatMap((it) => (it.line ? [{ ...it.line, field: it.name, optional: it.optional === true, adminAmount: it.adminAmount }] : []));
 
   /** Puts a draft into the form: only fields the rep has not touched are filled, and the rest of the form stays as it is. */
   function apply(read: DraftRead, opts: { save: boolean }) {
-    const { values: current, review: before } = latest.current;
-    const fill = fillForm(read.draft, { lines, current, touched: touched.current });
-    setValues((v) => ({ ...v, ...fill.values }));
-    setReview({
-      draft: read.draft,
-      draftId: read.draftId,
-      ...(read.transcript ? { transcript: read.transcript } : {}),
-      marks: { ...(before?.marks ?? {}), ...fill.marks },
-      filled: { ...(before?.filled ?? {}), ...fill.values },
-      skippedAdmin: fill.skippedAdmin,
-      missing: fill.missing,
-    });
-    setAcked((a) => new Set([...a].filter((n) => !Object.hasOwn(fill.marks, n))));
-    if (STOCK.some((n) => Object.hasOwn(fill.values, n))) setStockForced(true);
-    failedSave.current = false;
+    const next = applyRead(latest.current, read, { lines, touched: touched.current });
+    latest.current = next;
+    setSession(next);
+    if (Object.keys(next.review?.filled ?? {}).some((n) => STOCK.includes(n))) setStockForced(true);
     if (opts.save) {
       const storage = sessionStore();
       if (storage) saveDraft(storage, userKey, { draft: read.draft, draftId: read.draftId, savedAt: Date.now(), contextKey, ...(read.transcript ? { transcript: read.transcript } : {}) });
@@ -155,29 +137,11 @@ export function CloseForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // A confirmed close clears the stored draft: the page is left (redirect) after a submit that returned no errors.
-  useEffect(
-    () => () => {
-      if (submitted.current && !failedSave.current) {
-        const storage = sessionStore();
-        if (storage) clearDraft(storage, userKey, date);
-      }
-    },
-    [userKey, date],
-  );
-
   /** Throws the reading away: fields still as the draft read them go back to what they held before. */
-  function clearReading() {
-    const r = latest.current.review;
-    if (r) {
-      setValues((v) => {
-        const next = { ...v };
-        for (const name of Object.keys(r.filled)) if (next[name] === r.filled[name]) next[name] = latest.current.initial[name] ?? "";
-        return next;
-      });
-    }
-    setReview(null);
-    setAcked(new Set());
+  function clearAll() {
+    const next = clearReading(latest.current, initial);
+    latest.current = next;
+    setSession(next);
     const storage = sessionStore();
     if (storage) clearDraft(storage, userKey, date);
   }
@@ -217,7 +181,7 @@ export function CloseForm({
 
   function acknowledge(name: string) {
     focusNext.current = true;
-    setAcked((a) => new Set(a).add(name));
+    setSession((st) => ({ ...st, acked: new Set(st.acked).add(name) }));
   }
   useEffect(() => {
     if (!focusNext.current) return;
@@ -229,10 +193,10 @@ export function CloseForm({
 
   const field = (it: FormItem, unitLabel: string | undefined = it.unitLabel) => {
     const shown = fieldReview(it.name, reviewInput);
-    const sourceNote = review?.draft.source === "voice" ? t("draft.fromVoice") : t("draft.fromPhoto");
+    const was = review && shown !== null ? review.replaced[it.name] : undefined;
     const read = review?.skippedAdmin[it.name];
     const label = it.optional ? t("optionalLabel", { label: it.label }) : it.label;
-    const notes = [...(it.notes ?? []), ...(read !== undefined ? [t(review?.draft.source === "voice" ? "draft.voiceRead" : "draft.photoRead", { amount: `${read} ${it.unitLabel}` })] : [])];
+    const notes = [...(it.notes ?? []), ...(was !== undefined ? [t("draft.was", { value: was })] : []), ...(read !== undefined ? [t(review?.draft.source === "voice" ? "draft.voiceRead" : "draft.photoRead", { amount: `${read} ${it.unitLabel}` })] : [])];
     return (
       <AmountField
         key={it.name}
@@ -248,7 +212,7 @@ export function CloseForm({
         error={err(it.name)}
         notes={notes.length > 0 ? notes : undefined}
         mark={shown ?? undefined}
-        markNote={shown === "low" ? t("draft.check") : shown === "ai" ? sourceNote : undefined}
+        markNote={shown === "low" ? t("draft.check") : undefined}
         ackLabel={t("draft.ok")}
         ackAria={t("draft.okFor", { label: it.label })}
         onAcknowledge={() => acknowledge(it.name)}
@@ -271,7 +235,7 @@ export function CloseForm({
             reportDate={reportDate}
             dateMismatch={review.draft.dateMismatch}
             openDayHref={reportDate && pastSellingDays.includes(reportDate) ? `/app/close?date=${reportDate}` : null}
-            onClear={clearReading}
+            onClear={clearAll}
           />
         )}
         <form
@@ -284,8 +248,6 @@ export function CloseForm({
               e.preventDefault();
               return;
             }
-            submitted.current = true;
-            failedSave.current = false;
           }}
           className="flex flex-col gap-3"
         >
@@ -351,12 +313,15 @@ export function CloseForm({
             collectionsNote={collectionItems.some((it) => it.adminAmount !== undefined) ? t("collectionsByAdmin") : undefined}
           />
 
-          {toCheck.length > 0 && (
-            <p id="needs-review" role="status" className="m-0 flex items-center gap-2 rounded-xl bg-alert-tint px-3.5 py-2.5 text-[13.5px] font-bold text-alert">
-              <TriangleAlert aria-hidden="true" size={18} strokeWidth={2.2} className="shrink-0" />
-              {t("draft.needsReview")}
-            </p>
-          )}
+          {/* Always mounted, so a screen reader announces the text when it appears. */}
+          <div role="status">
+            {toCheck.length > 0 && (
+              <p className="m-0 flex items-center gap-2 rounded-xl bg-alert-tint px-3.5 py-2.5 text-[13.5px] font-bold text-alert">
+                <TriangleAlert aria-hidden="true" size={18} strokeWidth={2.2} className="shrink-0" />
+                {t("draft.needsReview")}
+              </p>
+            )}
+          </div>
           <PrimaryButton disabled={pending || uploading || !canConfirm}>
             {pending ? t("submitting") : uploading ? t("photo.uploading") : t("submit")}
           </PrimaryButton>

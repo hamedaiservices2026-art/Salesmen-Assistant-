@@ -3,7 +3,13 @@ import ar from "@/i18n/messages/ar.json";
 import en from "@/i18n/messages/en.json";
 import ur from "@/i18n/messages/ur.json";
 import type { CloseDraft } from "@/domain/ai/draft";
-import { AI_READ_REASONS, readErrorKey, readFromAi } from "./ai-client";
+import type { ClosePhotoFail } from "@/server/ai/close-photo";
+import type { CloseVoiceFail } from "@/server/ai/close-voice";
+import { AI_READ_REASONS, readErrorKey, readFromAi, type ReadReason } from "./ai-client";
+
+// Type-level: a reason either route can return that the client does not know is a compile error here.
+type Unknown = Exclude<ClosePhotoFail["reason"] | CloseVoiceFail["reason"], ReadReason>;
+const everyServerReasonIsKnown: [Unknown] extends [never] ? true : never = true;
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -23,6 +29,8 @@ const reply = (status: number, body: unknown, type = "application/json") =>
 const lookup = (catalog: unknown, dotted: string): unknown => dotted.split(".").reduce<unknown>((o, k) => (o && typeof o === "object" ? (o as Record<string, unknown>)[k] : undefined), catalog);
 
 describe("readErrorKey", () => {
+  it("compiles only when every server reason is known", () => expect(everyServerReasonIsKnown).toBe(true));
+
   const ALL = ["bad_date", "not_selling_day", "too_large", "unsupported_type", "too_many_pixels", "corrupt", "storage_failed", "company_off", "disabled", "no_notice", "no_provider", "audio_type", "rate_limited", "quota", "failed", "unreadable", "nothing_heard", "empty", "timeout", "busy"];
 
   it("covers every reason the two routes can return", () => {
@@ -102,6 +110,46 @@ describe("readFromAi", () => {
       const r = await readFromAi("photo", "2026-11-14", new Blob(["x"]));
       expect(r, `${status} ${JSON.stringify(body)}`).toEqual({ ok: false, reason });
     }
+  });
+
+  it("401 is unauthorized (sign in again), other bad requests are bad_request", async () => {
+    for (const [status, body, reason] of [
+      [401, { reason: "unauthorized" }, "unauthorized"],
+      [401, "<html>", "unauthorized"],
+      [403, { reason: "forbidden" }, "bad_request"],
+      [400, { reason: "no_file" }, "bad_request"],
+      [400, { reason: "bad_request" }, "bad_request"],
+    ] as const) {
+      vi.stubGlobal("fetch", vi.fn(async () => reply(status, body, typeof body === "string" ? "text/html" : "application/json")));
+      expect(await readFromAi("photo", "2026-11-14", new Blob(["x"])), `${status}`).toEqual({ ok: false, reason });
+    }
+    expect(readErrorKey("photo", "unauthorized")).toBe("close.read.errors.unauthorized");
+    expect(readErrorKey("photo", "bad_request")).toBe("close.read.errors.bad_request");
+  });
+
+  it("the caller's abort still works where AbortSignal.any does not exist, and the request has a 55 s limit", async () => {
+    const original = AbortSignal.any;
+    // @ts-expect-error removing the static for the test
+    delete AbortSignal.any;
+    try {
+      const ctl = new AbortController();
+      let seen: AbortSignal | undefined;
+      vi.stubGlobal("fetch", vi.fn((_u: string, init: RequestInit) => {
+        seen = init.signal as AbortSignal;
+        return new Promise<Response>((_res, rej) => seen!.addEventListener("abort", () => rej(new DOMException("a", "AbortError"))));
+      }));
+      const pending = readFromAi("photo", "2026-11-14", new Blob(["x"]), { signal: ctl.signal });
+      ctl.abort();
+      expect(await pending).toEqual({ ok: false, reason: "cancelled" });
+      expect(seen?.aborted).toBe(true);
+    } finally {
+      AbortSignal.any = original;
+    }
+    const spy = vi.spyOn(AbortSignal, "timeout");
+    vi.stubGlobal("fetch", vi.fn(async () => reply(200, { draft: draft(), draftId: ID })));
+    await readFromAi("photo", "2026-11-14", new Blob(["x"]));
+    expect(spy).toHaveBeenCalledWith(55_000);
+    spy.mockRestore();
   });
 
   it("keeps the transcript of a nothing_heard reply, as text", async () => {
