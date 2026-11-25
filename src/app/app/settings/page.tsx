@@ -1,6 +1,7 @@
 import { Check } from "lucide-react";
 import { getLocale, getTranslations } from "next-intl/server";
 import { LOCALES, LOCALE_ENDONYM } from "@/i18n/config";
+import { SignOutForm } from "@/ui/components/SignOutForm";
 import { signOutAction } from "@/app/(auth-actions)/actions";
 import { AI_NOTICE_VERSION } from "@/server/ai/availability";
 import { aiNoticeAccepted } from "@/server/ai/consent";
@@ -77,7 +78,7 @@ export default async function SettingsPage() {
           </h2>
           <AiNotice accepted={aiAccepted} version={AI_NOTICE_VERSION} />
         </section>
-        <form action={signOutAction} className="flex flex-col gap-2">
+        <SignOutForm action={signOutAction} className="flex flex-col gap-2">
           <p className="m-0 flex flex-wrap items-baseline gap-2 text-[15px]">
             <span className="text-ink-2">{t("loginLabel")}</span>
             <strong dir="ltr" className="select-all text-[18px]">
@@ -91,7 +92,7 @@ export default async function SettingsPage() {
             {t("signOut")}
           </button>
           <p className="m-0 text-[13px] text-ink-2">{t("signOutNote")}</p>
-        </form>
+        </SignOutForm>
       </main>
     </>
   );

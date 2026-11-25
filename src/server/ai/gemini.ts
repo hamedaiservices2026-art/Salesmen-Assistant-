@@ -49,14 +49,16 @@ function thinkingConfig(setting: string | undefined): Record<string, unknown> | 
 
 function textOf(json: unknown, provider: "gemini", allowEmpty = false): TextResult {
   const root = json as {
-    candidates?: { content?: { parts?: { text?: unknown }[] } }[];
+    candidates?: { content?: { parts?: { text?: unknown }[] }; finishReason?: unknown }[];
     usageMetadata?: { promptTokenCount?: unknown; candidatesTokenCount?: unknown; thoughtsTokenCount?: unknown };
   } | null;
   const parts = root?.candidates?.[0]?.content?.parts;
   const text = Array.isArray(parts) ? parts.map((p) => (typeof p?.text === "string" ? p.text : "")).join("") : "";
   // No text, whether blocked or cut off (finishReason MAX_TOKENS), is an unreadable reply.
   // A speech-to-text reply whose parts are present but blank is an empty transcript (R32).
-  const blankOk = allowEmpty && Array.isArray(parts) && parts.length > 0 && text.trim() === "";
+  // So is a silent recording: a candidate that finished normally (STOP) with no parts at all.
+  const finished = root?.candidates?.[0]?.finishReason === "STOP";
+  const blankOk = allowEmpty && text.trim() === "" && ((Array.isArray(parts) && parts.length > 0) || finished);
   if (text === "" && !blankOk) throw new AiError("invalid_output", provider);
   const out = asCount(root?.usageMetadata?.candidatesTokenCount);
   const thought = asCount(root?.usageMetadata?.thoughtsTokenCount);

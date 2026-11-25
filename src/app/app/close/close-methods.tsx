@@ -8,7 +8,7 @@ import type { DraftRead } from "@/domain/ai/draft-session";
 import { AiNoticeSheet } from "@/ui/components/AiNotice";
 import { AiUnavailable, type AiUnavailableReason } from "@/ui/components/AiUnavailable";
 import { VoiceRecorder } from "@/ui/components/VoiceRecorder";
-import { readErrorKey, readFromAi, type ReadKind } from "@/ui/ai-client";
+import { readErrorKey, readFromAi, type CutReason, type ReadKind } from "@/ui/ai-client";
 import { downscalePhoto } from "@/ui/photo-client";
 
 export type AiStatus = { available: boolean; reason: AiUnavailableReason | null };
@@ -31,12 +31,15 @@ export function CloseMethods({
   stt,
   noticeVersion,
   onRead,
+  onBusy,
 }: {
   date: string;
   vision: AiStatus;
   stt: AiStatus;
   noticeVersion: number;
   onRead: (read: DraftRead) => void;
+  /** Whether a read is in flight (the form holds its confirm button meanwhile). */
+  onBusy?: (reading: boolean) => void;
 }) {
   const t = useTranslations("close");
   const tRoot = useTranslations();
@@ -45,6 +48,8 @@ export function CloseMethods({
   const [failure, setFailure] = useState<{ kind: ReadKind; reason: string; transcript?: string } | null>(null);
   const [unavailable, setUnavailable] = useState<AiUnavailableReason | null>(null);
   const [noticeOpen, setNoticeOpen] = useState(false);
+  // The last recording, kept until it has been read (so a failed send can be tried again without recording again).
+  const [lastAudio, setLastAudio] = useState<{ blob: Blob; cut?: CutReason } | null>(null);
   const photoInput = useRef<HTMLInputElement>(null);
   const request = useRef<AbortController | null>(null);
 
@@ -54,6 +59,14 @@ export function CloseMethods({
     },
     [],
   );
+
+  const reportBusy = useRef(onBusy);
+  useEffect(() => {
+    reportBusy.current = onBusy;
+  });
+  useEffect(() => {
+    reportBusy.current?.(busy !== null);
+  }, [busy]);
 
   function cancelRequest() {
     request.current?.abort();
@@ -75,7 +88,7 @@ export function CloseMethods({
     return false;
   }
 
-  async function send(kind: ReadKind, blob: () => Promise<Blob>) {
+  async function send(kind: ReadKind, blob: () => Promise<Blob>, cut?: CutReason) {
     cancelRequest();
     const ctl = new AbortController();
     request.current = ctl;
@@ -92,11 +105,14 @@ export function CloseMethods({
       return;
     }
     if (ctl.signal.aborted) return;
-    const r = await readFromAi(kind, date, body, { signal: ctl.signal });
+    const r = await readFromAi(kind, date, body, { signal: ctl.signal, ...(cut ? { cut } : {}) });
     if (request.current !== ctl) return;
     request.current = null;
     setBusy(null);
-    if (r.ok) onRead({ draft: r.draft, draftId: r.draftId, ...(r.transcript ? { transcript: r.transcript } : {}) });
+    if (r.ok) {
+      if (kind === "voice") setLastAudio(null);
+      onRead({ draft: r.draft, draftId: r.draftId, ...(r.transcript ? { transcript: r.transcript } : {}), ...(r.cut ? { cut: r.cut } : {}) });
+    }
     else if (r.reason === "no_notice") {
       // the notice was withdrawn or changed since the page loaded: show it again
       setMode("type");
@@ -121,6 +137,7 @@ export function CloseMethods({
 
   function onType() {
     cancelRequest();
+    setLastAudio(null);
     setFailure(null);
     setUnavailable(null);
     setMode("type");
@@ -162,7 +179,13 @@ export function CloseMethods({
 
       {unavailable && <AiUnavailable reason={unavailable} />}
 
-      {mode === "voice" && busy !== "voice" && <VoiceRecorder disabled={busy !== null} onRecorded={(audio) => void send("voice", async () => audio)} />}
+      {mode === "voice" && busy !== "voice" && <VoiceRecorder
+          disabled={busy !== null}
+          onRecorded={(audio, cut) => {
+            setLastAudio({ blob: audio, ...(cut ? { cut } : {}) });
+            void send("voice", async () => audio, cut);
+          }}
+        />}
 
       {/* Always mounted, so a screen reader announces the text when it appears. */}
       <div role="status">
@@ -177,6 +200,16 @@ export function CloseMethods({
       {failure && (
         <div role="alert" className="flex flex-col gap-1.5 rounded-xl bg-alert-tint px-3.5 py-2.5 text-[13.5px] font-semibold text-alert">
           <p className="m-0">{tRoot(readErrorKey(failure.kind, failure.reason) as never)}</p>
+          {failure.kind === "voice" && lastAudio && failure.reason !== "unauthorized" && (
+            <button
+              type="button"
+              disabled={busy !== null}
+              onClick={() => void send("voice", async () => lastAudio.blob, lastAudio.cut)}
+              className="inline-flex min-h-11 items-center justify-center self-start rounded-[10px] border border-alert bg-white px-4 text-[14px] font-bold text-alert focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:opacity-60"
+            >
+              {t("voice.retry")}
+            </button>
+          )}
           {failure.reason === "unauthorized" && (
             <Link href="/signin" className="inline-flex min-h-11 items-center self-start text-[14px] font-bold text-alert underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand">
               {t("read.signIn")}

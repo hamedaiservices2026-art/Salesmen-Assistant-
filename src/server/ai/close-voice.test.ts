@@ -403,11 +403,56 @@ describe("draftFromVoice", () => {
   });
 });
 
+describe("a cut recording (R79)", () => {
+  it("the last field mentioned is low (at most 0.5) and the others keep their confidence", async () => {
+    const r = await draftFromVoice(ahmed(), { date: TODAY, bytes: webm(), cut: "limit" }, opts());
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.draft.fields.cashSales).toMatchObject({ value: 550000, low: true });
+    expect(r.draft.fields.cashSales!.confidence).toBeLessThanOrEqual(0.5);
+    expect(r.draft.fields["line:bev"]).toMatchObject({ low: false });
+    expect(r.draft.fields["line:coll"]).toMatchObject({ low: false });
+  });
+
+  it("without cut the same recording is unchanged", async () => {
+    const r = await draftFromVoice(ahmed(), { date: TODAY, bytes: webm() }, opts());
+    if (!r.ok) throw new Error("expected ok");
+    expect(r.draft.fields.cashSales).toMatchObject({ low: false });
+  });
+
+  it("the route takes cut only as limit, hidden or ended", async () => {
+    const post_ = async (cut: string) => {
+      const form = new FormData();
+      form.set("date", TODAY);
+      form.set("cut", cut);
+      form.set("audio", new Blob([webm() as BlobPart], { type: "audio/webm" }), "v.webm");
+      const enc = new Response(form);
+      const body = new Uint8Array(await enc.arrayBuffer());
+      return handleCloseVoicePost(
+        new Request("http://localhost:3000/app/ai/close-voice", {
+          method: "POST",
+          body,
+          headers: { origin: "http://localhost:3000", host: "localhost:3000", "x-requested-with": AI_REQUESTED_WITH, "content-type": enc.headers.get("content-type")!, "content-length": String(body.byteLength) },
+        }),
+        ahmed(),
+        opts(),
+      );
+    };
+    for (const ok of ["limit", "hidden", "ended"]) expect((await post_(ok)).status, ok).toBe(200);
+    for (const bad of ["stopped", "", "LIMIT", "limit,hidden", "x".repeat(50)]) {
+      const res = await post_(bad);
+      expect(res.status, bad).toBe(400);
+      expect(await res.json()).toEqual({ reason: "bad_request" });
+    }
+  });
+});
+
 describe("POST /app/ai/close-voice (handleCloseVoicePost)", () => {
   const URL_ = "http://localhost:3000/app/ai/close-voice";
-  async function post(ctx: Ctx | null, parts: { date?: string; audio?: Uint8Array | null; type?: string } = {}, headers: Record<string, string> = {}, extra: Record<string, unknown> = {}) {
+  async function post(ctx: Ctx | null, parts: { date?: string; audio?: Uint8Array | null; type?: string; cut?: string } = {}, headers: Record<string, string> = {}, extra: Record<string, unknown> = {}) {
     const form = new FormData();
     if (parts.date !== undefined) form.set("date", parts.date);
+    if (parts.cut !== undefined) form.set("cut", parts.cut);
     if (parts.audio !== null) form.set("audio", new Blob([(parts.audio ?? webm()) as BlobPart], { type: parts.type ?? "audio/webm" }), "v.webm");
     const encoded = new Response(form);
     const type = encoded.headers.get("content-type")!;

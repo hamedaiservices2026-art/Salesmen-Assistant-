@@ -93,6 +93,8 @@ function longestFrom(tokens: string[], k: number, list: Label[] | undefined, bes
 export function parseSpokenClose(
   transcript: string,
   vocab: { key: DraftKey; unit: Unit; labels: string[] }[],
+  /** `cut`: the recording was cut short (the limit, a hidden page, an ended microphone), so the last thing said may be unfinished (R79). */
+  opts: { cut?: boolean } = {},
 ): { fields: { key: DraftKey; value: string; confidence: number }[]; unassigned: number } {
   const tokens = spokenTokens(transcript);
   const byFirst = labelIndex(vocab);
@@ -187,6 +189,10 @@ export function parseSpokenClose(
     });
   }
   fields.sort((a, b) => a.at - b.at);
+  // A recording that was cut: the last field mentioned may be a number cut in the middle (`مية و`,
+  // `ألفين`, a number at the very end), so it is never read as complete; the rep checks it (R79).
+  const last = fields.at(-1);
+  if (opts.cut && last) last.confidence = Math.min(last.confidence, SHAKY_CONFIDENCE);
   const spoken = items.filter((it) => it.t !== "mention").length;
   // A label no number was claimed for (`تحصيل شوية`, a label alone) also counts, so the model is asked.
   let bare = 0;

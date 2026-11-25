@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { CircleCheck, Eraser, TriangleAlert } from "lucide-react";
+import { Check, CircleCheck, Eraser, TriangleAlert } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 /**
@@ -17,6 +17,10 @@ export function DraftBanner({
   dateMismatch,
   openDayHref,
   onClear,
+  cut,
+  changesLost,
+  dateAcknowledged,
+  onAcknowledgeDate,
 }: {
   source: "photo" | "voice";
   transcript?: string;
@@ -26,6 +30,13 @@ export function DraftBanner({
   /** `/app/close?date=<reportDate>` when the report's date is a past selling day, else null. */
   openDayHref: string | null;
   onClear: () => void;
+  /** The voice recording ended early: its last number may be unfinished. */
+  cut?: "limit" | "hidden" | "ended";
+  /** The page was reloaded and the rep's own changes were not kept. */
+  changesLost: boolean;
+  /** The rep said the report's date is right (confirm waits for it; R79). */
+  dateAcknowledged: boolean;
+  onAcknowledgeDate: () => void;
 }) {
   const t = useTranslations("close.draft");
   return (
@@ -41,6 +52,8 @@ export function DraftBanner({
             <bdi dir="auto">{transcript}</bdi>
           </p>
         )}
+        {cut && <p className="m-0 ps-[30px] font-semibold text-ink">{t(cut === "limit" ? "cutLimit" : cut === "hidden" ? "cutHidden" : "cutEnded")}</p>}
+        {changesLost && <p className="m-0 ps-[30px] font-semibold text-ink">{t("changesLost")}</p>}
         {problems > 0 && <p className="m-0 ps-[30px] font-semibold text-ink">{t("problems", { n: problems })}</p>}
       </div>
       {dateMismatch && reportDate && (
@@ -49,6 +62,16 @@ export function DraftBanner({
             <TriangleAlert aria-hidden="true" size={18} strokeWidth={2.2} className="shrink-0" />
             <span>{t("dateMismatch", { date: `\u2066${reportDate}\u2069` })}</span>
           </span>
+          {!dateAcknowledged && (
+            <button
+              type="button"
+              onClick={onAcknowledgeDate}
+              className="inline-flex min-h-11 items-center justify-center gap-1.5 self-start rounded-[10px] border border-alert bg-white px-4 text-[15px] font-bold text-alert focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+            >
+              <Check aria-hidden="true" size={18} strokeWidth={2.2} />
+              {t("dateOk")}
+            </button>
+          )}
           {openDayHref && (
             <Link href={openDayHref} className="inline-flex min-h-11 items-center self-start text-[14px] font-bold text-alert underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand">
               {t("openThatDay")}

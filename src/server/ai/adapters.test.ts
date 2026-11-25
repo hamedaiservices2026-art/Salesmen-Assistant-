@@ -129,6 +129,21 @@ describe("gemini adapter", () => {
     expect((await code(geminiProvider(CFG.gemini, none.fetchImpl).stt({ audio: AUDIO, mime: "audio/webm", language: "ar" }, signal()))).code).toBe("invalid_output");
   });
 
+  it("stt: a silent recording (STOP with no content, or no parts) is an empty transcript; blocked or cut off is still invalid_output", async () => {
+    const stt = (body: unknown) => geminiProvider(CFG.gemini, recorder(() => json(body)).fetchImpl).stt({ audio: AUDIO, mime: "audio/webm", language: "ar" }, signal());
+    expect((await stt({ candidates: [{ finishReason: "STOP" }] })).text).toBe("");
+    expect((await stt({ candidates: [{ content: { parts: [] }, finishReason: "STOP" }] })).text).toBe("");
+    expect((await stt({ candidates: [{ content: { role: "model" }, finishReason: "STOP" }] })).text).toBe("");
+    for (const finishReason of ["MAX_TOKENS", "SAFETY", "RECITATION"]) {
+      expect((await code(stt({ candidates: [{ finishReason }] }))).code, finishReason).toBe("invalid_output");
+    }
+    expect((await code(stt({ candidates: [] }))).code).toBe("invalid_output");
+    expect((await code(stt({}))).code).toBe("invalid_output");
+    // chat keeps refusing an empty reply, whatever the finish reason
+    const chat = recorder(() => json({ candidates: [{ finishReason: "STOP" }] }));
+    expect((await code(geminiProvider(CFG.gemini, chat.fetchImpl).chat(chatReq, signal()))).code).toBe("invalid_output");
+  });
+
   it("a reply with no text → invalid_output; missing usage → null counts", async () => {
     const empty = recorder(() => json({ candidates: [{ finishReason: "SAFETY" }] }));
     expect((await code(geminiProvider(CFG.gemini, empty.fetchImpl).chat(chatReq, signal()))).code).toBe("invalid_output");

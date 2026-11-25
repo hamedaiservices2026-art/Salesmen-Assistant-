@@ -55,6 +55,9 @@ describe("readErrorKey", () => {
     expect(readErrorKey("voice", "too_large")).not.toBe(readErrorKey("photo", "too_large"));
     expect(readErrorKey("voice", "unsupported_type")).toBe("ai.unavailable.audio_type");
     expect(readErrorKey("photo", "company_off")).toBe("ai.unavailable.disabled");
+    // the shared timeout copy talks about a recording; a photo has its own
+    expect(readErrorKey("voice", "timeout")).toBe("ai.unavailable.timeout");
+    expect(readErrorKey("photo", "timeout")).toBe("close.read.errors.photo_timeout");
   });
 });
 
@@ -83,6 +86,33 @@ describe("readFromAi", () => {
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe("/app/ai/close-voice");
     expect((init.body as FormData).get("audio")).toBeInstanceOf(Blob);
+  });
+
+  it("sends the cut reason of a cut recording as a form field, and only then", async () => {
+    const fetchMock = vi.fn(async () => reply(200, { draft: draft({ source: "voice" }), draftId: ID, transcript: "x" }));
+    vi.stubGlobal("fetch", fetchMock);
+    const r = await readFromAi("voice", "2026-11-14", new Blob(["x"]), { cut: "hidden" });
+    expect(r).toMatchObject({ ok: true, cut: "hidden" });
+    expect(((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body as FormData).get("cut")).toBe("hidden");
+    const plain = await readFromAi("voice", "2026-11-14", new Blob(["x"]));
+    expect(plain).not.toHaveProperty("cut");
+    expect(((fetchMock.mock.calls[1] as unknown as [string, RequestInit])[1].body as FormData).has("cut")).toBe(false);
+  });
+
+  it("works where AbortSignal.timeout does not exist (a timer aborts instead)", async () => {
+    vi.useFakeTimers();
+    const original = AbortSignal.timeout;
+    // @ts-expect-error removing the static for the test
+    delete AbortSignal.timeout;
+    try {
+      vi.stubGlobal("fetch", vi.fn((_u: string, init: RequestInit) => new Promise<Response>((_res, rej) => (init.signal as AbortSignal).addEventListener("abort", () => rej(new DOMException("t", "TimeoutError"))))));
+      const pending = readFromAi("photo", "2026-11-14", new Blob(["x"]));
+      await vi.advanceTimersByTimeAsync(55_001);
+      expect(await pending).toEqual({ ok: false, reason: "timeout" });
+    } finally {
+      AbortSignal.timeout = original;
+      vi.useRealTimers();
+    }
   });
 
   it("maps the server's reason codes and statuses", async () => {

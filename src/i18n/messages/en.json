@@ -189,7 +189,13 @@
       "listening": "Listening to the recording…",
       "nothingHeard": "We did not hear clear numbers. Say the field name and then the number, or type it in.",
       "unreadable": "We could not read the photo. Take it again in good light or type it in.",
-      "was": "Was {value}"
+      "was": "Was {value}",
+      "changesLost": "The page was reloaded and your changes were not kept. Check every marked field.",
+      "cutLimit": "The recording stopped at the time limit, so the last number may be incomplete. Check it.",
+      "cutHidden": "The recording stopped when you left the page, so the last number may be incomplete. Check it.",
+      "cutEnded": "The recording was stopped by the device, so the last number may be incomplete. Check it.",
+      "dateOk": "The date is right",
+      "dateNeedsOk": "Check the report's date before confirming"
     },
     "voice": {
       "start": "Tap and start talking",
@@ -202,7 +208,10 @@
       "cancel": "Cancel",
       "hiddenStopped": "Recording stopped because you left the page",
       "sendKept": "Send what was recorded",
-      "again": "Record again"
+      "again": "Record again",
+      "dismissed": "The microphone prompt was closed. Tap again and allow it, or type it in.",
+      "endedStopped": "The recording was stopped by the device",
+      "retry": "Send again"
     },
     "read": {
       "errors": {
@@ -215,7 +224,8 @@
         "corrupt": "That photo does not open. Take it again or type it in.",
         "busy": "The service is busy right now. Try again in a moment.",
         "unauthorized": "Your session ended. Sign in again and carry on.",
-        "bad_request": "The request was not understood. Try again or type it in."
+        "bad_request": "The request was not understood. Try again or type it in.",
+        "photo_timeout": "We ran out of time before reading the photo. Try again or type it in."
       },
       "signIn": "Sign in"
     }

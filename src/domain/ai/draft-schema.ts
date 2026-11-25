@@ -2,6 +2,7 @@
 // again here, field by field, before anything uses it. Pure.
 import { z } from "zod";
 import { LOW_CONFIDENCE, MONEY_KEYS, STOCK_KEYS, type CloseDraft } from "./draft";
+import type { StoredSession } from "./draft-session";
 
 function isRealDate(s: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
@@ -46,6 +47,41 @@ export function parseStoredDraft(raw: unknown): CloseDraft | null {
     if (typeof fields === "object" && fields !== null && !Object.keys(fields).every(isDraftKey)) return null;
     const r = DraftSchema.safeParse(raw);
     return r.success ? (r.data as CloseDraft) : null;
+  } catch {
+    return null;
+  }
+}
+
+const FIELD_NAME = /^[A-Za-z0-9._:-]{1,64}$/;
+const BLOCKED_NAMES: ReadonlySet<string> = new Set(["__proto__", "constructor", "prototype"]);
+const isFieldName = (k: string): boolean => FIELD_NAME.test(k) && !BLOCKED_NAMES.has(k);
+const names = z.array(z.string().refine(isFieldName)).max(80);
+const textMap = (max: number) => z.record(z.string(), z.string().max(max));
+
+const SessionSchema = z
+  .object({
+    values: textMap(64),
+    touched: names,
+    acked: names,
+    marks: z.record(z.string(), z.enum(["ai", "low"])),
+    filled: textMap(64),
+    replaced: textMap(64),
+    skippedAdmin: textMap(64),
+    missing: names,
+  })
+  .strict();
+
+/** Field-name keyed maps: every key a plain field name, at most 80, none a prototype key (zod's record drops `__proto__` silently, so raw keys are checked first). */
+const mapKeysOk = (o: unknown): boolean => typeof o === "object" && o !== null && Object.keys(o).length <= 80 && Object.keys(o).every(isFieldName);
+
+/** A stored review session (the rep's work with a draft), or null when it is not exactly what `toStored` makes. Never throws. */
+export function parseStoredSession(raw: unknown): StoredSession | null {
+  try {
+    if (typeof raw !== "object" || raw === null) return null;
+    const o = raw as Record<string, unknown>;
+    if (!["values", "marks", "filled", "replaced", "skippedAdmin"].every((k) => mapKeysOk(o[k]))) return null;
+    const r = SessionSchema.safeParse(raw);
+    return r.success ? (r.data as StoredSession) : null;
   } catch {
     return null;
   }

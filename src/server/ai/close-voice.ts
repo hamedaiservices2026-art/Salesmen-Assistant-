@@ -34,6 +34,10 @@ const MAX_OUTPUT_TOKENS = 1_500;
 /** A field the model adds is never more confident than this (below the 0.8 threshold: the rep must check it). */
 export const MODEL_FIELD_MAX_CONFIDENCE = 0.7;
 
+/** Why a recording ended early (R79): the 60 s limit, a hidden page, or a microphone the system ended. A normal stop has none. */
+export const CUT_REASONS = ["limit", "hidden", "ended"] as const;
+export type CutReason = (typeof CUT_REASONS)[number];
+
 export type CloseVoiceFail = {
   ok: false;
   reason: TranscribeFail["reason"] | AiCallFail["reason"] | "bad_date" | "not_selling_day" | "nothing_heard";
@@ -89,7 +93,7 @@ function addModelFields(base: CloseDraft, model: CloseDraft): { draft: CloseDraf
  * rest of the budget less 3 s, is skipped under 5 s (R33), and a failure of it is not an error.
  * No field at all is `nothing_heard`. Nothing is written but the receipt, and no close ever.
  */
-export async function draftFromVoice(ctx: Ctx, input: { date: ISODate; bytes: Uint8Array }, opts: CloseVoiceOpts = {}): Promise<CloseVoiceResult> {
+export async function draftFromVoice(ctx: Ctx, input: { date: ISODate; bytes: Uint8Array; cut?: CutReason }, opts: CloseVoiceOpts = {}): Promise<CloseVoiceResult> {
   assertOwnContext(ctx);
   assertRole(ctx, ["rep", "supervisor"]);
   const clock = () => (opts.deps?.now ?? Date.now)();
@@ -107,7 +111,8 @@ export async function draftFromVoice(ctx: Ctx, input: { date: ISODate; bytes: Ui
   const transcript = heard.transcript;
 
   const [lines, vocab] = await Promise.all([draftLines(ctx), loadVocabulary(ctx)]);
-  const spoken = parseSpokenClose(transcript, vocab);
+  // A cut recording: the last field mentioned may be unfinished, so it is never read as complete (R79).
+  const spoken = parseSpokenClose(transcript, vocab, { cut: input.cut !== undefined });
   const empty: CloseDraft = { source: "voice", date: input.date, fields: {}, problems: [], reportDate: null, dateMismatch: false };
   let draft = toDraft({ reportDate: null, fields: spoken.fields }, { source: "voice", date: input.date, lines }) ?? empty;
   let usedModel = false;
@@ -208,11 +213,14 @@ async function handle(request: Request, ctx: Ctx | null, deps: CloseVoiceOpts): 
   }
   const date = form.get("date");
   const audio = form.get("audio");
+  const cutField = form.get("cut");
+  // Only the three reasons the recorder reports; anything else is a bad request.
+  if (cutField !== null && !(typeof cutField === "string" && (CUT_REASONS as readonly string[]).includes(cutField))) return json(400, { reason: "bad_request" });
   if (!(audio instanceof File) || audio.size === 0) return json(400, { reason: "no_audio" });
   if (typeof date !== "string") return json(400, { reason: "bad_date" });
   if (audio.size > AUDIO_MAX_BYTES) return json(413, { reason: "too_large" });
 
-  const r = await draftFromVoice(ctx, { date, bytes: new Uint8Array(await audio.arrayBuffer()) }, { ...deps, deadlineAt });
+  const r = await draftFromVoice(ctx, { date, bytes: new Uint8Array(await audio.arrayBuffer()), ...(cutField ? { cut: cutField as CutReason } : {}) }, { ...deps, deadlineAt });
   if (r.ok) return json(200, { draft: r.draft, draftId: r.draftId, transcript: r.transcript });
   return json(STATUS[r.reason], r.transcript === undefined ? { reason: r.reason } : { reason: r.reason, transcript: r.transcript });
 }

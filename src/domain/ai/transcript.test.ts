@@ -779,3 +779,32 @@ describe("fix round 2 (R77): hostile input stays linear", () => {
     expect(performance.now() - t0).toBeLessThan(2000);
   });
 });
+
+describe("parseSpokenClose: a cut recording (R79)", () => {
+  it("without cut nothing changes; with cut the last field mentioned is never above 0.5", () => {
+    expect(parse(V1).fields.map((f) => f.confidence)).toEqual([0.9, 0.9, 0.9, 0.9]);
+    const cut = parseSpokenClose(V1, VOCAB, { cut: true });
+    expect(cut.fields.map((f) => [f.key, f.value, f.confidence])).toEqual([
+      ["line:bev", "120", 0.9],
+      ["line:food", "8250", 0.9],
+      ["line:coll", "20000", 0.9],
+      ["cashSales", "5500", 0.5],
+    ]);
+  });
+
+  it("a number cut in the middle (a dangling و, a number at the very end) is flagged only when cut", () => {
+    for (const text of ["مشروبات مية وعشرين و", "مشروبات مية وعشرين وال", "مشروبات ألفين"]) {
+      expect(parse(text).fields.at(-1)?.confidence, text).toBeGreaterThan(0.4);
+      expect(parseSpokenClose(text, VOCAB, { cut: true }).fields.at(-1)?.confidence, text).toBeLessThanOrEqual(0.5);
+    }
+  });
+
+  it("a number at the very end of an uncut transcript is still read at 0.9 (non-cut behaviour unchanged)", () => {
+    expect(parse("مشروبات ألفين").fields.at(-1)?.confidence).toBe(0.9);
+  });
+
+  it("cut with no field at all, or a lower confidence already, changes nothing", () => {
+    expect(parseSpokenClose("يعني النهارده كان يوم كويس", VOCAB, { cut: true })).toEqual(parse("يعني النهارده كان يوم كويس"));
+    expect(parseSpokenClose("مشروبات مية وعشرين ونص", VOCAB, { cut: true }).fields).toEqual(parse("مشروبات مية وعشرين ونص").fields);
+  });
+});

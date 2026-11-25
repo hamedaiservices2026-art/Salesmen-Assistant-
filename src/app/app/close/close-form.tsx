@@ -4,7 +4,7 @@ import { useActionState, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { TriangleAlert } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { applyRead, clearReading, type DraftRead, type SessionState } from "@/domain/ai/draft-session";
+import { applyRead, clearReading, restoreSession, toStored, type DraftRead, type SessionState } from "@/domain/ai/draft-session";
 import { fieldReview, reviewState } from "@/domain/ai/review";
 import type { LineKind } from "@/domain/lines";
 import { AmountField } from "@/ui/components/AmountField";
@@ -15,7 +15,7 @@ import { ReturnsEditor, type ReturnRow } from "@/ui/components/ReturnsEditor";
 import { parseAmount, type Unit } from "@/domain/money";
 import { saveCloseAction, type CloseState } from "./actions";
 import { CloseMethods, type AiStatus } from "./close-methods";
-import { clearDraft, loadDraft, saveDraft } from "./draft-store";
+import { clearDraft, loadDraft, saveDraft } from "@/ui/draft-store";
 
 export type FormItem = {
   name: string;
@@ -88,7 +88,13 @@ export function CloseForm({
 
   // The draft being reviewed and what the rep has done with it (see `draft-session.ts`).
   const [session, setSession] = useState<SessionState>({ values: initial, review: null, acked: new Set() });
-  const [stockForced, setStockForced] = useState(false);
+  // The page was reloaded and the stored draft came back without the rep's own changes.
+  const [changesLost, setChangesLost] = useState(false);
+  // The draft whose report date the rep said is right (a report dated another day waits for it).
+  const [dateOkFor, setDateOkFor] = useState<string | null>(null);
+  // A read is in flight: the confirm button waits for it.
+  const [reading, setReading] = useState(false);
+  const stockEl = useRef<HTMLDetailsElement>(null);
   // Fields the rep typed in since the page loaded: a draft never fills them.
   const touched = useRef(new Set<string>());
   const latest = useRef(session);
@@ -115,27 +121,53 @@ export function CloseForm({
 
   const lines = lineItems.flatMap((it) => (it.line ? [{ ...it.line, field: it.name, optional: it.optional === true, adminAmount: it.adminAmount }] : []));
 
-  /** Puts a draft into the form: only fields the rep has not touched are filled, and the rest of the form stays as it is. */
-  function apply(read: DraftRead, opts: { save: boolean }) {
+  /** Puts a draft into the form: only fields the rep has not touched or acknowledged are filled, and the rest of the form stays as it is. */
+  function apply(read: DraftRead) {
     const next = applyRead(latest.current, read, { lines, touched: touched.current });
     latest.current = next;
     setSession(next);
-    if (Object.keys(next.review?.filled ?? {}).some((n) => STOCK.includes(n))) setStockForced(true);
-    if (opts.save) {
-      const storage = sessionStore();
-      if (storage) saveDraft(storage, userKey, { draft: read.draft, draftId: read.draftId, savedAt: Date.now(), contextKey, ...(read.transcript ? { transcript: read.transcript } : {}) });
-    }
+    setChangesLost(false);
   }
 
-  // A reload keeps the review: read the stored draft back (validated, same day, same lines, not expired).
+  // A reload keeps the review: the stored draft comes back (validated, same day, same lines, not
+  // expired) together with the rep's own work, which is not overwritten by the draft again (R79).
   useEffect(() => {
     const storage = sessionStore();
     const stored = storage ? loadDraft(storage, userKey, date, Date.now(), contextKey) : null;
+    if (!stored) return;
     // sessionStorage exists only in the browser, so the stored draft is read after mount.
-    if (stored) apply(stored, { save: false });
+    const back = restoreSession({ draft: stored.draft, draftId: stored.draftId, ...(stored.transcript ? { transcript: stored.transcript } : {}), ...(stored.cut ? { cut: stored.cut } : {}) }, initial, lines, stored.session);
+    touched.current = back.touched;
+    latest.current = back.state;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the stored draft exists only in the browser, so it is restored after mount.
+    setSession(back.state);
+    setChangesLost(!back.keptChanges);
     // Once, on mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // What the rep sees and does with a draft is kept with it, so a reload brings it back (not once the close is saved).
+  useEffect(() => {
+    const r = session.review;
+    if (!r || state.saved) return;
+    const storage = sessionStore();
+    if (!storage) return;
+    saveDraft(storage, userKey, {
+      draft: r.draft,
+      draftId: r.draftId,
+      savedAt: Date.now(),
+      contextKey,
+      ...(r.transcript ? { transcript: r.transcript } : {}),
+      ...(r.cut ? { cut: r.cut } : {}),
+      session: toStored(session, touched.current),
+    });
+  }, [session, state.saved, userKey, contextKey]);
+
+  // A field inside the closed stock section that holds something to check opens it.
+  useEffect(() => {
+    const r = session.review;
+    if (r && STOCK.some((n) => Object.hasOwn(r.marks, n)) && stockEl.current) stockEl.current.open = true;
+  }, [session.review]);
 
   /** Throws the reading away: fields still as the draft read them go back to what they held before. */
   function clearAll() {
@@ -171,13 +203,16 @@ export function CloseForm({
     collectionItems.length > 0
       ? [money("cashSales"), money("creditSales"), ...collectionItems, money("expenses")]
       : ["cashSales", "creditSales", "collections", "expenses"].map(money);
-  const stockOpen = STOCK.some((n) => (initial[n] ?? "") !== "" || state.errors[n] !== undefined) || stockForced;
+  const stockOpen = STOCK.some((n) => (initial[n] ?? "") !== "" || state.errors[n] !== undefined);
 
   // What the rep still has to check, in the order the fields appear on screen.
   const order = [...salesItems, ...moneyItems, ...focusItems, ...STOCK.map(stock)].map((it) => it.name);
   const marks = review?.marks ?? {};
   const reviewInput = { marks, filled: review?.filled ?? {}, current: values, acknowledged: acked, order };
-  const { pending: toCheck, canConfirm } = reviewState(reviewInput);
+  const dateMismatch = review?.draft.dateMismatch === true;
+  const { pending: toCheck, canConfirm: reviewed } = reviewState({ ...reviewInput, dateMismatch, dateAcknowledged: review !== null && dateOkFor === review.draftId });
+  // A read in flight or a saved close holds the confirm button too.
+  const canConfirm = reviewed && !reading && !state.saved;
 
   function acknowledge(name: string) {
     focusNext.current = true;
@@ -188,6 +223,9 @@ export function CloseForm({
     focusNext.current = false;
     // The button that was pressed is gone: go to the next field to check, or to the confirm button.
     const next = formEl.current?.querySelector<HTMLElement>('[data-ack="pending"]') ?? formEl.current?.querySelector<HTMLElement>('button[type="submit"]:not(:disabled)');
+    // the next field to check may sit in the closed stock section
+    const section = next?.closest("details");
+    if (section && !section.open) section.open = true;
     next?.focus();
   }, [acked]);
 
@@ -225,7 +263,7 @@ export function CloseForm({
 
   return (
     <>
-      <CloseMethods date={date} vision={vision} stt={stt} noticeVersion={noticeVersion} onRead={(read) => apply(read, { save: true })} />
+      <CloseMethods date={date} vision={vision} stt={stt} noticeVersion={noticeVersion} onRead={apply} onBusy={setReading} />
       <main className="flex flex-1 flex-col gap-3 px-5 pb-4 pt-3">
         {review && (
           <DraftBanner
@@ -236,6 +274,10 @@ export function CloseForm({
             dateMismatch={review.draft.dateMismatch}
             openDayHref={reportDate && pastSellingDays.includes(reportDate) ? `/app/close?date=${reportDate}` : null}
             onClear={clearAll}
+            cut={review.cut}
+            changesLost={changesLost}
+            dateAcknowledged={dateOkFor === review.draftId}
+            onAcknowledgeDate={() => setDateOkFor(review.draftId)}
           />
         )}
         <form
@@ -286,7 +328,7 @@ export function CloseForm({
             </section>
           )}
 
-          <details open={stockOpen || undefined} className="rounded-[14px] border border-line bg-white px-4">
+          <details ref={stockEl} open={stockOpen || undefined} className="rounded-[14px] border border-line bg-white px-4">
             <summary className="flex min-h-12 cursor-pointer items-center text-[15px] font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand">
               {t("stockSummary")}
             </summary>
@@ -315,10 +357,10 @@ export function CloseForm({
 
           {/* Always mounted, so a screen reader announces the text when it appears. */}
           <div role="status">
-            {toCheck.length > 0 && (
+            {(toCheck.length > 0 || (dateMismatch && dateOkFor !== review?.draftId)) && (
               <p className="m-0 flex items-center gap-2 rounded-xl bg-alert-tint px-3.5 py-2.5 text-[13.5px] font-bold text-alert">
                 <TriangleAlert aria-hidden="true" size={18} strokeWidth={2.2} className="shrink-0" />
-                {t("draft.needsReview")}
+                {toCheck.length > 0 ? t("draft.needsReview") : t("draft.dateNeedsOk")}
               </p>
             )}
           </div>

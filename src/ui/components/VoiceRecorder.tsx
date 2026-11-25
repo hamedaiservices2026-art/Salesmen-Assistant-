@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Mic, Square, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { elapsedLabel, MAX_RECORD_MS, recorderSupport } from "@/ui/recorder";
+import type { CutReason } from "@/ui/ai-client";
 import { createRecorder, type RecorderLike, type RecorderPhase, type StreamLike } from "@/ui/recorder-controller";
 
 const BTN =
@@ -27,13 +28,13 @@ function browserSupport(): "ok" | "unsupported" {
  * MediaRecorder, an insecure page) the button is replaced by a file picker for an existing
  * recording (audio only, no `capture`: iOS Safari offers no recorder through a file input; R56).
  */
-export function VoiceRecorder({ onRecorded, disabled = false }: { onRecorded: (audio: Blob) => void; disabled?: boolean }) {
+export function VoiceRecorder({ onRecorded, disabled = false }: { onRecorded: (audio: Blob, cut?: CutReason) => void; disabled?: boolean }) {
   const t = useTranslations("close.voice");
   const [phase, setPhase] = useState<RecorderPhase>("idle");
-  const [error, setError] = useState<"denied" | "failed" | null>(null);
+  const [error, setError] = useState<"denied" | "dismissed" | "failed" | null>(null);
   const [elapsed, setElapsed] = useState(0);
   // A recording cut short because the page was hidden: kept, and the rep decides what to do with it.
-  const [kept, setKept] = useState<Blob | null>(null);
+  const [kept, setKept] = useState<{ blob: Blob; reason: "hidden" | "ended" } | null>(null);
   // What the browser supports is known only in the browser (null while rendering on the server).
   const support = useSyncExternalStore(noSubscription, browserSupport, serverSupport);
 
@@ -49,6 +50,13 @@ export function VoiceRecorder({ onRecorded, disabled = false }: { onRecorded: (a
         getUserMedia: () => navigator.mediaDevices.getUserMedia({ audio: true }) as Promise<StreamLike>,
         makeRecorder: (stream, mime) => new MediaRecorder(stream as MediaStream, mime ? { mimeType: mime } : undefined) as unknown as RecorderLike,
         isTypeSupported: (m) => MediaRecorder.isTypeSupported(m),
+        permissionState: async () => {
+          try {
+            return (await navigator.permissions.query({ name: "microphone" as PermissionName })).state;
+          } catch {
+            return undefined;
+          }
+        },
       },
       {
         onPhase: (p) => {
@@ -57,8 +65,8 @@ export function VoiceRecorder({ onRecorded, disabled = false }: { onRecorded: (a
         },
         onTick: setElapsed,
         onResult: ({ blob, reason }) => {
-          if (reason === "hidden") setKept(blob);
-          else emit.current(blob);
+          if (reason === "hidden" || reason === "ended") setKept({ blob, reason });
+          else emit.current(blob, reason === "limit" ? "limit" : undefined);
         },
         onError: setError,
       },
@@ -87,23 +95,24 @@ export function VoiceRecorder({ onRecorded, disabled = false }: { onRecorded: (a
     if (file) onRecorded(file);
   }
 
-  const message = error === "denied" ? t("denied") : error === "failed" ? t("failed") : null;
+  const message = error === "denied" ? t("denied") : error === "dismissed" ? t("dismissed") : error === "failed" ? t("failed") : null;
   const recording = phase === "recording" || phase === "stopping";
 
   return (
     <div className="flex flex-col gap-3 rounded-[14px] border border-line bg-white p-4">
       {kept ? (
-        <div className="flex flex-col gap-3" role="group" aria-label={t("hiddenStopped")}>
+        <div className="flex flex-col gap-3" role="group" aria-label={kept.reason === "hidden" ? t("hiddenStopped") : t("endedStopped")}>
           <p role="status" className="m-0 rounded-xl bg-brand-tint px-3.5 py-2.5 text-[13.5px] font-semibold text-ink">
-            {t("hiddenStopped")}
+            {kept.reason === "hidden" ? t("hiddenStopped") : t("endedStopped")}
           </p>
           <button
             type="button"
             disabled={disabled}
             onClick={() => {
-              const blob = kept;
+              const { blob, reason } = kept;
               setKept(null);
-              onRecorded(blob);
+              // what was recorded before it was cut short: the server is told, so the last number is checked
+              onRecorded(blob, reason);
             }}
             className={`${BTN} min-h-[52px] border-0 bg-brand px-5 text-white hover:bg-brand-hover disabled:opacity-60`}
           >
@@ -149,6 +158,12 @@ export function VoiceRecorder({ onRecorded, disabled = false }: { onRecorded: (a
         >
           <Mic aria-hidden="true" size={20} strokeWidth={2} />
           {t("start")}
+        </button>
+      )}
+      {phase === "asking" && !kept && (
+        <button type="button" onClick={() => control.current?.cancel()} className={`${BTN} min-h-11 border border-line bg-white px-4 text-[14px] font-semibold text-ink`}>
+          <X aria-hidden="true" size={18} strokeWidth={2} />
+          {t("cancel")}
         </button>
       )}
       <p className="m-0 text-[13px] text-ink-2">{t("hint")}</p>

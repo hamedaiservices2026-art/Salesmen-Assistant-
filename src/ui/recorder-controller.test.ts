@@ -13,6 +13,12 @@ class FakeRecorder implements RecorderLike {
   onstop: RecorderLike["onstop"] = null;
   onerror: RecorderLike["onerror"] = null;
   constructor(private delay = 400, private bytes = 3) {}
+  /** The system stops the recording (not a call to `stop()`). */
+  systemStop() {
+    this.state = "inactive";
+    this.ondataavailable?.({ data: new Blob([new Uint8Array(this.bytes)]) });
+    this.onstop?.();
+  }
   start() {
     this.state = "recording";
   }
@@ -27,8 +33,8 @@ class FakeRecorder implements RecorderLike {
   }
 }
 
-function setup(opts: { recorder?: FakeRecorder; media?: () => Promise<StreamLike> } = {}) {
-  const tracks = [{ stopped: 0, stop() { this.stopped += 1; } }];
+function setup(opts: { recorder?: FakeRecorder; media?: () => Promise<StreamLike>; permission?: () => Promise<"granted" | "denied" | "prompt" | undefined> } = {}) {
+  const tracks = [{ stopped: 0, onended: null as (() => void) | null, stop() { this.stopped += 1; } }];
   const stream: StreamLike = { getTracks: () => tracks };
   const recorder = opts.recorder ?? new FakeRecorder();
   const log = { phases: [] as string[], results: [] as { blob: Blob; reason: string }[], errors: [] as string[], ticks: [] as number[] };
@@ -38,7 +44,7 @@ function setup(opts: { recorder?: FakeRecorder; media?: () => Promise<StreamLike
     onResult: (r) => log.results.push(r),
     onError: (k) => log.errors.push(k),
   };
-  const rec = createRecorder({ getUserMedia: opts.media ?? (async () => stream), makeRecorder: () => recorder, isTypeSupported: () => true }, ev);
+  const rec = createRecorder({ getUserMedia: opts.media ?? (async () => stream), makeRecorder: () => recorder, isTypeSupported: () => true, permissionState: opts.permission }, ev);
   return { rec, recorder, tracks, log };
 }
 
@@ -135,5 +141,54 @@ describe("recorder controller", () => {
     await vi.advanceTimersByTimeAsync(2000);
     expect(tracks[0]!.stopped).toBeGreaterThan(0);
     expect(log.results).toHaveLength(0);
+  });
+
+  it("a recording the system ended (the recorder stops by itself) is kept and reported as ended, once", async () => {
+    const { rec, recorder, log } = setup();
+    await rec.start();
+    await vi.advanceTimersByTimeAsync(2000);
+    recorder.systemStop();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(log.results).toHaveLength(1);
+    expect(log.results[0]!.reason).toBe("ended");
+    expect(log.results[0]!.blob.size).toBe(3);
+    expect(log.phases.at(-1)).toBe("idle");
+  });
+
+  it("a microphone track that ends is the same: kept, ended, one result", async () => {
+    const { rec, tracks, log } = setup();
+    await rec.start();
+    await vi.advanceTimersByTimeAsync(2000);
+    tracks[0]!.onended?.();
+    tracks[0]!.onended?.();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(log.results).toHaveLength(1);
+    expect(log.results[0]!.reason).toBe("ended");
+  });
+
+  it("a closed permission prompt (not reported as denied) is dismissed; a denied one is denied", async () => {
+    const notAllowed = () => Promise.reject(Object.assign(new Error("x"), { name: "NotAllowedError" }));
+    const dismissed = setup({ media: notAllowed, permission: async () => "prompt" });
+    await dismissed.rec.start();
+    expect(dismissed.log.errors).toEqual(["dismissed"]);
+    const denied = setup({ media: notAllowed, permission: async () => "denied" });
+    await denied.rec.start();
+    expect(denied.log.errors).toEqual(["denied"]);
+    const unknown = setup({ media: notAllowed, permission: async () => undefined });
+    await unknown.rec.start();
+    expect(unknown.log.errors).toEqual(["denied"]);
+  });
+
+  it("cancelling while the microphone is being asked for ends the request and sends nothing", async () => {
+    let answer!: (s: StreamLike) => void;
+    const { rec, tracks, log } = setup({ media: () => new Promise((r) => (answer = r)) });
+    const started = rec.start();
+    expect(log.phases).toEqual(["asking"]);
+    rec.cancel();
+    expect(log.phases.at(-1)).toBe("idle");
+    answer({ getTracks: () => tracks });
+    await started;
+    expect(tracks[0]!.stopped).toBe(1);
+    expect(log.errors).toHaveLength(0);
   });
 });

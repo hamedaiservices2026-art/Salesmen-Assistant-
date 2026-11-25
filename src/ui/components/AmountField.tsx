@@ -92,8 +92,8 @@ export function AmountField({
       )}
       {notes && notes.length > 0 && (
         <ul className="m-0 mt-1.5 flex list-none flex-col gap-0.5 p-0 text-[13px] text-ink-2">
-          {notes.map((n) => (
-            <li key={n} dir="auto">
+          {notes.map((n, i) => (
+            <li key={`${i}-${n}`} dir="auto">
               {n}
             </li>
           ))}

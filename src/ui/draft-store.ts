@@ -4,13 +4,15 @@
 // the form's own fields are what is posted. Browser-only; every storage call is guarded.
 import { z } from "zod";
 import type { CloseDraft } from "@/domain/ai/draft";
-import { parseStoredDraft } from "@/domain/ai/draft-schema";
+import { parseStoredDraft, parseStoredSession } from "@/domain/ai/draft-schema";
+import type { StoredSession } from "@/domain/ai/draft-session";
 import { isFileId } from "@/domain/files";
 
 export const DRAFT_LIFETIME_MS = 24 * 3_600_000;
 /** A save time this far ahead of the clock is a wrong clock or a forged entry. */
 const SKEW_MS = 5 * 60_000;
-const VERSION = 1;
+/** v1 entries (a draft only) are still read; v2 also carries the rep's work with it (R79). */
+const VERSION = 2;
 
 export type StoredDraft = {
   draft: CloseDraft;
@@ -20,16 +22,22 @@ export type StoredDraft = {
   contextKey: string;
   /** What was heard, for a voice draft. */
   transcript?: string;
+  /** Why the recording ended early, for a voice draft. */
+  cut?: "limit" | "hidden" | "ended";
+  /** What the rep did with it: his values, what he touched and acknowledged. */
+  session?: StoredSession | null;
 };
 
 const Entry = z
   .object({
-    v: z.literal(VERSION),
+    v: z.union([z.literal(1), z.literal(2)]),
     draft: z.unknown(),
     draftId: z.string().refine(isFileId),
     savedAt: z.number().finite(),
     contextKey: z.string().max(4000),
     transcript: z.string().max(2000).optional(),
+    cut: z.enum(["limit", "hidden", "ended"]).optional(),
+    session: z.unknown().optional(),
   })
   .strict();
 
@@ -52,7 +60,7 @@ export function saveDraft(storage: Storage, userKey: string, d: StoredDraft): vo
   const key = storageKey(userKey, d.draft.date);
   if (!key) return;
   try {
-    const entry = { v: VERSION, draft: d.draft, draftId: d.draftId, savedAt: d.savedAt, contextKey: d.contextKey, ...(d.transcript ? { transcript: d.transcript } : {}) };
+    const entry = { v: VERSION, draft: d.draft, draftId: d.draftId, savedAt: d.savedAt, contextKey: d.contextKey, ...(d.transcript ? { transcript: d.transcript } : {}), ...(d.cut ? { cut: d.cut } : {}), ...(d.session ? { session: d.session } : {}) };
     storage.setItem(key, JSON.stringify(entry));
   } catch {
     // a full or blocked storage only means a reload loses the draft
@@ -63,7 +71,7 @@ export function saveDraft(storage: Storage, userKey: string, d: StoredDraft): vo
  * The stored draft for this rep and day, or null. The entry is removed when it is expired, belongs
  * to another day or another set of lines, or is not exactly what `saveDraft` writes.
  */
-export function loadDraft(storage: Storage, userKey: string, date: string, now: number, contextKey: string): { draft: CloseDraft; draftId: string; transcript?: string } | null {
+export function loadDraft(storage: Storage, userKey: string, date: string, now: number, contextKey: string): { draft: CloseDraft; draftId: string; transcript?: string; cut?: "limit" | "hidden" | "ended"; session: StoredSession | null } | null {
   const key = storageKey(userKey, date);
   if (!key) return null;
   let text: string | null;
@@ -79,8 +87,10 @@ export function loadDraft(storage: Storage, userKey: string, date: string, now: 
       const e = entry.data;
       const draft = parseStoredDraft(e.draft);
       const fresh = now - e.savedAt <= DRAFT_LIFETIME_MS && e.savedAt - now <= SKEW_MS;
-      if (draft && draft.date === date && e.contextKey === contextKey && fresh) {
-        return { draft, draftId: e.draftId, ...(e.transcript ? { transcript: e.transcript } : {}) };
+      // A session that is present but not valid spoils the entry; one that is absent (v1) is a draft without the rep's work.
+      const session = e.session === undefined ? null : parseStoredSession(e.session);
+      if (draft && draft.date === date && e.contextKey === contextKey && fresh && (e.session === undefined || session !== null)) {
+        return { draft, draftId: e.draftId, ...(e.transcript ? { transcript: e.transcript } : {}), ...(e.cut ? { cut: e.cut } : {}), session };
       }
     }
   } catch {

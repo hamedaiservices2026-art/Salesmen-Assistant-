@@ -14,23 +14,28 @@ export type RecorderLike = {
   onstop: (() => void) | null;
   onerror: (() => void) | null;
 };
-export type StreamLike = { getTracks(): { stop(): void }[] };
+export type TrackLike = { stop(): void; onended?: (() => void) | null };
+export type StreamLike = { getTracks(): TrackLike[] };
 
 export type RecorderDeps = {
   getUserMedia(): Promise<StreamLike>;
   makeRecorder(stream: StreamLike, mime: string | null): RecorderLike;
   isTypeSupported(mime: string): boolean;
+  /** The microphone permission as the browser reports it, when it can (to tell a dismissed prompt from a refusal). */
+  permissionState?(): Promise<"granted" | "denied" | "prompt" | undefined>;
 };
 
 export type RecorderPhase = "idle" | "asking" | "recording" | "stopping";
-export type RecordingEnd = "stopped" | "limit" | "hidden";
+/** `stopped`: the rep pressed stop. The others are cuts (R79): the 60 s limit, a hidden page, a microphone the system ended. */
+export type RecordingEnd = "stopped" | "limit" | "hidden" | "ended";
 
 export type RecorderEvents = {
   onPhase(phase: RecorderPhase): void;
   onTick(elapsedMs: number): void;
-  /** One per recording. `hidden`: the page was hidden, so the recording was cut short but kept. */
+  /** One per recording. `hidden` and `ended`: the recording was cut short but kept (the rep decides what to do with it). */
   onResult(result: { blob: Blob; reason: RecordingEnd }): void;
-  onError(kind: "denied" | "failed"): void;
+  /** `dismissed`: the permission prompt was closed without an answer, so asking again can work. */
+  onError(kind: "denied" | "dismissed" | "failed"): void;
 };
 
 type Session = {
@@ -130,7 +135,14 @@ export function createRecorder(deps: RecorderDeps, ev: RecorderEvents) {
       if (mine !== attempt) return;
       current = null;
       phase("idle");
-      ev.onError(recorderErrorKind(e instanceof Error ? e.name : undefined));
+      let kind: "denied" | "dismissed" | "failed" = recorderErrorKind(e instanceof Error ? e.name : undefined);
+      if (kind === "denied") {
+        // A prompt closed without an answer is not a refusal: only a permission the browser reports as denied is.
+        const state = await deps.permissionState?.().catch(() => undefined);
+        if (mine !== attempt) return;
+        if (state === "prompt") kind = "dismissed";
+      }
+      ev.onError(kind);
       return;
     }
     if (mine !== attempt) {
@@ -152,6 +164,9 @@ export function createRecorder(deps: RecorderDeps, ev: RecorderEvents) {
       };
       s.recorder = r;
       r.start();
+      // The system ended the recording by itself (another app took the microphone, a call came in): keep what there is.
+      r.onstop = () => end("ended");
+      for (const track of stream.getTracks()) track.onended = () => end("ended");
     } catch {
       release(s);
       current = null;

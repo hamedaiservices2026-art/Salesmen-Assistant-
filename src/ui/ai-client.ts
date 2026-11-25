@@ -6,6 +6,9 @@ import { parseStoredDraft } from "@/domain/ai/draft-schema";
 import { TRANSCRIPT_MAX } from "@/domain/ai/audio";
 import { isFileId } from "@/domain/files";
 
+/** Why a recording ended early (the server accepts exactly these; R79). */
+export type CutReason = "limit" | "hidden" | "ended";
+
 export type ReadKind = "photo" | "voice";
 
 /** Every `reason` the two routes can return (the reason to copy map covers each of them). */
@@ -36,7 +39,7 @@ export const AI_READ_REASONS = [
 export type ReadReason = (typeof AI_READ_REASONS)[number];
 
 export type ReadResult =
-  | { ok: true; draft: CloseDraft; draftId: string; transcript?: string }
+  | { ok: true; draft: CloseDraft; draftId: string; transcript?: string; cut?: CutReason }
   /** `cancelled`: the caller aborted; nothing is shown. `transcript`: what was heard when nothing could be read from it. */
   | { ok: false; reason: ReadReason | "cancelled"; transcript?: string };
 
@@ -84,10 +87,11 @@ export function readErrorKey(kind: ReadKind, reason: string): string {
     case "company_off":
     case "no_provider":
       return "ai.unavailable.disabled";
+    case "timeout":
+      return kind === "photo" ? "close.read.errors.photo_timeout" : "ai.unavailable.timeout";
     case "no_notice":
     case "quota":
     case "rate_limited":
-    case "timeout":
     case "audio_type":
       return `ai.unavailable.${reason}`;
     case "unreadable":
@@ -100,9 +104,17 @@ export function readErrorKey(kind: ReadKind, reason: string): string {
   }
 }
 
+/** A time limit as a signal: `AbortSignal.timeout` where the browser has it, else a timer that aborts. */
+function timeoutSignal(ms: number): AbortSignal {
+  if (typeof AbortSignal.timeout === "function") return AbortSignal.timeout(ms);
+  const ctl = new AbortController();
+  setTimeout(() => ctl.abort(new DOMException("timed out", "TimeoutError")), ms);
+  return ctl.signal;
+}
+
 /** The caller's signal and a time limit as one signal; chained by hand so it works where `AbortSignal.any` does not exist. */
 function withTimeout(signal: AbortSignal | undefined): AbortSignal {
-  const timeout = AbortSignal.timeout(TIMEOUT_MS);
+  const timeout = timeoutSignal(TIMEOUT_MS);
   if (!signal) return timeout;
   const both = new AbortController();
   for (const source of [signal, timeout]) {
@@ -119,10 +131,11 @@ const text = (v: unknown): string | undefined => (typeof v === "string" && v.tri
  * The reply is untrusted: the draft must have exactly the shape `toDraft` makes, for the date
  * asked and the source asked, and the receipt id must be an id (shaped like a file id).
  */
-export async function readFromAi(kind: ReadKind, date: string, blob: Blob, opts: { signal?: AbortSignal } = {}): Promise<ReadResult> {
+export async function readFromAi(kind: ReadKind, date: string, blob: Blob, opts: { signal?: AbortSignal; cut?: CutReason } = {}): Promise<ReadResult> {
   const { url, field } = ENDPOINT[kind];
   const body = new FormData();
   body.set("date", date);
+  if (kind === "voice" && opts.cut) body.set("cut", opts.cut);
   body.set(field, blob, kind === "photo" ? "report.jpg" : "voice");
   let res: Response;
   try {
@@ -155,7 +168,7 @@ export async function readFromAi(kind: ReadKind, date: string, blob: Blob, opts:
       return { ok: false, reason: "failed" };
     }
     const transcript = text(reply.transcript);
-    return { ok: true, draft, draftId: reply.draftId, ...(transcript ? { transcript } : {}) };
+    return { ok: true, draft, draftId: reply.draftId, ...(transcript ? { transcript } : {}), ...(kind === "voice" && opts.cut ? { cut: opts.cut } : {}) };
   }
   const reason = reply && isReason(reply.reason) ? reply.reason : reply && BAD_REQUEST.has(reply.reason) ? "bad_request" : byStatus(res.status);
   const transcript = reply ? text(reply.transcript) : undefined;
