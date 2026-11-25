@@ -10,6 +10,8 @@ export type AiConfig = {
   openrouter: { key: Secret | null; visionModel: string | null; chatModel: string | null };
   globalDay: Record<AiKind, number>;
   globalMinute: Record<AiKind, number | null>;
+  /** Characters of context the assistant may send in one request (`AI_CONTEXT_MAX`, 5 000–60 000; R81). */
+  contextMax: number;
 };
 
 type Env = Record<string, string | undefined>;
@@ -21,6 +23,10 @@ const DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite";
 const DEFAULT_GROQ_STT_MODEL = "whisper-large-v3";
 
 const DEFAULT_GLOBAL_DAY: Record<AiKind, number> = { vision: 400, stt: 600, chat: 800 };
+
+/** The plan's context limit; an operator may lower it for a provider with a small tokens-per-minute limit. */
+export const CONTEXT_MAX_DEFAULT = 60_000;
+const CONTEXT_MAX_MIN = 5_000;
 
 const MODEL_ID = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,99}$/;
 
@@ -87,6 +93,7 @@ export function readAiConfig(env: Env): AiConfig {
     },
     globalDay,
     globalMinute,
+    contextMax: intIn(env.AI_CONTEXT_MAX, CONTEXT_MAX_MIN, CONTEXT_MAX_DEFAULT) ?? CONTEXT_MAX_DEFAULT,
   };
 }
 

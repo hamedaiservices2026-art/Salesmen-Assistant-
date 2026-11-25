@@ -27,6 +27,7 @@ import { getMonthView, type MonthView } from "@/server/repos/month-view";
 import { pickText } from "@/server/repos/notifications";
 import { loadPolicySections } from "@/server/repos/policy-read";
 import { unitLabel } from "@/ui/unit-label";
+import { CONTEXT_MAX_DEFAULT } from "@/server/ai/config";
 import { cleanText, LINE_COST } from "./prompt";
 
 /** id F1, F2, …; value is formatted text with its unit. */
@@ -34,17 +35,23 @@ export type Fact = { id: string; label: string; value: string };
 /** tags D1…, S1… */
 export type ContextDoc = { tag: string; title: string; sections: { tag: string; label: string; text: string }[] };
 export type FactGroup = "days" | "line" | "coverage" | "focus" | "commission" | "incentive";
-/** Which catalog key a fact came from, so code (never the model) can pick the facts of a topic. */
-export type FactMeta = { group: FactGroup; key: string; lineKind?: LineKind };
+/**
+ * Which catalog key a fact came from, so code (never the model) can pick the facts of a topic, and
+ * the figures it states: the numbers of its value only, never of its label (a product name such as
+ * `كولا 330 مل` is not a figure) and none for a window of dates (R81).
+ */
+export type FactMeta = { group: FactGroup; key: string; lineKind?: LineKind; numbers: string[] };
 export type RepContext = {
   today: ISODate;
   facts: Fact[];
   incentives: { tag: string; title: string; body: string }[];
   docs: ContextDoc[];
-  /** Numbers of every fact (label and value) and of every incentive title and body. */
+  /** The figures of every fact (`FactMeta.numbers`) and the numbers of every incentive title and body. */
   factNumbers: Set<string>;
-  /** Numbers of the facts alone (no incentive text): what a figure topic other than `incentive` may state. */
-  numbersOfFacts: Set<string>;
+  /** Numbers of the incentive titles and bodies alone. */
+  incentiveNumbers: Set<string>;
+  /** Names we put in fact labels (lines, focus items, components), and the labels themselves, longest first: an answer may repeat one whole, digits and all, without them counting as figures. */
+  names: string[];
   sectionNumbers: Map<string, Set<string>>;
   knownSections: Set<string>;
   factMeta: Map<string, FactMeta>;
@@ -52,7 +59,7 @@ export type RepContext = {
 
 export type Translate = (key: string, values?: Record<string, string | number>) => string;
 
-export const CONTEXT_MAX = 60_000;
+export const CONTEXT_MAX = CONTEXT_MAX_DEFAULT;
 /** Incentive notifications from the last 62 days, at most 10. */
 const INCENTIVE_DAYS = 62;
 const INCENTIVES_MAX = 10;
@@ -76,7 +83,10 @@ export function catalogTranslator(locale: Locale): Translate {
   };
 }
 
-type Draft = { label: string; value: string; meta: FactMeta };
+type Draft = { label: string; value: string; meta: Omit<FactMeta, "numbers"> };
+
+/** Facts whose value is a window of dates, a name or a word: they state no figure (R81). */
+const NO_FIGURE_KEYS: ReadonlySet<string> = new Set(["focusWindow", "incentiveWindow", "nearestLine", "incentiveName", "lineStatus"]);
 
 function monthOf(date: ISODate): { year: number; month: number } {
   return { year: Number(date.slice(0, 4)), month: Number(date.slice(5, 7)) };
@@ -96,12 +106,13 @@ function fmt(t: Translate, currency: Currency) {
   };
 }
 
-function lineFacts(mv: MonthView, locale: Locale, t: Translate, f: ReturnType<typeof fmt>): Draft[] {
+function lineFacts(mv: MonthView, locale: Locale, t: Translate, f: ReturnType<typeof fmt>, names: Set<string>): Draft[] {
   const out: Draft[] = [];
   const F = (key: string) => `assistant.fact.${key}`;
   for (const l of mv.lines) {
     const line = lineName(l, locale);
-    const meta = (key: string): FactMeta => ({ group: l.kind === "coverage" ? "coverage" : "line", key, lineKind: l.kind });
+    names.add(line);
+    const meta = (key: string): Draft["meta"] => ({ group: l.kind === "coverage" ? "coverage" : "line", key, lineKind: l.kind });
     if (l.kind === "coverage") {
       const value = `${t(F("coverageValue"), { covered: formatAmount(l.achieved, "outlets"), total: formatAmount(l.target, "outlets") })} ${unitLabel((k) => t(k), "outlets", "SAR")}`;
       out.push({ label: t(F("coverage"), { line }), value, meta: meta("coverage") });
@@ -128,10 +139,11 @@ function lineFacts(mv: MonthView, locale: Locale, t: Translate, f: ReturnType<ty
   return out;
 }
 
-function focusFacts(mv: MonthView, locale: Locale, t: Translate, f: ReturnType<typeof fmt>): Draft[] {
-  const meta = (key: string): FactMeta => ({ group: "focus", key });
+function focusFacts(mv: MonthView, locale: Locale, t: Translate, f: ReturnType<typeof fmt>, names: Set<string>): Draft[] {
+  const meta = (key: string): Draft["meta"] => ({ group: "focus", key });
   return mv.focus.flatMap((item) => {
     const name = focusName(item, locale);
+    names.add(name);
     return [
       { label: t("assistant.fact.focusTarget", { item: name }), value: f.amount(item.target, item.unit), meta: meta("focusTarget") },
       { label: t("assistant.fact.focusAchieved", { item: name }), value: f.amount(item.achieved, item.unit), meta: meta("focusAchieved") },
@@ -140,9 +152,9 @@ function focusFacts(mv: MonthView, locale: Locale, t: Translate, f: ReturnType<t
   });
 }
 
-function commissionFacts(cv: CommissionView, mv: MonthView, locale: Locale, t: Translate, f: ReturnType<typeof fmt>): Draft[] {
+function commissionFacts(cv: CommissionView, mv: MonthView, locale: Locale, t: Translate, f: ReturnType<typeof fmt>, names: Set<string>): Draft[] {
   if (cv.scheme === null || cv.tooLarge) return [];
-  const meta = (key: string): FactMeta => ({ group: "commission", key });
+  const meta = (key: string): Draft["meta"] => ({ group: "commission", key });
   const out: Draft[] = [
     { label: t("assistant.fact.commissionSoFar"), value: f.amount(cv.actual.total, "value"), meta: meta("commissionSoFar") },
     { label: t("assistant.fact.commissionProjected"), value: f.amount(cv.projected.total, "value"), meta: meta("commissionProjected") },
@@ -152,6 +164,7 @@ function commissionFacts(cv: CommissionView, mv: MonthView, locale: Locale, t: T
   for (const r of cv.actual.results) {
     const c = components.get(r.componentId);
     const label = c ? componentLabel(c, locale) : r.label;
+    names.add(label);
     out.push({ label: t("assistant.fact.componentSoFar", { label }), value: f.amount(r.amount, "value"), meta: meta("componentSoFar") });
   }
   const n = cv.nearest;
@@ -160,6 +173,7 @@ function commissionFacts(cv: CommissionView, mv: MonthView, locale: Locale, t: T
     const item = n.focusItemId ? mv.focus.find((x) => x.id === n.focusItemId) : undefined;
     const name = line ? lineName(line, locale) : item ? focusName(item, locale) : n.label;
     const unit: Unit = line?.unit ?? item?.unit ?? "cases";
+    names.add(name);
     out.push({ label: t("assistant.fact.nearestLine"), value: name, meta: meta("nearestLine") });
     if (line || item) out.push({ label: t("assistant.fact.nearestGap"), value: f.amount(n.gap, unit), meta: meta("nearestGap") });
     out.push({ label: t("assistant.fact.nearestGain"), value: f.amount(n.gain, "value"), meta: meta("nearestGain") });
@@ -172,7 +186,7 @@ function commissionFacts(cv: CommissionView, mv: MonthView, locale: Locale, t: T
  * threshold and the rep's progress on it. The scheme is loaded by id in the caller's company only;
  * no scheme or no bonus component with that id → no facts (the incentive text alone).
  */
-async function componentFacts(ctx: Ctx, ref: string | null, today: ISODate, t: Translate, currency: Currency): Promise<Draft[]> {
+async function componentFacts(ctx: Ctx, ref: string | null, today: ISODate, t: Translate, currency: Currency, names: Set<string>): Promise<Draft[]> {
   if (typeof ref !== "string") return [];
   const cut = ref.lastIndexOf(":");
   if (cut <= 0 || cut === ref.length - 1) return [];
@@ -186,7 +200,8 @@ async function componentFacts(ctx: Ctx, ref: string | null, today: ISODate, t: T
   if (!scheme || !c || c.type !== "bonus") return [];
 
   const f = fmt(t, currency);
-  const meta = (key: string): FactMeta => ({ group: "incentive", key });
+  names.add(componentLabel(c, ctx.locale));
+  const meta = (key: string): Draft["meta"] => ({ group: "incentive", key });
   const out: Draft[] = [
     { label: t("assistant.fact.incentiveName"), value: componentLabel(c, ctx.locale), meta: meta("incentiveName") },
     { label: t("assistant.fact.incentiveAmount"), value: f.amount(c.amount, "value"), meta: meta("incentiveAmount") },
@@ -204,11 +219,13 @@ async function componentFacts(ctx: Ctx, ref: string | null, today: ISODate, t: T
     if (leaf.kind === "line_pct_at_least") {
       const line = mv.lines.find((l) => l.lineId === leaf.lineId);
       const target = line ? lineName(line, ctx.locale) : componentLabel(c, ctx.locale);
+      names.add(target);
       out.push({ label: t("assistant.fact.incentiveThreshold", { target }), value: f.pct(leaf.minPct), meta: meta("incentiveThreshold") });
       if (part.pct !== undefined) out.push({ label: t("assistant.fact.incentiveProgress", { target }), value: f.pct(part.pct), meta: meta("incentiveProgress") });
     } else {
       const item = mv.focus.find((x) => x.id === leaf.focusItemId);
       const target = item ? focusName(item, ctx.locale) : componentLabel(c, ctx.locale);
+      names.add(target);
       const unit: Unit = item?.unit ?? "cases";
       out.push({ label: t("assistant.fact.incentiveThreshold", { target }), value: f.amount(leaf.min, unit), meta: meta("incentiveThreshold") });
       out.push({ label: t("assistant.fact.incentiveProgress", { target }), value: f.amount(part.achieved, unit), meta: meta("incentiveProgress") });
@@ -225,8 +242,35 @@ function cutText(text: string, max: number): string {
   return (space > max / 2 ? head.slice(0, space) : head).trim();
 }
 
+function unique(xs: string[]): string[] {
+  return [...new Set(xs)];
+}
+
 function numbersOf(...texts: string[]): string[] {
   return texts.flatMap((x) => numbersIn(x));
+}
+
+/** Each token counts at most this many times in a section. */
+const TOKEN_HITS_MAX = 3;
+
+/**
+ * How well a section matches the question's tokens (R81): each distinct token found weighs 4, each
+ * occurrence 1 more (at most 3 per token), divided by a length factor, so a section stuffed
+ * with one word (or very long) cannot crowd out a short one that answers. 0 when no token occurs.
+ */
+export function sectionScore(tokens: readonly string[], label: string, text: string): number {
+  const hay = normaliseArabic(`${label} ${text}`);
+  let hits = 0;
+  let distinct = 0;
+  for (const tok of new Set(tokens)) {
+    if (tok === "") continue;
+    let n = 0;
+    for (let at = hay.indexOf(tok); at >= 0 && n < TOKEN_HITS_MAX; at = hay.indexOf(tok, at + tok.length)) n++;
+    hits += n;
+    if (n > 0) distinct++;
+  }
+  // A different token weighs more than a repeat of the same one.
+  return hits === 0 ? 0 : (distinct * (TOKEN_HITS_MAX + 1) + hits) / (1 + hay.length / 1000);
 }
 
 type Candidate = { doc: number; section: number; label: string; text: string; cost: number; score: number };
@@ -243,7 +287,7 @@ type Candidate = { doc: number; section: number; label: string; text: string; co
  */
 export async function buildRepContext(
   ctx: Ctx,
-  opts: { today: ISODate; question: string; t: Translate; only?: { notificationId: string }; now?: Date },
+  opts: { today: ISODate; question: string; t: Translate; only?: { notificationId: string }; now?: Date; budget?: number },
 ): Promise<RepContext | null> {
   assertRole(ctx, ["rep", "supervisor"]);
   assertOwnContext(ctx);
@@ -251,6 +295,9 @@ export async function buildRepContext(
   const now = opts.now ?? new Date();
   const prefs = await getCompanyPrefs(ctx);
   const f = fmt(t, prefs.currency);
+  const budget = Math.min(CONTEXT_MAX, Number.isSafeInteger(opts.budget) && opts.budget! > 0 ? opts.budget! : CONTEXT_MAX);
+  const since = new Date(now.getTime() - INCENTIVE_DAYS * 86_400_000);
+  const rawNames = new Set<string>();
 
   let drafts: Draft[] = [];
   let notes: { title: s.LocalText; body: s.LocalText }[];
@@ -268,11 +315,13 @@ export async function buildRepContext(
           eq(s.notifications.userId, ctx.userId),
           eq(s.notifications.companyId, ctx.companyId),
           eq(s.notifications.kind, "incentive"),
+          // R81: an explain request names a notification of the last 62 days, like the list it came from.
+          gte(s.notifications.createdAt, since),
         ),
       );
     if (!note) return null;
     notes = [note];
-    drafts = await componentFacts(ctx, note.ref, today, t, prefs.currency);
+    drafts = await componentFacts(ctx, note.ref, today, t, prefs.currency, rawNames);
   } else {
     const period = { ...monthOf(today), today };
     const [mv, cv, rows, docs] = await Promise.all([
@@ -286,21 +335,21 @@ export async function buildRepContext(
             eq(s.notifications.userId, ctx.userId),
             eq(s.notifications.companyId, ctx.companyId),
             eq(s.notifications.kind, "incentive"),
-            gte(s.notifications.createdAt, new Date(now.getTime() - INCENTIVE_DAYS * 86_400_000)),
+            gte(s.notifications.createdAt, since),
           ),
         )
         .orderBy(desc(s.notifications.createdAt), desc(s.notifications.id))
         .limit(INCENTIVES_MAX),
       loadPolicySections(ctx),
     ]);
-    const daysMeta = (key: string): FactMeta => ({ group: "days", key });
+    const daysMeta = (key: string): Draft["meta"] => ({ group: "days", key });
     drafts = [
       { label: t("assistant.fact.daysTotal"), value: String(mv.counts.total), meta: daysMeta("daysTotal") },
       { label: t("assistant.fact.daysPassed"), value: String(mv.counts.elapsed), meta: daysMeta("daysPassed") },
       { label: t("assistant.fact.daysLeft"), value: String(mv.counts.left), meta: daysMeta("daysLeft") },
-      ...lineFacts(mv, ctx.locale, t, f),
-      ...focusFacts(mv, ctx.locale, t, f),
-      ...commissionFacts(cv, mv, ctx.locale, t, f),
+      ...lineFacts(mv, ctx.locale, t, f, rawNames),
+      ...focusFacts(mv, ctx.locale, t, f, rawNames),
+      ...commissionFacts(cv, mv, ctx.locale, t, f, rawNames),
     ];
     notes = rows;
     policy = docs;
@@ -314,26 +363,29 @@ export async function buildRepContext(
     const label = cleanText(d.label, true);
     const value = cleanText(d.value, true);
     const cost = LINE_COST.fact(label, value);
-    if (label === "" || value === "" || used + cost > CONTEXT_MAX) continue;
+    if (label === "" || value === "" || used + cost > budget) continue;
     used += cost;
     const id = `F${facts.length + 1}`;
     facts.push({ id, label, value });
-    factMeta.set(id, d.meta);
+    factMeta.set(id, { ...d.meta, numbers: NO_FIGURE_KEYS.has(d.meta.key) ? [] : unique(numbersIn(value)) });
   }
   const incentives: RepContext["incentives"] = [];
   for (const n of notes) {
     const title = cleanText(pickText(n.title, ctx.locale), true);
     const body = cleanText(pickText(n.body, ctx.locale), false);
     const cost = LINE_COST.incentive(title, body);
-    if (used + cost > CONTEXT_MAX) continue;
+    if (used + cost > budget) continue;
     used += cost;
     incentives.push({ tag: `I${incentives.length + 1}`, title, body });
   }
 
-  const docs = selectSections(policy.slice(0, DOCS_MAX), opts.question, CONTEXT_MAX - used);
+  const docs = selectSections(policy.slice(0, DOCS_MAX), opts.question, budget - used);
 
-  const numbersOfFacts = new Set(facts.flatMap((x) => numbersOf(x.label, x.value)));
-  const factNumbers = new Set([...numbersOfFacts, ...incentives.flatMap((x) => numbersOf(x.title, x.body))]);
+  const incentiveNumbers = new Set(incentives.flatMap((x) => numbersOf(x.title, x.body)));
+  const factNumbers = new Set([...[...factMeta.values()].flatMap((m) => m.numbers), ...incentiveNumbers]);
+  const names = [...new Set([...[...rawNames].map((n) => cleanText(n, true)), ...facts.map((x) => x.label)])]
+    .filter((n) => n !== "")
+    .sort((a, b) => b.length - a.length);
   const sectionNumbers = new Map<string, Set<string>>();
   for (const d of docs) for (const sec of d.sections) sectionNumbers.set(`${d.tag}/${sec.tag}`, new Set(numbersOf(sec.label, sec.text)));
   return {
@@ -342,7 +394,8 @@ export async function buildRepContext(
     incentives,
     docs,
     factNumbers,
-    numbersOfFacts,
+    incentiveNumbers,
+    names,
     sectionNumbers,
     knownSections: new Set(sectionNumbers.keys()),
     factMeta,
@@ -375,10 +428,7 @@ function selectSections(policy: Awaited<ReturnType<typeof loadPolicySections>>, 
     chosen = candidates;
   } else {
     const tokens = [...new Set(contextTokens(question))];
-    for (const c of candidates) {
-      const hay = normaliseArabic(`${c.label} ${c.text}`);
-      c.score = tokens.filter((tok) => hay.includes(tok)).length;
-    }
+    for (const c of candidates) c.score = sectionScore(tokens, c.label, c.text);
     const ranked = candidates.map((c, i) => ({ c, i })).sort((a, b) => b.c.score - a.c.score || a.i - b.i);
     const docsIn = new Set<number>();
     let used = 0;

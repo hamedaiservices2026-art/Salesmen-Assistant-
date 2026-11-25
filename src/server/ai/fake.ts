@@ -48,6 +48,18 @@ export function contextTokens(text: string): string[] {
     .filter((t) => t.length >= 3);
 }
 
+/**
+ * The fake's matching form of a token (Task 16 fix round, R81): a possessive `ت` + pronoun ending
+ * (`عمولتي`, `عمولتك`) or a final `ه` (`العموله`) is dropped, so a question's `عمولتي` meets the
+ * label `العمولة`. Applied alike to the question, labels and texts (R58). Fake only.
+ */
+function stemToken(t: string): string {
+  if (t.length > 4 && /ت(?:ي|ك|ه|نا|هم|كم)$/.test(t)) return t.replace(/ت(?:ي|ك|ه|نا|هم|كم)$/, "");
+  if (t.length > 4 && t.endsWith("ه")) return t.slice(0, -1);
+  return t;
+}
+const matchTokens = (text: string) => contextTokens(text).map(stemToken);
+
 // ---------------------------------------------------------------------------------------------
 // Fixtures ("Shared sample data" in the plan).
 
@@ -148,13 +160,13 @@ function answerJson(answer: string, citations: { doc: string; section: string }[
 function assistantReply(req: ChatRequest): string {
   const all = [req.system, ...req.messages.map((m) => m.text)].join("\n");
   const context = parseContext(all) ?? { facts: [], sections: [] };
-  const qTokens = contextTokens(withoutContext(lastUserText(req)));
+  const qTokens = matchTokens(withoutContext(lastUserText(req)));
   if (qTokens.length === 0) return answerJson("", [], false);
 
-  const factTokens = new Set(context.facts.flatMap((f) => contextTokens(f.label)));
+  const factTokens = new Set(context.facts.flatMap((f) => matchTokens(f.label)));
   const policyOnly = qTokens.filter((t) => !factTokens.has(t));
   for (const s of context.sections) {
-    const tokens = new Set([...contextTokens(s.label), ...contextTokens(s.text)]);
+    const tokens = new Set([...matchTokens(s.label), ...matchTokens(s.text)]);
     if (policyOnly.some((t) => tokens.has(t))) {
       return answerJson(
         Array.from(s.text).slice(0, SECTION_ANSWER_MAX).join(""),
@@ -166,7 +178,7 @@ function assistantReply(req: ChatRequest): string {
 
   let best: { fact: Fact; score: number; earliest: number } | null = null;
   for (const fact of context.facts) {
-    const labelTokens = new Set(contextTokens(fact.label));
+    const labelTokens = new Set(matchTokens(fact.label));
     const matched = [...new Set(qTokens)].filter((t) => labelTokens.has(t));
     if (matched.length === 0) continue;
     const earliest = Math.min(...matched.map((t) => qTokens.indexOf(t)));

@@ -1,7 +1,7 @@
 // The rep's assistant conversation (decision 7): one rolling conversation per rep, his own rows only,
 // kept 30 days, deletable by him at any time. No admin or supervisor path reads it: every function
 // here takes the rep's own context (a `repCtx` context made for someone else is refused).
-import { and, asc, desc, eq, gt, inArray, lt } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNull, lt, ne, or } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import * as s from "@/db/schema";
 import { assertOwnContext, assertRole } from "@/server/auth/roles";
@@ -40,7 +40,14 @@ export async function recentMessages(ctx: Ctx, limit: number, now: Date): Promis
   const rows = await ctx.db
     .select()
     .from(s.assistantMessages)
-    .where(and(own(ctx), gt(s.assistantMessages.createdAt, retentionCutoff(now))))
+    // R81: an `unavailable` row (a failed request) is neither listed nor sent back as history.
+    .where(
+      and(
+        own(ctx),
+        gt(s.assistantMessages.createdAt, retentionCutoff(now)),
+        or(isNull(s.assistantMessages.verdict), ne(s.assistantMessages.verdict, "unavailable")),
+      ),
+    )
     .orderBy(desc(s.assistantMessages.createdAt), asc(s.assistantMessages.role), desc(s.assistantMessages.id))
     .limit(limit);
   return rows.reverse().map((r) => ({
@@ -58,11 +65,19 @@ export async function listMessages(ctx: Ctx, opts: { now?: Date } = {}): Promise
   return recentMessages(ctx, LIST_MAX, opts.now ?? new Date());
 }
 
-/** Deletes the caller's whole conversation. */
+/** Deletes the caller's whole conversation, in batches of 1000 (R81), and returns how many rows went. */
 export async function clearConversation(ctx: Ctx): Promise<{ deleted: number }> {
   guard(ctx);
-  const gone = await ctx.db.delete(s.assistantMessages).where(own(ctx)).returning({ id: s.assistantMessages.id });
-  return { deleted: gone.length };
+  let deleted = 0;
+  for (;;) {
+    const batch = ctx.db.select({ id: s.assistantMessages.id }).from(s.assistantMessages).where(own(ctx)).limit(SWEEP_BATCH);
+    const gone = await ctx.db
+      .delete(s.assistantMessages)
+      .where(and(own(ctx), inArray(s.assistantMessages.id, batch)))
+      .returning({ id: s.assistantMessages.id });
+    deleted += gone.length;
+    if (gone.length < SWEEP_BATCH) return { deleted };
+  }
 }
 
 /** Deletes the caller's own rows past retention (at most 1000 per call). */

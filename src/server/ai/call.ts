@@ -38,7 +38,7 @@ const NO_USAGE = { tokensIn: null, tokensOut: null };
  * id, conflicts ignored; R67), and not at all for `user_quota` (his own day counter is at its
  * limit): a rep who keeps pressing the button must not grow the log.
  */
-async function logRejection(
+export async function logRejection(
   ctx: Ctx,
   kind: AiKind,
   feature: AiFeature,

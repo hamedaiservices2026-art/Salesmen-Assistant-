@@ -7,7 +7,7 @@ import * as s from "@/db/schema";
 import type { Ctx } from "@/server/ctx";
 import { Forbidden, type Role } from "@/server/auth/roles";
 import { DEFAULT_LIMITS, USER_DAY, USER_MINUTE, COMPANY_DAY, UPLOADS_USER_DAY } from "./limits";
-import { quotaToday, release, releaseStatement, reserve, reserveAi, reserveStatement, sweepCounters } from "./quota";
+import { peekAi, quotaToday, release, releaseStatement, reserve, reserveAi, reserveStatement, sweepCounters } from "./quota";
 
 let db: Db;
 
@@ -45,6 +45,37 @@ describe("limits", () => {
     expect(COMPANY_DAY).toEqual({ vision: 200, stt: 300, chat: 500 });
     expect(UPLOADS_USER_DAY).toBe(40);
     expect(DEFAULT_LIMITS).toEqual({ userMinute: USER_MINUTE, userDay: USER_DAY, companyDay: COMPANY_DAY });
+  });
+});
+
+describe("peekAi (R81)", () => {
+  const snapshot = () => db.select().from(s.aiCounters).orderBy(s.aiCounters.scope, s.aiCounters.bucket);
+  it("names the refusal reserveAi would give, without writing anything", async () => {
+    expect(await peekAi(ahmed(), "chat", T0, NO_GLOBAL_MINUTE)).toBe("ok");
+    expect(await snapshot()).toEqual([]);
+    for (let i = 0; i < 6; i++) expect(await reserveAi(ahmed(), "chat", T0, NO_GLOBAL_MINUTE)).toBe("ok");
+    const before = await snapshot();
+    expect(await peekAi(ahmed(), "chat", T0, NO_GLOBAL_MINUTE)).toBe("rate_limited");
+    expect(await peekAi(ahmed(), "chat", atMinute(1), NO_GLOBAL_MINUTE)).toBe("ok");
+    expect(await peekAi(ctxOf("khaled"), "chat", T0, NO_GLOBAL_MINUTE)).toBe("ok");
+    expect(await peekAi(ahmed(), "vision", T0, NO_GLOBAL_MINUTE)).toBe("ok");
+    expect(await snapshot()).toEqual(before);
+  });
+
+  it("checks the day counters and the global limits in reserveAi's order", async () => {
+    const limits = { ...DEFAULT_LIMITS, userDay: { ...USER_DAY, chat: 2 } };
+    await reserveAi(ahmed(), "chat", atMinute(0), NO_GLOBAL_MINUTE, limits);
+    await reserveAi(ahmed(), "chat", atMinute(1), NO_GLOBAL_MINUTE, limits);
+    expect(await peekAi(ahmed(), "chat", atMinute(2), NO_GLOBAL_MINUTE, limits)).toBe("user_quota");
+    expect(await peekAi(ctxOf("khaled"), "chat", atMinute(2), { day: 2, minute: null })).toBe("global_quota");
+    expect(await reserveAi(ctxOf("omar"), "chat", atMinute(3), { day: 800, minute: 1 })).toBe("ok");
+    expect(await peekAi(ctxOf("khaled"), "chat", atMinute(3), { day: 800, minute: 1 })).toBe("rate_limited");
+    expect(await peekAi(ctxOf("khaled"), "chat", atMinute(2), NO_GLOBAL_MINUTE, { ...DEFAULT_LIMITS, companyDay: { ...COMPANY_DAY, chat: 2 } })).toBe("company_quota");
+    expect(await peekAi(ctxOf("khaled"), "chat", atMinute(2), { day: 0, minute: null })).toBe("global_quota");
+  });
+
+  it("refuses a context made for someone else", async () => {
+    await expect(peekAi({ ...ahmed(), actingFor: "supervisor" } as Ctx, "chat", T0, NO_GLOBAL_MINUTE)).rejects.toBeInstanceOf(Forbidden);
   });
 });
 

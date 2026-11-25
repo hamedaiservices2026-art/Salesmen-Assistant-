@@ -17,6 +17,12 @@ describe("readAiConfig", () => {
     expect(cfg.globalMinute).toEqual({ vision: null, stt: null, chat: null });
   });
 
+  it("reads the assistant's context limit, 5 000 to 60 000, default 60 000 (R81)", () => {
+    expect(readAiConfig({}).contextMax).toBe(60_000);
+    expect(readAiConfig({ AI_CONTEXT_MAX: "20000" }).contextMax).toBe(20_000);
+    for (const bad of ["4999", "60001", "-1", "2e4", "abc", ""]) expect(readAiConfig({ AI_CONTEXT_MAX: bad }).contextMax).toBe(60_000);
+  });
+
   it("resolves mode", () => {
     expect(readAiConfig({ AI_DISABLED: "1", AI_PROVIDER: "fake" }).mode).toBe("off");
     expect(readAiConfig({ AI_PROVIDER: "fake" }).mode).toBe("fake");

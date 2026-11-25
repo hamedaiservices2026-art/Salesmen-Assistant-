@@ -28,7 +28,9 @@ const LINE_BREAKS = /\r\n?|[\v\f\u0085\u2028\u2029]/g;
 
 /**
  * The nonce-free part of the cleaning: NFKC (so full-width `＜＜` becomes `<<` and is caught), control,
- * format, bidi and private-use characters removed (ZWNJ/ZWJ kept between letters), `<<` and `>>`
+ * format, bidi and private-use characters removed (ZWNJ/ZWJ kept only between two non-ASCII
+ * letters), combining marks after `<`/`>` removed, guillemets and other angle look-alikes made a
+ * space (R81), `<<` and `>>`
  * replaced by a space, `|` made `¦` so no line of untrusted text parses as one of our lines, a line
  * that is only a block name wrapped in brackets, spaces collapsed. `singleLine` also turns line
  * breaks into spaces (titles, labels, values); otherwise lines are kept (bodies, section texts).
@@ -39,7 +41,7 @@ export function cleanText(text: string, singleLine: boolean): string {
   let s = text.toWellFormed().normalize("NFKC").replace(LINE_BREAKS, "\n").replace(/\t/g, " ");
   s = s
     .split("\n")
-    .map((line) => stripInvisible(line))
+    .map((line) => boundaryChars(stripInvisible(line)))
     .join("\n");
   s = withoutMarkers(s, null);
   s = s.replace(/\|/g, "¦");
@@ -49,6 +51,16 @@ export function cleanText(text: string, singleLine: boolean): string {
     .map((line) => (BLOCK_NAMES.has(line) ? `(${line})` : line));
   if (singleLine) return lines.filter((l) => l !== "").join(" ");
   return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+// R81: a joiner next to an ASCII character (or not between two letters) could split `<<` or the
+// nonce; a combining mark after `<` or `>` could hide a marker; guillemets read as angle brackets.
+const LOOSE_JOINER = /(?<=[\x00-\x7F])[\u200C\u200D]|[\u200C\u200D](?=[\x00-\x7F])|(?<![\p{L}\p{M}])[\u200C\u200D]|[\u200C\u200D](?![\p{L}\p{M}])/gu;
+const MARK_AFTER_ANGLE = /(?<=[<>])\p{M}+/gu;
+const ANGLE_LIKE = /[«»‹›＜＞﹤﹥〈〉《》⟨⟩]/gu;
+
+function boundaryChars(line: string): string {
+  return line.replace(LOOSE_JOINER, "").replace(MARK_AFTER_ANGLE, "").replace(ANGLE_LIKE, " ");
 }
 
 /** `<<`, `>>` and (when given) the nonce, in any letter case, become a space, until none is left. */

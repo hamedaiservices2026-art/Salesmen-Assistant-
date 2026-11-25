@@ -5,7 +5,7 @@
 // No `after()` here (R38): the server action schedules maintenance.
 import { randomUUID } from "node:crypto";
 import * as s from "@/db/schema";
-import { AnswerSchema, judgeReply, type Verdict } from "@/domain/assistant/reply";
+import { ANSWER_MAX, AnswerSchema, judgeReply, type Verdict } from "@/domain/assistant/reply";
 import { plainText } from "@/domain/assistant/plain";
 import { classifyTopic, type Topic } from "@/domain/assistant/topics";
 import { stripInvisible } from "@/domain/ai/aliases";
@@ -13,7 +13,8 @@ import { todayIn, type ISODate } from "@/domain/calendar";
 import { assertOwnContext, assertRole } from "@/server/auth/roles";
 import type { Ctx } from "@/server/ctx";
 import { aiAvailability } from "@/server/ai/availability";
-import { aiCall, type AiCallFail } from "@/server/ai/call";
+import { aiCall, logRejection, type AiCallFail } from "@/server/ai/call";
+import { peekAi } from "@/server/ai/quota";
 import { readAiConfig, type AiConfig } from "@/server/ai/config";
 import { parseJsonReply } from "@/server/ai/json";
 import type { AiProvider } from "@/server/ai/types";
@@ -29,7 +30,79 @@ const QUESTION_RAW_MAX = 4 * QUESTION_MAX;
 const MAX_OUTPUT_TOKENS = 700;
 /** A stored assistant text is re-cleaned to this before it re-enters a prompt. */
 const HISTORY_TEXT_MAX = 1500;
-const NO_NUMBERS: ReadonlySet<string> = new Set();
+/** Stored rows read to find the last complete turns (unavailable rows are never read back). */
+const HISTORY_SCAN = 4 * HISTORY_TURNS;
+
+/**
+ * The figures a topic's answer may state (R81), from the facts' own figures by group, never from a
+ * label or a date: commission → commission facts; remaining and standing → line facts and selling
+ * days; collection → collection lines; coverage; focus (targets and achieved, not windows);
+ * incentive → incentive facts, incentive texts and commission facts; policy → none (the cited
+ * sections are added by `judgeReply`); other and tips → line, commission and selling-day facts.
+ */
+function allowedFor(topic: Topic, c: RepContext): ReadonlySet<string> {
+  const groups: Partial<Record<Topic, FactMeta["group"][]>> = {
+    commission: ["commission"],
+    remaining: ["line", "days"],
+    standing: ["line", "days"],
+    collection: ["line"],
+    coverage: ["coverage"],
+    focus: ["focus"],
+    incentive: ["incentive", "commission"],
+    other: ["line", "commission", "days"],
+    tips: ["line", "commission", "days"],
+  };
+  const wanted = groups[topic] ?? [];
+  const out = new Set<string>();
+  for (const m of c.factMeta.values()) {
+    if (!wanted.includes(m.group)) continue;
+    if (topic === "collection" && m.lineKind !== "collection") continue;
+    for (const n of m.numbers) out.add(n);
+  }
+  if (topic === "incentive") for (const n of c.incentiveNumbers) out.add(n);
+  return out;
+}
+
+/** Each exact occurrence of a name we gave, longest first, replaced by a neutral mark. */
+function maskNames(answer: string, names: readonly string[]): string {
+  if (typeof answer !== "string") return answer;
+  let s = answer.toWellFormed().normalize("NFKC");
+  for (const name of names) if (name !== "" && /\p{Nd}/u.test(name)) s = s.split(name).join(" ∎ ");
+  return s;
+}
+
+type Turn = { role: "user" | "assistant"; text: string };
+
+/**
+ * The last complete turns: a question immediately followed by an answer row with text (an
+ * unverified, unanswered or unavailable turn is left out), each re-cleaned with `plainText` and the
+ * boundary cleaning, at most `HISTORY_TURNS` rows, oldest first.
+ */
+function historyTurns(rows: { role: "user" | "assistant"; text: string; verdict: string | null }[], nonce: string): Turn[] {
+  const pairs: Turn[][] = [];
+  for (let i = 0; i + 1 < rows.length; i++) {
+    const q = rows[i]!;
+    const a = rows[i + 1]!;
+    if (q.role !== "user" || a.role !== "assistant" || a.verdict !== "answer") continue;
+    const qt = cleanUntrusted(plainText(q.text, HISTORY_TEXT_MAX), nonce, false);
+    const at = cleanUntrusted(plainText(a.text, HISTORY_TEXT_MAX), nonce, false);
+    if (qt === "" || at === "") continue;
+    pairs.push([{ role: "user", text: qt }, { role: "assistant", text: at }]);
+    i++;
+  }
+  return pairs.slice(-Math.floor(HISTORY_TURNS / 2)).flat();
+}
+
+/** Consecutive messages of the same role joined, so the request strictly alternates and ends with the question. */
+function alternate(turns: Turn[]): Turn[] {
+  const out: Turn[] = [];
+  for (const t of turns) {
+    const last = out.at(-1);
+    if (last && last.role === t.role) last.text = `${last.text}\n\n${t.text}`;
+    else out.push({ ...t });
+  }
+  return out;
+}
 
 export type AskResult =
   | { ok: true; verdict: "answer"; text: string; citations: Citation[] }
@@ -135,25 +208,33 @@ export async function ask(ctx: Ctx, input: AskInput, opts: AskOpts = {}): Promis
   const available = await aiAvailability(ctx, "chat", config, opts.providers);
   if (!available.ok) return { ok: false, reason: available.reason };
 
+  // R81: a request the counters would refuse is answered before any context is built, and stores
+  // nothing. A read-only peek; `aiCall`'s reservation below stays the authority.
+  const peek = await peekAi(ctx, "chat", now, { day: config.globalDay.chat, minute: config.globalMinute.chat });
+  if (peek === "rate_limited") return { ok: false, reason: "rate_limited" };
+  if (peek !== "ok") {
+    await logRejection(ctx, "chat", explain ? "explain" : "assistant", topic, peek, now);
+    return { ok: false, reason: "quota" };
+  }
+
   const c = await buildRepContext(ctx, {
     today,
     now,
     question,
     t,
+    budget: config.contextMax,
     ...(explain ? { only: { notificationId: explain.notificationId } } : {}),
   });
   if (c === null) return { ok: false, reason: "failed" };
 
   const nonce = newNonce();
   const { system, contextMessage } = assistantPrompt(c, ctx.locale, nonce);
-  const history = (await recentMessages(ctx, HISTORY_TURNS, now))
-    .map((m) => ({ role: m.role, text: cleanUntrusted(plainText(m.text, HISTORY_TEXT_MAX), nonce, false) }))
-    .filter((m) => m.text !== "");
-  const messages = [
-    { role: "user" as const, text: contextMessage },
+  const history = historyTurns(await recentMessages(ctx, HISTORY_SCAN, now), nonce);
+  const messages = alternate([
+    { role: "user", text: contextMessage },
     ...history,
-    { role: "user" as const, text: cleanUntrusted(question, nonce, false) },
-  ];
+    { role: "user", text: cleanUntrusted(question, nonce, false) },
+  ]);
 
   const r = await aiCall(
     ctx,
@@ -170,32 +251,32 @@ export async function ask(ctx: Ctx, input: AskInput, opts: AskOpts = {}): Promis
     { now, config, ...(opts.providers ? { providers: opts.providers } : {}) },
   );
   if (!r.ok) {
-    if (r.reason === "rate_limited" || r.reason === "quota" || r.reason === "failed" || r.reason === "unreadable") {
+    // A limit refusal (only a race past the peek gets here) stores nothing, like the peek (R81).
+    if (r.reason === "failed" || r.reason === "unreadable") {
       await store(ctx, now, question, { text: "", verdict: "unavailable", citations: [] });
     }
     return { ok: false, reason: r.reason };
   }
 
-  // R35: judged after the call, on the reply the parse accepted. A figure topic other than
-  // `incentive` is checked against the facts alone, not against numbers written in incentive texts;
-  // a policy answer against the sections it cites alone (a fact's number, say a gap of 5 cases, must
-  // not let "a 5% discount is allowed" through).
-  const verdict = judgeReply(r.value, {
-    topic,
-    question,
-    factNumbers: topic === "incentive" ? c.factNumbers : topic === "policy" ? NO_NUMBERS : c.numbersOfFacts,
-    sectionNumbers: c.sectionNumbers,
-    knownSections: c.knownSections,
-  });
+  // R35: judged after the call, on the reply the parse accepted. R81: the figures allowed are the
+  // topic's own facts (a commission answer cannot state the remaining cases or a date); a policy
+  // answer has the sections it cites alone. Names we gave (lines, items, components, labels) are
+  // masked for the check, so `كولا 330 مل` repeated whole is not the figure 330.
+  const reply = r.value as { answer: string; citations: unknown; answerable: boolean };
+  const verdict = judgeReply(
+    { ...reply, answer: maskNames(reply.answer, c.names) },
+    { topic, question, factNumbers: allowedFor(topic, c), sectionNumbers: c.sectionNumbers, knownSections: c.knownSections },
+  );
 
   if (verdict.kind === "answer") {
+    const text = plainText(reply.answer, ANSWER_MAX);
     const citations = verdict.citations.flatMap((ci) => {
       const doc = c.docs.find((d) => d.tag === ci.doc);
       const sec = doc?.sections.find((x) => x.tag === ci.section);
       return doc && sec ? [{ title: doc.title, label: sec.label }] : [];
     });
-    await store(ctx, now, question, { text: verdict.text, verdict: "answer", citations });
-    return { ok: true, verdict: "answer", text: verdict.text, citations };
+    await store(ctx, now, question, { text, verdict: "answer", citations });
+    return { ok: true, verdict: "answer", text, citations };
   }
   await store(ctx, now, question, { text: "", verdict: verdict.kind, citations: [] });
   const facts = verdict.kind === "not_in_documents" ? [] : verdictFacts(topic, c);

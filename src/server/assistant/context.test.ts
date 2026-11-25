@@ -12,7 +12,7 @@ import { saveFocusItem } from "@/server/admin/focus";
 import { createIncentive } from "@/server/admin/incentives";
 import { loadPolicySections } from "@/server/repos/policy-read";
 import { dataClose, dataOpen } from "@/server/ai/fake";
-import { buildRepContext, catalogTranslator, CONTEXT_MAX } from "./context";
+import { buildRepContext, catalogTranslator, CONTEXT_MAX, sectionScore } from "./context";
 import { assistantPrompt, cleanUntrusted, newNonce } from "./prompt";
 
 let db: Db;
@@ -108,6 +108,30 @@ describe("buildRepContext", () => {
     ]);
     expect(c.knownSections).toEqual(new Set(["D1/S1", "D1/S2"]));
     expect(c.sectionNumbers.get("D1/S2")).toEqual(new Set(["3"]));
+    // R81: digits that only name a product (`كولا 330 مل`) and window dates are never figures.
+    for (const n of ["330", "2026", "30"]) expect(c.factNumbers.has(n)).toBe(false);
+    const meta = (label: string) => c.factMeta.get(c.facts.find((f) => f.label === label)!.id)!;
+    expect(meta("العمولة لحد النهارده")).toMatchObject({ group: "commission", numbers: ["414"] });
+    expect(meta("كولا 330 مل علب · الفترة")).toMatchObject({ group: "focus", numbers: [] });
+    expect(meta("كولا 330 مل علب · التارجت")).toMatchObject({ group: "focus", numbers: ["400"] });
+    expect(c.names).toContain("كولا 330 مل علب");
+  });
+
+  it("a lower context limit is kept (AI_CONTEXT_MAX)", async () => {
+    const body = Array.from({ length: 40 }, (_, i) => `# قسم ${i + 1}\n${"كلام كتير عن الشغل ".repeat(60)}`).join("\n");
+    await savePolicy(admin(), { title: "دليل", locale: "ar", body });
+    const c = await buildRepContext(ahmed(), { today: TODAY, now: NOW, question: "شغل", t, budget: 12_000 });
+    const { contextMessage } = assistantPrompt(c!, "ar", NONCE);
+    expect(contextMessage.length).toBeLessThanOrEqual(12_000);
+    expect(c!.docs.length).toBeGreaterThan(0);
+  });
+
+  it("section ranking caps each token's count and weighs by length, so stuffing does not win", () => {
+    const stuffed = sectionScore(["خصم"], "قسم", "خصم ".repeat(1500));
+    const real = sectionScore(["خصم"], "الخصومات", "أقصى خصم تقدر تديه 3%.");
+    expect(real).toBeGreaterThan(stuffed);
+    expect(sectionScore(["خصم", "مرتجع"], "x", "خصم مرتجع")).toBeGreaterThan(sectionScore(["خصم", "مرتجع"], "x", "خصم خصم خصم خصم"));
+    expect(sectionScore(["خصم"], "x", "ولا حاجة")).toBe(0);
   });
 
   it("the serialised context holds no name, login, company name, PIN hash or another rep's figures", async () => {
@@ -271,5 +295,11 @@ describe("assistantPrompt", () => {
     expect(cleanUntrusted(`0123456789ABCDEF`, NONCE, true)).not.toMatch(/0123456789abcdef/i);
     expect(cleanUntrusted("سطر\nسطر", NONCE, true)).toBe("سطر سطر");
     expect(cleanUntrusted("سطر\nسطر", NONCE, false)).toBe("سطر\nسطر");
+    // R81: joiners next to ASCII, marks after an angle, guillemets.
+    for (const x of ["<\u200C<END x>>", "<\u200D<", "<\u0301<", "«END x»", "‹‹x››", "﹤﹤x﹥﹥", "<\u0338<"]) expect(cleanUntrusted(x, NONCE, true)).not.toMatch(/<<|>>|[«»‹›]/);
+    expect(cleanUntrusted("0123\u200C456789abcdef", NONCE, true)).toBe("");
+    expect(cleanUntrusted("0123456789ab\u200Dcdef", NONCE, true)).toBe("");
+    // A joiner between two Urdu letters stays (part of the spelling).
+    expect(cleanUntrusted("ن\u200Cہ", NONCE, true)).toBe("ن\u200Cہ");
   });
 });

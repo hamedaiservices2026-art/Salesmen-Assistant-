@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { todayIn } from "@/domain/calendar";
 import type { Db } from "@/db/client";
 import * as s from "@/db/schema";
@@ -76,6 +76,49 @@ export async function release(db: Db, scope: string, bucket: string, kind: strin
   await releaseStatement(db, scope, bucket, kind);
 }
 
+type Step = [scope: string, bucket: string, limit: number, companyId: string | null, refusal: Exclude<QuotaResult, "ok">];
+
+/** reserveAi's counters, in its fixed order. */
+function stepsFor(ctx: Ctx, kind: AiKind, now: Date, globalLimit: { day: number; minute: number | null }, limits: AiLimits): Step[] {
+  const minute = minuteBucket(now);
+  const day = todayIn(ctx.timeZone, now);
+  return [
+    [userScope(ctx.userId), minute, limits.userMinute[kind], ctx.companyId, "rate_limited"],
+    ...(globalLimit.minute === null ? [] : [[GLOBAL, minute, globalLimit.minute, null, "rate_limited"] as Step]),
+    [userScope(ctx.userId), day, limits.userDay[kind], ctx.companyId, "user_quota"],
+    [companyScope(ctx.companyId), day, limits.companyDay[kind], ctx.companyId, "company_quota"],
+    [GLOBAL, utcDay(now), globalLimit.day, null, "global_quota"],
+  ];
+}
+
+/**
+ * Read-only: the refusal `reserveAi` would give now, without writing anything (R81). One select of
+ * the same counters in the same order; a limit that is not a positive whole number refuses, as
+ * `reserve` does. An optimisation only: it lets a caller skip expensive work for a request that
+ * would be refused. `reserveAi` stays the authority (a request that passes the peek may still be
+ * refused by it under concurrency).
+ */
+export async function peekAi(
+  ctx: Ctx,
+  kind: AiKind,
+  now: Date,
+  globalLimit: { day: number; minute: number | null },
+  limits: AiLimits = DEFAULT_LIMITS,
+): Promise<QuotaResult> {
+  assertOwnContext(ctx);
+  const steps = stepsFor(ctx, kind, now, globalLimit, limits);
+  const rows = await ctx.db
+    .select({ scope: s.aiCounters.scope, bucket: s.aiCounters.bucket, count: s.aiCounters.count })
+    .from(s.aiCounters)
+    .where(and(eq(s.aiCounters.kind, kind), or(...steps.map(([scope, bucket]) => and(eq(s.aiCounters.scope, scope), eq(s.aiCounters.bucket, bucket))))));
+  for (const [scope, bucket, limit, , refusal] of steps) {
+    if (!Number.isSafeInteger(limit) || limit <= 0) return refusal;
+    const count = rows.find((r) => r.scope === scope && r.bucket === bucket)?.count ?? 0;
+    if (count >= limit) return refusal;
+  }
+  return "ok";
+}
+
 class Refused extends Error {
   constructor(readonly reason: Exclude<QuotaResult, "ok">) {
     super(reason);
@@ -99,17 +142,7 @@ export async function reserveAi(
   limits: AiLimits = DEFAULT_LIMITS,
 ): Promise<QuotaResult> {
   assertOwnContext(ctx);
-  const minute = minuteBucket(now);
-  const day = todayIn(ctx.timeZone, now);
-  const steps: [scope: string, bucket: string, limit: number, companyId: string | null, refusal: Exclude<QuotaResult, "ok">][] = [
-    [userScope(ctx.userId), minute, limits.userMinute[kind], ctx.companyId, "rate_limited"],
-    ...(globalLimit.minute === null
-      ? []
-      : [[GLOBAL, minute, globalLimit.minute, null, "rate_limited"] as [string, string, number, null, "rate_limited"]]),
-    [userScope(ctx.userId), day, limits.userDay[kind], ctx.companyId, "user_quota"],
-    [companyScope(ctx.companyId), day, limits.companyDay[kind], ctx.companyId, "company_quota"],
-    [GLOBAL, utcDay(now), globalLimit.day, null, "global_quota"],
-  ];
+  const steps = stepsFor(ctx, kind, now, globalLimit, limits);
   try {
     await ctx.db.transaction(async (tx) => {
       for (const [scope, bucket, limit, companyId, refusal] of steps) {

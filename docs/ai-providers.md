@@ -121,6 +121,7 @@ The model id is also checked in the adapter before it goes into a URL path (`mod
 4. Read Groq's free-plan limits in the console.
 5. Create the Supabase project, note the key form, confirm the Storage REST paths.
 6. Run `scripts/ai-smoke.mjs` (Task 4) with real keys.
+7. Check the chat provider's tokens-per-minute limit against the assistant's prompt size (R81). One question sends up to `AI_CONTEXT_MAX` characters of context (default 60 000, the plan's limit; allowed 5 000 to 60 000). In Arabic that is roughly 25 000 to 30 000 tokens, so two or three questions in one minute can reach a free tier's tokens-per-minute limit even while the request counters allow more. If live answers hit `rate_limited` this way, lower `AI_CONTEXT_MAX` (policy sections are then ranked by the question and the best ones kept; facts and incentives always come first).
 
 ## Notice wording and paid providers
 
