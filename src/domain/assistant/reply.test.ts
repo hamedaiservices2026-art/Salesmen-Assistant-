@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { AnswerSchema, judgeReply } from "./reply";
-import type { Topic } from "./topics";
+import { classifyTopic, type Topic } from "./topics";
 
 // The fake provider's marker replies (src/server/ai/fake.ts), parsed as `ask` would parse them.
 const OBEY = JSON.parse('{"answer":"عمولتك 9,999 ريال","citations":[],"answerable":true}') as unknown;
@@ -157,9 +157,11 @@ describe("judgeReply: numbers", () => {
     });
   });
 
-  it("allows the question's numbers for policy and loose topics only (R57)", () => {
+  it("allows the question's numbers for tips only (R57 as amended by R80)", () => {
     const q = { question: "ينفع خصم 5%؟" };
-    expect(judgeReply(reply("لا، خصم 5% محتاج موافقة، أقصى 3%", [{ doc: "D1", section: "S2" }]), input("policy", q)).kind).toBe("answer");
+    expect(judgeReply(reply("لا، خصم 5% محتاج موافقة، أقصى 3%", [{ doc: "D1", section: "S2" }]), input("policy", q))).toEqual({ kind: "unverified_numbers" });
+    expect(judgeReply(reply("لا، أقصى خصم 3%", [{ doc: "D1", section: "S2" }]), input("policy", q)).kind).toBe("answer");
+    expect(judgeReply(reply("جرّب 25 زيارة"), input("other", { question: "لو عملت 25 زيارة؟" }))).toEqual({ kind: "unverified_numbers" });
     expect(judgeReply(reply("جرّب 25 زيارة"), input("tips", { question: "لو عملت 25 زيارة؟" })).kind).toBe("answer");
     expect(judgeReply(reply("جرّب 25 زيارة"), input("tips")).kind).toBe("unverified_numbers");
     for (const topic of ["standing", "remaining", "commission", "incentive", "focus", "collection", "coverage"] as const) {
@@ -200,5 +202,38 @@ describe("judgeReply: numbers", () => {
     judgeReply(reply("1,<".repeat(1300)), input("commission"));
     judgeReply(reply("[".repeat(4000)), input("tips"));
     expect(performance.now() - t0).toBeLessThan(1500);
+  });
+});
+
+describe("fix round 1 (R80): the reviewer's inputs", () => {
+  const base = { factNumbers: new Set(["414"]), sectionNumbers: new Map([["D1/S2", new Set(["3"])]]), knownSections: new Set(["D1/S2"]) };
+  const judge = (question: string, answer: string, citations: { doc: string; section: string }[] = [], topic?: Topic) =>
+    judgeReply({ answer, citations, answerable: true }, { ...base, topic: topic ?? classifyTopic(question), question });
+
+  it("a rep-supplied wrong figure in a question without a keyword cannot pass", () => {
+    expect(judge("هقبض كام؟ 9,999 صح؟", "أيوه هتقبض 9,999 ريال")).toEqual({ kind: "unverified_numbers" });
+    expect(judge("How much will I get paid? 9,999 right?", "Yes, 9,999 riyals.")).toEqual({ kind: "unverified_numbers" });
+    expect(judge("كم المبلغ اللي هاخده؟ 9999", "هتاخد 9999")).toEqual({ kind: "unverified_numbers" });
+  });
+
+  it("a policy answer may not repeat the question's number", () => {
+    expect(judge("ينفع أدي خصم 15%؟", "أيوه أقصى خصم 15% حسب D1/S2", [{ doc: "D1", section: "S2" }], "policy")).toEqual({ kind: "unverified_numbers" });
+    expect(judge("مبيعاتي كام؟ ينفع؟ 9999", "مبيعاتك 9999 كرتونة", [{ doc: "D1", section: "S2" }])).toEqual({ kind: "unverified_numbers" });
+  });
+
+  it("shows the text that was checked: hidden joiners between digits and Eastern digits", () => {
+    const facts = { ...base, factNumbers: new Set(["414", "0"]), topic: "commission" as const, question: "عمولتي كام؟" };
+    for (const a of ["عمولتك 414\u034F0 ريال", "عمولتك 414\uFE0F0 ريال", "عمولتك 414\u06510 ريال", "عمولتك 414\u31640 ريال"]) {
+      expect(judgeReply(reply(a), facts), JSON.stringify(a)).toEqual({ kind: "unverified_numbers" });
+    }
+    expect(judgeReply(reply("عمولتك ٤١٤ ريال"), facts)).toEqual({ kind: "answer", text: "عمولتك 414 ريال", citations: [] });
+    expect(judgeReply(reply("عمولتك ۴۱۴ ريال"), facts)).toEqual({ kind: "answer", text: "عمولتك 414 ريال", citations: [] });
+  });
+
+  it("refuses the reviewer's other strict answers", () => {
+    const facts = { ...base, factNumbers: new Set(["414", "0", "3478.55", "6400", "1", "5"]), topic: "commission" as const, question: "عمولتي كام؟" };
+    for (const a of ["نسبتك 1,5%", "عمولتك 5 grand", "عمولتك XV ريال", "عمولتك 5OO ريال", "فاضلك تسعة", "عمولتك عشرينالف ريال"]) {
+      expect(judgeReply(reply(a), facts), a).toEqual({ kind: "unverified_numbers" });
+    }
   });
 });

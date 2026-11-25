@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { checkNumbers, numbersIn } from "./numbers";
 
@@ -39,12 +40,12 @@ describe("numbersIn", () => {
     expect(numbersIn("الرصيد −150")).toEqual(["-150"]);
   });
 
-  it("follows the parseAmount grouping rule: a bad grouping gives each part separately", () => {
+  it("follows the parseAmount grouping rule: a bad grouping is one raw token (R80)", () => {
     expect(numbersIn("20 000 ريال")).toEqual(["20000"]);
     expect(numbersIn("1 200 000")).toEqual(["1200000"]);
     expect(numbersIn("82٬800")).toEqual(["82800"]);
-    expect(numbersIn("1,86")).toEqual(["1", "86"]);
-    expect(numbersIn("8250,50")).toEqual(["8250", "50"]);
+    expect(numbersIn("1,86")).toEqual(["1,86"]);
+    expect(numbersIn("8250,50")).toEqual(["8250,50"]);
     expect(numbersIn("5 1,860")).toEqual(["5", "1860"]);
   });
 
@@ -250,7 +251,7 @@ describe("checkNumbers: loose", () => {
     expect(checkNumbers("هتكسب تلات ريال", set(), "loose").ok).toBe(false);
     expect(checkNumbers("هتكسب بتلاتة ريال", set(), "loose").ok).toBe(false);
     expect(checkNumbers("you earn three riyals", set(), "loose").ok).toBe(false);
-    expect(checkNumbers("زور تلات عملاء", set(), "loose")).toEqual({ ok: true });
+    expect(checkNumbers("زور تلات محلات", set(), "loose")).toEqual({ ok: true });
   });
 
   it("refuses an unread number word that carries a scale or a money word", () => {
@@ -262,5 +263,97 @@ describe("checkNumbers: loose", () => {
 
   it("accepts a tip with no number", () => {
     expect(checkNumbers("ركز على المحلات الكبيرة الصبح", set(), "loose")).toEqual({ ok: true });
+  });
+});
+
+describe("fix round 1 (R80): the reviewer's inputs", () => {
+  it("strict: a number word worth 2 or more must be allowed; واحد and one are exempt", () => {
+    for (const t of ["عمولتك خمسة", "فاضلك تسعة كراتين", "فاضلك تسعة", "you need seven more", "your commission is ten", "عمولتك اتنين"]) {
+      expect(checkNumbers(t, set(), "strict"), t).toMatchObject({ ok: false });
+    }
+    expect(checkNumbers("فاضلك تسعة", set("9"), "strict")).toEqual({ ok: true });
+    expect(checkNumbers("واحد من العملاء", set(), "strict")).toEqual({ ok: true });
+    expect(checkNumbers("one of your customers", set(), "strict")).toEqual({ ok: true });
+  });
+
+  it("strict: a bad grouping or an apostrophe between digits is one raw token", () => {
+    expect(checkNumbers("عمولتك 1,5%", set("1", "5"), "strict")).toEqual({ ok: false, unknown: ["1,5"] });
+    expect(checkNumbers("عمولتك 1\u2019860 ريال", set("1", "860"), "strict")).toEqual({ ok: false, unknown: ["1\u2019860"] });
+    expect(checkNumbers("عمولتك 1'860 ريال", set("1", "860"), "strict")).toEqual({ ok: false, unknown: ["1'860"] });
+    expect(checkNumbers("عمولتك 1,5%", set("1,5"), "strict")).toEqual({ ok: true });
+    expect(numbersIn("نسبة 1,5%")).toEqual(["1,5"]);
+  });
+
+  it("strict: marks, fillers and blanks between digits join them (4140, not 414 and 0)", () => {
+    for (const t of ["414\u034F0", "414\uFE0F0", "414\u06510", "414\u31640", "414\u06400", "414\u03320", "414\u20E30", "414\u115F0", "414\uFFA00", "414\u28000"]) {
+      expect(numbersIn(t), JSON.stringify(t)).toEqual(["4140"]);
+      expect(checkNumbers(`عمولتك ${t} ريال`, set("414", "0"), "strict"), JSON.stringify(t)).toEqual({ ok: false, unknown: ["4140"] });
+    }
+    expect(numbersIn("1\uFE0F\u20E38\uFE0F\u20E36\uFE0F\u20E30\uFE0F\u20E3")).toEqual(["1860"]);
+  });
+
+  it("strict: grand, roman numerals and letter-O zeros fail closed", () => {
+    for (const t of ["عمولتك 5 grand", "عمولتك XV ريال", "\u216B riyals", "XII riyals", "عمولتك 5OO ريال"]) {
+      expect(checkNumbers(t, set("5"), "strict"), t).toMatchObject({ ok: false });
+    }
+    expect(checkNumbers("I visited 5 customers", set("5"), "strict")).toEqual({ ok: true });
+    for (const t of ["عمولتك ضعف عمولتك اللي فاتت", "your commission is double", "you'll get twice"]) {
+      expect(checkNumbers(t, set(), "strict"), t).toMatchObject({ ok: false });
+    }
+  });
+
+  it("reads a scale glued to the end of a number word and number words after ف or ك", () => {
+    expect(numbersIn("عمولتك عشرينالف ريال")).toEqual(["20000"]);
+    for (const t of ["كعشرين ألف", "فعشرين ألف", "وكعشرين ألف", "فبعشرين ألف"]) expect(numbersIn(t), t).toEqual(["20000"]);
+    expect(checkNumbers("كتلات ريال", set(), "strict").ok).toBe(false);
+    expect(checkNumbers("فخمسة ريال", set(), "loose").ok).toBe(false);
+    expect(numbersIn("الكمية كويسة")).toEqual([]);
+  });
+
+  it("never reads 'one point five million' as five million", () => {
+    expect(numbersIn("one point five million")).not.toContain("5000000");
+    expect(checkNumbers("one point five million", set("1", "5", "5000000"), "strict").ok).toBe(false);
+    expect(numbersIn("1.5 million")).toEqual(["1.5", "1500000"]);
+  });
+
+  it("loose: the catalogs' currency and unit labels and common money and count words are units", () => {
+    for (const t of [
+      "هتكسب 5 د.إ", "هتكسب 5 د. إ", "هتكسب 5 ر.ق", "هتكسب 5 ج.م", "هتكسب 5 ج. م", "5 پاؤنڈ", "5 ڈالر", "5 عملاء", "5 عميل",
+      "5 outlets", "5 customers", "5 کسٹمر", "5 گاہک", "5 فلوس", "3 كاش", "3 دينار", "3 يورو", "3 euro", "3 eur", "3 كريتين",
+      "3 دسته", "3 باكو", "3 pieces", "3 bottles", "3 cans", "3 كانز", "3 فالمية", "3 pc", "3 grand", "3 مبلغ", "3 per-cent",
+    ]) {
+      expect(checkNumbers(t, set(), "loose"), t).toMatchObject({ ok: false });
+    }
+  });
+
+  it("loose: a unit word two words away on either side counts", () => {
+    for (const t of ["3 كمان ريال", "3 تقريبا ريال", "3 يعني ريال", "خمسة تقريبا ريال", "ريال كمان 3", "3 مرات المبلغ"]) {
+      expect(checkNumbers(t, set(), "loose"), t).toMatchObject({ ok: false });
+    }
+    expect(checkNumbers("جرّب 3 زيارات بكرة", set(), "loose")).toEqual({ ok: true });
+  });
+});
+
+describe("fix round 1: every currency and unit label of the catalogs is a unit word", () => {
+  // Reads the message catalogs in the test only (the domain may not import them), so a new
+  // currency or unit label that the constants in numbers.ts miss makes this test fail.
+  const labels: string[] = [];
+  for (const locale of ["ar", "en", "ur"]) {
+    const m = JSON.parse(readFileSync(`${process.cwd()}/src/i18n/messages/${locale}.json`, "utf8")) as {
+      currency: Record<string, string>;
+      home: { unit: Record<string, string> };
+      admin: { lines: { units: Record<string, string> }; focus: { units: Record<string, string> }; incentives: { units: Record<string, string> } };
+    };
+    labels.push(
+      ...Object.values(m.currency),
+      ...Object.values(m.home.unit),
+      ...Object.values(m.admin.lines.units),
+      ...Object.values(m.admin.focus.units),
+      ...Object.values(m.admin.incentives.units),
+    );
+  }
+  it.each([...new Set(labels)])("%s", (label) => {
+    expect(checkNumbers(`3 ${label}`, set(), "loose")).toMatchObject({ ok: false });
+    expect(checkNumbers(`${label} 3`, set(), "loose")).toMatchObject({ ok: false });
   });
 });

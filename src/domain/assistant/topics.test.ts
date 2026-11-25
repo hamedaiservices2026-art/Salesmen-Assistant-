@@ -54,7 +54,7 @@ describe("classifyTopic", () => {
     expect(classifyTopic("میرا ہدف")).toBe("standing");
   });
 
-  it("classifies tips and nothing else as loose", () => {
+  it("classifies tips", () => {
     expect(classifyTopic("ازاي ابيع أكتر؟")).toBe("tips");
     expect(classifyTopic("عايز نصيحة")).toBe("tips");
     expect(classifyTopic("any tips?")).toBe("tips");
@@ -77,9 +77,9 @@ describe("classifyTopic", () => {
 });
 
 describe("strictnessFor", () => {
-  it("is loose only for tips and other", () => {
+  it("is loose only for tips; other is strict (R80)", () => {
     const loose = TOPICS.filter((t) => strictnessFor(t) === "loose");
-    expect(loose).toEqual(["tips", "other"]);
+    expect(loose).toEqual(["tips"]);
   });
 
   it("is strict for a value that is not a topic", () => {
@@ -92,5 +92,67 @@ describe("isTopic", () => {
     expect(TOPICS.every(isTopic)).toBe(true);
     expect(isTopic("Commission")).toBe(false);
     expect(isTopic(3)).toBe(false);
+  });
+});
+
+describe("fix round 1 (R80): figure questions never become loose", () => {
+  it.each([
+    ["هقبض كام الشهر ده؟", "commission"],
+    ["How much will I make this month?", "commission"],
+    ["what's my payout?", "commission"],
+    ["مرتبي كام", "commission"],
+    ["راتبي كام", "commission"],
+    ["كمشن بتاعي كام", "commission"],
+    ["الكوميشن كام", "commission"],
+    ["الكومشن كام", "commission"],
+    ["كومشن", "commission"],
+    ["comission", "commission"],
+    ["commision", "commission"],
+    ["How much will I get paid? 9,999 right?", "commission"],
+    ["هقبض كام؟ 9,999 صح؟", "commission"],
+    ["ناقصني كام", "remaining"],
+    ["ناقصلي كام كرتونة", "remaining"],
+    ["كم بقي لي", "remaining"],
+    ["كم تبقى", "remaining"],
+    ["how much more do I need", "remaining"],
+    ["نسبتي كام؟", "standing"],
+    ["حققت كام؟", "standing"],
+    ["مبيعاتي كام", "standing"],
+    ["how many cases did I sell?", "standing"],
+    ["where am I", "standing"],
+    ["my rank", "standing"],
+    ["ترتيبي", "standing"],
+    ["targets", "standing"],
+    ["incentives", "incentive"],
+    ["bonuses", "incentive"],
+    ["مبيعاتي كام؟ ينفع؟ 9999", "standing"],
+  ] as const)("%s -> %s", (q, topic) => {
+    expect(classifyTopic(q)).toBe(topic);
+  });
+
+  it("a question with a figure interrogative and no keyword is strict other, never tips", () => {
+    for (const q of ["كم المبلغ اللي هاخده", "هاخد كام فلوس؟", "كم ربحي", "how much do I get", "ازاي ابيع؟ وهاخد كام؟", "tips? how much will I get", "کتنے پیسے ملیں گے"]) {
+      const t = classifyTopic(q);
+      expect(t, q).not.toBe("tips");
+      expect(strictnessFor(t), q).toBe("strict");
+    }
+  });
+
+  it("a figure interrogative puts the figure topics before policy", () => {
+    expect(classifyTopic("ينفع أعرف عمولتي كام؟")).toBe("commission");
+    expect(classifyTopic("ينفع أدي خصم كام؟")).toBe("policy");
+    expect(classifyTopic("ينفع أدي خصم 5%؟")).toBe("policy");
+  });
+
+  it("matches English keywords on whole words", () => {
+    expect(classifyTopic("learn")).toBe("other");
+    expect(classifyTopic("learning tips")).toBe("tips");
+    expect(classifyTopic("in return")).toBe("other");
+    expect(classifyTopic("returned")).toBe("other");
+    expect(classifyTopic("what is the return policy")).toBe("policy");
+    expect(classifyTopic("can I accept returns?")).toBe("policy");
+    expect(classifyTopic("I made a sale, tips?")).toBe("tips");
+    expect(classifyTopic("how much will I earn")).toBe("commission");
+    expect(classifyTopic("my earnings")).toBe("commission");
   });
 });

@@ -120,3 +120,23 @@ describe("plainText", () => {
     expect(plainText("a\uD800b", 1500)).toBe("a\uFFFDb");
   });
 });
+
+describe("fix round 1 (R80)", () => {
+  it("converts Eastern Arabic-Indic and Persian digits to Western digits", () => {
+    expect(plainText("باقي ١٬٨٦٠ كرتونة و ۳۸٪ و ٣٤٧٨٫٥٥", 1500)).toBe("باقي 1,860 كرتونة و 38٪ و 3478.55");
+  });
+
+  it("removes marks, fillers and blanks between two digits", () => {
+    for (const t of ["414\u034F0", "414\uFE0F0", "414\u06510", "414\u31640", "414\u06400", "414\u20E30", "414\uFFA00", "414\u28000"]) {
+      expect(plainText(t, 1500), JSON.stringify(t)).toBe("4140");
+    }
+    expect(plainText("شُكْرًا", 1500)).toBe("شُكْرًا");
+  });
+
+  it("removes mailto:, tel: and sms: addresses and ideographic-dot domains", () => {
+    for (const s of ["go mailto:a@evil.test now", "go tel:+1555 now", "go sms:+1555 now", "go evil\u3002com now", "go evil\uFF61com now"]) {
+      const out = plainText(s, 1500);
+      expect(out, s).toBe("go now");
+    }
+  });
+});

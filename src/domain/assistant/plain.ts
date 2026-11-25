@@ -2,6 +2,7 @@
 // addresses, markup or invisible characters can survive. The result is rendered as a React text node
 // only; this is defence in depth and keeps what the rep reads equal to what was checked. Pure, linear.
 import { stripInvisible } from "@/domain/ai/aliases";
+import { westernDigits } from "./numbers";
 
 const LINE_BREAKS = /\r\n?|[\v\f\u0085\u2028\u2029]/g;
 
@@ -63,7 +64,7 @@ function removeLinks(s: string): string {
   return out.replace(/\]\(/g, " ");
 }
 
-const SCRIPT_SCHEMES = /(?:javascript|vbscript|livescript|data|blob|file)[ ]*:\S*/gi;
+const SCRIPT_SCHEMES = /(?:javascript|vbscript|livescript|data|blob|file|mailto|tel|sms|callto|intent)[ ]*:\S*/gi;
 // Any scheme (`http`, `https`, `hxxp`, `ftp`, …), with spaces around `:` or `//` and the
 // percent-encoded forms (`http%3A%2F%2F`). The scheme is at most 32 characters, so the scan stays linear.
 const SCHEME_URL = /[a-z][a-z0-9+.-]{0,31}[ ]*(?::|%3a)[ ]*(?:\/|%2f)[ ]*(?:\/|%2f)\S*/gi;
@@ -79,6 +80,8 @@ function removeAddresses(s: string): string {
     .replace(SCHEME_URL, " ")
     .replace(PROTOCOL_RELATIVE, "$1 ")
     .replace(WWW, " ")
+    // An ideographic or half-width full stop between two letters is a dot to a domain (`evil\u3002com`).
+    .replace(/(?<=[a-z0-9])[\u3002\uFF61](?=[a-z0-9])/gi, ".")
     .replace(BARE_DOMAIN, " ");
 }
 
@@ -89,7 +92,7 @@ function removeEmptyBrackets(s: string): string {
 /** One cleaning pass. Each step can uncover what an earlier one hid (`h<x>ttp://`, `h_ttp://`), so passes repeat until nothing changes. */
 function pass(s: string): string {
   // Addresses are removed again last: emptying a bracket can join `http( )://` into an address.
-  return removeAddresses(removeEmptyBrackets(removeAddresses(removeLinks(removeTags(removeEmphasis(removeAngles(removeInvisible(s.normalize("NFKC")))))))));
+  return removeAddresses(removeEmptyBrackets(removeAddresses(removeLinks(removeTags(removeEmphasis(removeAngles(westernDigits(removeInvisible(s.normalize("NFKC"))))))))));
 }
 
 function tidy(s: string): string {
@@ -102,7 +105,9 @@ function tidy(s: string): string {
 }
 
 /**
- * The answer as plain text: NFKC; control, bidi and zero-width characters removed; anything between
+ * The answer as plain text: NFKC; control, bidi and zero-width characters removed; every digit made
+ * Western and marks or fillers between two digits removed (`westernDigits`, the same as the number
+ * check, R80); anything between
  * `<` and `>` removed; markdown emphasis, heading and quote markers removed; the tags `D1`, `S2`, `F3`,
  * `I1` (also `D1/S2`, `D1 S2`) removed before the number check sees the text (R57); markdown links and
  * images reduced to their text; addresses removed (any `scheme://`, spaced or percent-encoded,

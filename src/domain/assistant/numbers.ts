@@ -20,24 +20,30 @@ const MONEY = set([
   "ريال", "ريالات", "ريالا", "ريالين", "رس", "هلله", "هللات", "هلل", "جنيه", "جنيهات", "جنيها", "درهم", "دراهم", "دولار", "دولارات",
   "sar", "sr", "riyal", "riyals", "rial", "rials", "halala", "halalas", "aed", "egp", "usd", "qar", "dollar", "dollars", "dirham", "dirhams", "pound", "pounds",
   "روپے", "روپیہ", "روپیے", "روپئے", "rupee", "rupees", "rs", "pkr", "inr",
+  // R80: the catalogs' currency labels (ar `ر.س` `د.إ` `ر.ق` `ج.م`, ur `ریال` `درہم` `پاؤنڈ` `ڈالر`; the
+  // test reads the catalogs) and other money words.
+  "پاؤنڈ", "ڈالر", "دينار", "دنانير", "يورو", "euro", "euros", "eur", "فلوس", "كاش", "مبلغ", "رقم", "cash", "money", "amount",
 ]);
 /** Count units (cases, cartons, cans, boxes). */
 const UNITS = set([
   "كرتونه", "كراتين", "كرتون", "كرتونات", "كرتونتين", "صندوق", "صناديق", "علبه", "علب", "حبه", "حبات",
   "case", "cases", "carton", "cartons", "ctn", "ctns", "box", "boxes", "pack", "packs", "unit", "units",
   "کارٹن", "ڈبہ", "ڈبے", "پیٹی",
+  // R80: the catalogs' unit labels (cases, customers/outlets) and other count words.
+  "عميل", "عملاء", "outlet", "outlets", "customer", "customers", "کسٹمر", "گاہک", "کیس", "کیسز",
+  "قطعه", "قطع", "piece", "pieces", "pcs", "pc", "can", "cans", "bottle", "bottles", "كانز", "كريته", "كريتات", "كريتين", "دسته", "باكو", "باكت", "شوال", "شده",
 ]);
 /** Percent words (`%` signs are found as characters). */
-const PERCENT_WORDS = set(["percent", "pct", "percentage", "نسبه", "بالميه", "بالمائه", "بالمئه", "فیصد", "%"]);
+const PERCENT_WORDS = set(["percent", "pct", "percentage", "نسبه", "بالميه", "بالمائه", "بالمئه", "فالميه", "فالمائه", "فالمئه", "فیصد", "%"]);
 /** Two words that together mean a percent or a money unit (`في المية`, `per cent`, `ر.س`, `S.R.`). */
-const COMPOUNDS = new Set(["فيالميه", "فيالمائه", "فيالمئه", "percent", "رس", "sr"].map(N));
+const COMPOUNDS = new Set(["فيالميه", "فيالمائه", "فيالمئه", "percent", "رس", "sr", "دإ", "رق", "جم"].map(N));
 /** Scale words the spoken-number reader reads (`ألف`, `مليون`, …). */
 const READ_SCALES = set(["الف", "الفا", "الاف", "الفين", "تلاف", "مليون", "مليونين", "ملايين", "thousand", "million"]);
 /** Scale and count words the reader does not read; any of them in a strict answer fails it. */
 const UNREAD_SCALES = set([
   "مليار", "مليارات", "مليارين", "بليون", "بلايين", "ترليون", "تريليون", "عشرات", "مئات", "ميات", "الوف",
   "billion", "billions", "trillion", "trillions", "dozen", "dozens", "hundreds", "thousands", "millions", "lakh", "lakhs", "crore", "crores",
-  "ہزار", "لاکھ", "کروڑ", "ارب", "کھرب",
+  "ہزار", "لاکھ", "کروڑ", "ارب", "کھرب", "grand", "grands",
 ]);
 /** Scale abbreviations glued to or right after digits (`5k`, `3 bn`). */
 const SCALE_ABBREVIATIONS = new Set(["k", "m", "mn", "bn", "b"]);
@@ -49,6 +55,8 @@ const URDU_NUMBERS = set([
   "تین", "چار", "پانچ", "چھ", "سات", "آٹھ", "نو", "دس", "گیارہ", "بارہ", "تیرہ", "چودہ", "پندرہ", "سولہ", "سترہ", "اٹھارہ", "انیس",
   "بیس", "تیس", "چالیس", "پچاس", "ساٹھ", "ستر", "نوے", "سو",
 ]);
+/** Multipliers (`ضعف عمولتك`, `double`, `twice`): a figure computed from another one; unread in a strict answer. */
+const MULTIPLIERS = set(["ضعف", "ضعفين", "اضعاف", "double", "twice", "triple", "thrice"]);
 /** Fraction words: alone they are ordinary words too (`نص` is also "text"), so they count only near a number or a unit. */
 const FRACTIONS = set(["نص", "نصف", "ربع", "ربعين", "ارباع", "ثلث", "ثلثين", "تلتين", "half", "quarter", "quarters", "third", "thirds"]);
 
@@ -56,8 +64,14 @@ const FRACTIONS = set(["نص", "نصف", "ربع", "ربعين", "ارباع", "
 const UNIT_LIKE: ReadonlySet<string> = new Set([...MONEY, ...UNITS, ...PERCENT_WORDS, ...READ_SCALES, ...UNREAD_SCALES, ...SCALE_ABBREVIATIONS, "$"]);
 const SCALES: ReadonlySet<string> = new Set([...READ_SCALES, ...UNREAD_SCALES]);
 
-/** Arabic prefixes a unit or number word may carry (`بريال`, `والكراتين`, `بخمسة`); longest first. */
-const PREFIXES = ["وبال", "وال", "بال", "لل", "ال", "وب", "ول", "و", "ب", "ل"].map(N);
+/** Arabic prefixes a unit or number word may carry (`بريال`, `والكراتين`, `بخمسة`, `كعشرين`); longest first. */
+const PREFIXES = ["وبال", "وال", "بال", "فال", "كال", "لل", "ال", "وب", "ول", "وك", "فب", "و", "ب", "ل", "ف", "ك"].map(N);
+/** After a `ف` or `ك` prefix a hundred word is not read: `كمية` is "quantity", not "like a hundred". */
+const HUNDRED_AFTER_FK = set(["مية", "ميه", "مائة", "مئة", "ماية", "ميت"]);
+/** Words that make the number after them a decimal part (`one point five million`): that number is never read. */
+const POINT_WORDS = set(["point", "فاصله", "فاصل", "وفاصله", "نقطه"]);
+/** Scale words that may be glued to the end of a number word (`عشرينالف`). */
+const GLUED_SCALES = ["الف", "الاف", "مليون", "ملايين"].map(N);
 const WAW = N("و");
 
 function withoutPrefixes(word: string): string[] {
@@ -106,11 +120,26 @@ function asciiDigit(c: string): string {
  * one number, as a person sees it), every decimal digit made Western, `٫` and `٬` made `.` and `,`.
  */
 function prepare(text: string): string {
-  return stripInvisible(text.toWellFormed().normalize("NFKC").replace(WHITESPACE, " "))
-    .replace(JOINERS, "")
-    .replace(ANY_DIGIT, asciiDigit)
+  return westernDigits(stripInvisible(text.toWellFormed().normalize("NFKC").replace(WHITESPACE, " ")).replace(JOINERS, ""))
     .replace(/٫/g, ".")
     .replace(/٬/g, ",");
+}
+
+// Combining marks, tatweel, Hangul fillers and the braille blank between two digits (`414\u034F0`,
+// `414\uFE0F0`, `414\u06510`, `414\u31640`): removed, so the digits read as one number, as they show (R80).
+const BETWEEN_DIGITS = /(?<=[0-9])[\p{M}\u0640\u115F\u1160\u3164\uFFA0\u2800]+(?=[0-9])/gu;
+
+/**
+ * Every decimal digit of any script made Western (`٤١٤`, `۴۱۴`, Devanagari, …), marks and fillers
+ * between two digits removed, and `٫`/`٬` between two digits made `.`/`,`. Used by `plainText` too,
+ * so the text the rep reads is the text the numbers were checked on (R80, Western digits everywhere).
+ */
+export function westernDigits(text: string): string {
+  return text
+    .replace(ANY_DIGIT, asciiDigit)
+    .replace(BETWEEN_DIGITS, "")
+    .replace(/(?<=[0-9])\u066B(?=[0-9])/g, ".")
+    .replace(/(?<=[0-9])\u066C(?=[0-9])/g, ",");
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -139,14 +168,21 @@ function readDigitsAt(s: string, i: number): number {
   return i;
 }
 
-/** A comma group: digits joined by `,` between two digits. Returns its chunks and where it ends. */
-function readCommaGroup(s: string, i: number): { chunks: string[]; end: number } {
+/** Apostrophes some locales group with (`1'860`, `1\u2019860`): never read as a grouping (R80). */
+const APOSTROPHES = new Set(["'", "\u2019", "\u2018", "\u02BC", "`", "\u00B4"]);
+
+/** A comma group: digits joined by `,` (or an apostrophe, which makes it `odd`) between two digits. */
+function readCommaGroup(s: string, i: number): { chunks: string[]; end: number; odd: boolean } {
   const chunks: string[] = [];
+  let odd = false;
   for (;;) {
     const e = readDigitsAt(s, i);
     chunks.push(s.slice(i, e));
-    if (s[e] === "," && isDigit(s[e + 1])) i = e + 1;
-    else return { chunks, end: e };
+    const sep = s[e];
+    if (sep !== undefined && (sep === "," || APOSTROPHES.has(sep)) && isDigit(s[e + 1])) {
+      odd ||= sep !== ",";
+      i = e + 1;
+    } else return { chunks, end: e, odd };
   }
 }
 
@@ -171,8 +207,8 @@ function isMinusAt(s: string, k: number): boolean {
 
 /**
  * Every number written in digits. A thousands separator (`,`, or one space before exactly three
- * digits) follows `parseAmount`'s grouping rule; a grouping that breaks it gives each chunk on its own
- * (`1,86` → 1 and 86), never a guess. `.` then digits is a decimal part; a second one (`14.11.2026`,
+ * digits) follows `parseAmount`'s grouping rule; a grouping that breaks it, or an apostrophe between
+ * digits, gives ONE raw token, the text as written (`1,86`, `1,5`, `1'860`; R80), never a guess. `.` then digits is a decimal part; a second one (`14.11.2026`,
  * `1.2.3.4`) makes every chunk its own number. `.5` with no digit before is 0.5. A minus sign in front
  * is kept. Ranges, fractions, times and dates give their parts (`10-20`, `1/2`, `10:30`).
  */
@@ -194,10 +230,11 @@ function digitNumbers(s: string): Occurrence[] {
     // Comma groups, joined by a single space only when the next group is exactly three digits.
     const first = readCommaGroup(s, i);
     const chunks = [...first.chunks];
+    const odd = first.odd;
     let end = first.end;
     while (s[end] === " " && isDigit(s[end + 1])) {
       const next = readCommaGroup(s, end + 1);
-      if (next.chunks.length !== 1 || next.chunks[0]!.length !== 3) break;
+      if (next.odd || next.chunks.length !== 1 || next.chunks[0]!.length !== 3) break;
       chunks.push(next.chunks[0]!);
       end = next.end;
     }
@@ -209,14 +246,13 @@ function digitNumbers(s: string): Occurrence[] {
     }
     const negative = start > 0 && isMinusAt(s, start - 1);
     const at = (canon: string) => out.push({ canon, start: negative ? start - 1 : start, end });
-    const grouped = validGrouping(chunks);
-    if (fractions.length <= 1 && grouped) {
-      at(canonical(chunks.join(""), fractions[0] ?? "", negative));
+    const grouped = !odd && validGrouping(chunks);
+    if (!grouped) {
+      at(s.slice(negative ? start - 1 : start, end).replace("\u2212", "-"));
     } else if (fractions.length <= 1) {
-      chunks.forEach((c, n) => at(canonical(c, n === chunks.length - 1 ? (fractions[0] ?? "") : "", negative && n === 0)));
+      at(canonical(chunks.join(""), fractions[0] ?? "", negative));
     } else {
-      if (grouped) at(canonical(chunks.join(""), "", negative));
-      else chunks.forEach((c, n) => at(canonical(c, "", negative && n === 0)));
+      at(canonical(chunks.join(""), "", negative));
       for (const f of fractions) at(canonical(f, "", false));
     }
     i = end;
@@ -271,17 +307,28 @@ function onlyGap(s: string, from: number, to: number): boolean {
   return true;
 }
 
-type ChainInfo = { members: Occurrence[]; unitNear: boolean; scaleAfter: string | null };
+type ChainInfo = { members: Occurrence[]; unitNear: boolean; scaleAfter: string | null; lookalike: boolean };
 
 function chainInfo(s: string, members: Occurrence[]): ChainInfo {
   const right = side(s, members[members.length - 1]!.end, 1);
   const left = side(s, members[0]!.start, -1);
   const [r1, r2] = right.words;
   const [l1, l2] = left.words;
+  // Two words on each side (R80): `3 تقريبا ريال`, `ريال كمان 3`.
   const unitNear =
-    right.unit || left.unit || right.glued || isUnitLike(r1) || isUnitLike(l1) || isCompound(r1, r2) || isCompound(l2, l1);
+    right.unit ||
+    left.unit ||
+    right.glued ||
+    isUnitLike(r1) ||
+    isUnitLike(r2) ||
+    isUnitLike(l1) ||
+    isUnitLike(l2) ||
+    isCompound(r1, r2) ||
+    isCompound(l2, l1);
   const scaleAfter = r1 !== undefined && (SCALE_ABBREVIATIONS.has(r1) || withoutPrefixes(r1).some((w) => UNREAD_SCALES.has(w))) ? r1 : null;
-  return { members, unitNear, scaleAfter };
+  // Latin `O`/`o`, `l`, `I` glued after a digit may be a zero or a one (`5OO`): never read as a number.
+  const lookalike = right.glued && r1 !== undefined && /^[oil]/.test(r1);
+  return { members, unitNear, scaleAfter, lookalike };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -289,7 +336,7 @@ function chainInfo(s: string, members: Occurrence[]): ChainInfo {
 
 type WordNumber = { canon: string; value: number };
 type Suspect = { text: string; unitNear: boolean };
-type WordScan = { big: WordNumber[]; smallNearUnit: WordNumber[]; suspects: Suspect[] };
+type WordScan = { big: WordNumber[]; small: WordNumber[]; smallNearUnit: WordNumber[]; suspects: Suspect[] };
 
 const PERCENT_TAILS = set(["الميه", "المائه", "المئه"]);
 const IN = N("في");
@@ -307,7 +354,7 @@ function hasDigit(t: string): boolean {
  */
 function wordTokens(prepared: string): string[] {
   const spaced = prepared.replace(PERCENT_OR_CURRENCY, (c) => (CURRENCY.test(c) ? " $ " : " % "));
-  const tokens = spokenTokens(spaced);
+  const tokens = splitGluedScales(spokenTokens(spaced));
   for (let k = 0; k < tokens.length; k++) {
     const t = tokens[k]!;
     if (t === IN && PERCENT_TAILS.has(tokens[k + 1] ?? "")) {
@@ -323,8 +370,10 @@ function wordTokens(prepared: string): string[] {
     for (const p of PREFIXES) {
       if (p === WAW || t.length <= p.length || !t.startsWith(p)) continue;
       const rest = t.slice(p.length);
+      if ((p.includes("ف") || p.includes("ك")) && HUNDRED_AFTER_FK.has(rest)) continue;
       if (rest !== WAW && isNumberToken(rest)) {
-        tokens[k] = p.startsWith(WAW) ? WAW + rest : rest;
+        // The `و` stays a joiner only after a number (`مية وبخمسين`); elsewhere it starts a new phrase.
+        tokens[k] = p.startsWith(WAW) && isNumberish(tokens[k - 1]) ? WAW + rest : rest;
         break;
       }
     }
@@ -332,10 +381,33 @@ function wordTokens(prepared: string): string[] {
   return tokens;
 }
 
+/** `عشرينالف` → `عشرين`, `الف` when the head is a number word (R80). */
+function splitGluedScales(tokens: string[]): string[] {
+  const out: string[] = [];
+  for (const t of tokens) {
+    let split = false;
+    if (!isNumberToken(t)) {
+      for (const scale of GLUED_SCALES) {
+        const head = t.slice(0, t.length - scale.length);
+        if (t.endsWith(scale) && head !== "" && head !== WAW && isNumberToken(head) && !hasDigit(head)) {
+          out.push(head, scale);
+          split = true;
+          break;
+        }
+      }
+    }
+    if (!split) out.push(t);
+  }
+  return out;
+}
+
+/** A unit word up to two tokens away on either side (R80: `خمسة تقريبا ريال`), or a two-token unit. */
 function tokenNearUnit(tokens: string[], start: number, end: number): boolean {
   return (
     isUnitLike(tokens[start - 1]) ||
+    isUnitLike(tokens[start - 2]) ||
     isUnitLike(tokens[end]) ||
+    isUnitLike(tokens[end + 1]) ||
     isCompound(tokens[end], tokens[end + 1]) ||
     isCompound(tokens[start - 2], tokens[start - 1])
   );
@@ -353,16 +425,27 @@ function scanWords(prepared: string): WordScan {
   const tokens = wordTokens(prepared);
   const { numbers, bad } = scanNumbers(tokens);
   const big: WordNumber[] = [];
+  const small: WordNumber[] = [];
   const smallNearUnit: WordNumber[] = [];
+  const suspects: Suspect[] = [];
   for (const n of numbers) {
     // A lone digit token is read (better, with its exact decimals) by `digitNumbers`.
     if (n.digits && n.end - n.start === 1) continue;
+    // `one point five million`: the number after a point word is a decimal part; never read (R80).
+    if (n.start > 0 && POINT_WORDS.has(tokens[n.start - 1]!)) {
+      const slice = tokens.slice(n.start - 1, n.end);
+      suspects.push({ text: slice.join(" "), unitNear: true });
+      continue;
+    }
     const value = n.value + (n.half ? 0.5 : 0);
     const canon = n.half ? `${n.value}.5` : String(n.value);
     if (value >= 11) big.push({ canon, value });
-    else if (!n.digits && tokenNearUnit(tokens, n.start, n.end)) smallNearUnit.push({ canon, value });
+    else if (!n.digits && value >= 2) {
+      // `واحد` and `one` are everyday words ("someone", "the one"): exempt (R80).
+      small.push({ canon, value });
+      if (tokenNearUnit(tokens, n.start, n.end)) smallNearUnit.push({ canon, value });
+    }
   }
-  const suspects: Suspect[] = [];
   for (const b of bad) {
     const slice = tokens.slice(b.start, b.end);
     // Scale words stay: a bare `آلاف` is an unread number; money, unit and percent words do not.
@@ -377,9 +460,11 @@ function scanWords(prepared: string): WordScan {
   for (let k = 0; k < tokens.length; k++) {
     const t = tokens[k]!;
     const scale = withoutPrefixes(t).some((w) => UNREAD_SCALES.has(w));
-    if (scale || URDU_NUMBERS.has(t)) suspects.push({ text: t, unitNear: scale || tokenNearUnit(tokens, k, k + 1) });
+    if (scale || URDU_NUMBERS.has(t) || withoutPrefixes(t).some((w) => MULTIPLIERS.has(w))) {
+      suspects.push({ text: t, unitNear: scale || tokenNearUnit(tokens, k, k + 1) });
+    }
   }
-  return { big, smallNearUnit, suspects };
+  return { big, small, smallNearUnit, suspects };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -402,6 +487,13 @@ export function numbersIn(text: string): string[] {
 }
 
 const TOLERATED = /^(?:\d|10)$/;
+const ROMAN_CANDIDATE = /\b[IVXLCDM]{2,}\b/g;
+const ROMAN = /^M{0,3}(?:CM|CD|D?C{0,3})(?:XC|XL|L?X{0,3})(?:IX|IV|V?I{0,3})$/;
+
+/** Upper-case roman numerals of two letters or more (`XV`, `XII`, and `\u216B` after NFKC): unread numbers (R80). */
+function romanNumerals(s: string): string[] {
+  return [...s.matchAll(ROMAN_CANDIDATE)].map((m) => m[0]).filter((w) => ROMAN.test(w));
+}
 
 /**
  * Strict: every number of the answer must be in `allowed`, and any number-like word the reader cannot
@@ -423,10 +515,13 @@ export function checkNumbers(answer: string, allowed: ReadonlySet<string>, mode:
       if (allowed.has(o.canon)) continue;
       if (strict || info.unitNear || !TOLERATED.test(o.canon)) unknown.push(o.canon);
     }
-    if (strict && info.scaleAfter !== null) unknown.push(`${info.members[info.members.length - 1]!.canon} ${info.scaleAfter}`);
+    const last = info.members[info.members.length - 1]!.canon;
+    if (strict && info.scaleAfter !== null) unknown.push(`${last} ${info.scaleAfter}`);
+    if (strict && info.lookalike) unknown.push(`${last}…`);
   }
   const words = scanWords(s);
-  for (const w of [...words.big, ...words.smallNearUnit]) if (!allowed.has(w.canon)) unknown.push(w.canon);
+  for (const w of [...words.big, ...(strict ? words.small : words.smallNearUnit)]) if (!allowed.has(w.canon)) unknown.push(w.canon);
   for (const sus of words.suspects) if (strict || sus.unitNear) unknown.push(sus.text);
+  if (strict) for (const roman of romanNumerals(s)) unknown.push(roman);
   return unknown.length === 0 ? { ok: true } : { ok: false, unknown: unique(unknown) };
 }

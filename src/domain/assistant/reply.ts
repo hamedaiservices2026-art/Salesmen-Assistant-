@@ -50,8 +50,8 @@ function parse(raw: unknown): z.infer<typeof AnswerSchema> | null {
  * after `plainText` → `not_in_documents` for `policy`, else `no_answer`. Citations of sections that were
  * not given are dropped (and repeats); a `policy` answer with none left → `not_in_documents`. The text
  * is `plainText(answer, 1500)` (tags removed first, R57), and its numbers must be in: the facts; the
- * question's numbers only for loose topics and `policy` (R57: a strict figure topic accepts facts only);
- * for `policy` the numbers of the cited sections. Incentive texts reach `factNumbers` through the
+ * question's numbers only for the loose topic `tips`; for `policy` the numbers of the cited sections
+ * (R57 as amended by R80: no question numbers for any strict topic, policy and `other` included). Incentive texts reach `factNumbers` through the
  * caller. A number outside that set, under `strictnessFor(topic)` → `unverified_numbers`.
  */
 export function judgeReply(raw: unknown, input: JudgeInput): Verdict {
@@ -76,7 +76,8 @@ export function judgeReply(raw: unknown, input: JudgeInput): Verdict {
 
   const mode = strictnessFor(input.topic);
   const allowed = new Set(input.factNumbers);
-  if (mode === "loose" || policy) for (const n of numbersIn(input.question)) allowed.add(n);
+  // R80: only the loose topic (`tips`) may repeat the question's numbers; policy has its cited sections.
+  if (mode === "loose") for (const n of numbersIn(input.question)) allowed.add(n);
   if (policy) {
     for (const key of seen) for (const n of input.sectionNumbers.get(key) ?? []) allowed.add(n);
   }
