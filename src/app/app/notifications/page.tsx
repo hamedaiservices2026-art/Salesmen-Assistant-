@@ -2,7 +2,9 @@ import { after } from "next/server";
 import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
 import { Megaphone } from "lucide-react";
+import { explainHref, explainOffered } from "@/domain/assistant/explain";
 import type { Locale } from "@/i18n/config";
+import { aiStatus } from "@/server/ai/consent";
 import { requireCtx } from "@/server/auth/guard";
 import { LIST_MAX, listNotifications, markAllRead } from "@/server/repos/notifications";
 import { AppHeader } from "@/ui/components/AppHeader";
@@ -16,7 +18,9 @@ import { INTL_TAG } from "@/ui/intl-tag";
 export default async function NotificationsPage() {
   const ctx = await requireCtx();
   const [t, home, locale] = await Promise.all([getTranslations("notifications"), getTranslations("home"), getLocale()]);
-  const items = await listNotifications(ctx);
+  const [items, chat] = await Promise.all([listNotifications(ctx), aiStatus(ctx, "chat")]);
+  // "Explain simply" is offered when the assistant would answer (or would after the notice is accepted).
+  const canExplain = explainOffered(chat);
   const unreadIds = items.filter((n) => !n.read).map((n) => n.id);
   // A full list may hide older unread ones: they are marked too, so the bell clears.
   const upTo = items.length >= LIST_MAX ? items[items.length - 1]!.createdAt : undefined;
@@ -61,12 +65,22 @@ export default async function NotificationsPage() {
               <bdi>{n.title}</bdi>
             </h2>
             <p className="m-0 whitespace-pre-line text-[14.5px] leading-relaxed text-ink">{n.body}</p>
-            <Link
-              href="/app/commission"
-              className="flex min-h-11 items-center justify-center rounded-xl border border-brand bg-white px-4 text-[14.5px] font-bold text-brand no-underline hover:bg-brand-tint focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-            >
-              {t("learnMore")}
-            </Link>
+            <div className="flex flex-wrap gap-2">
+              {canExplain && explainHref(n.id) !== null && (
+                <Link
+                  href={explainHref(n.id)!}
+                  className="flex min-h-11 min-w-40 flex-1 items-center justify-center rounded-xl border-0 bg-brand px-4 py-2 text-center text-[14.5px] font-bold text-white no-underline hover:bg-brand-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+                >
+                  {t("explain")}
+                </Link>
+              )}
+              <Link
+                href="/app/commission"
+                className="flex min-h-11 min-w-40 flex-1 items-center justify-center rounded-xl border border-brand bg-white px-4 py-2 text-center text-[14.5px] font-bold text-brand no-underline hover:bg-brand-tint focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+              >
+                {t("learnMore")}
+              </Link>
+            </div>
           </article>
         ))}
       </main>

@@ -1,4 +1,5 @@
 import { getLocale, getTranslations } from "next-intl/server";
+import { isNotificationId } from "@/domain/assistant/explain";
 import type { Locale } from "@/i18n/config";
 import { requireCtx } from "@/server/auth/guard";
 import { AI_NOTICE_VERSION } from "@/server/ai/availability";
@@ -14,8 +15,6 @@ import { Chat } from "./chat";
 // The assistant's server action runs on this page: provider calls need up to 60 s (R33).
 export const maxDuration = 60;
 
-/** A notification id as `?explain=` carries it. */
-const NOTIFICATION_ID = /^[A-Za-z0-9_-]{1,64}$/;
 /** Incentive notices newer than this are shown at the top. */
 const INCENTIVE_DAYS = 14;
 const INCENTIVES_SHOWN = 2;
@@ -31,7 +30,7 @@ export default async function AssistantPage({ searchParams }: { searchParams: Pr
     loadPolicySections(ctx),
   ]);
   const requested = Array.isArray(params.explain) ? params.explain[0] : params.explain;
-  const explainId = requested && NOTIFICATION_ID.test(requested) ? requested : null;
+  const explainId = isNotificationId(requested) ? requested : null;
 
   // "Last 14 days" counts from today in the company's time zone (the demo date override applies).
   const since = new Date(`${currentDay(ctx.timeZone)}T00:00:00Z`).getTime() - INCENTIVE_DAYS * 86_400_000;

@@ -191,15 +191,17 @@ async function store(ctx: Ctx, now: Date, question: string, answer: { text: stri
 export async function ask(ctx: Ctx, input: AskInput, opts: AskOpts = {}): Promise<AskResult> {
   assertRole(ctx, ["rep", "supervisor"]);
   assertOwnContext(ctx);
-  const q = cleanQuestion(input?.question);
+  const explain = input?.explain;
+  // An explain request carries no wording from the browser: the question is written below from the
+  // catalog and the incentive's title.
+  const q = explain ? ({ ok: true, text: "" } as const) : cleanQuestion(input?.question);
   if (!q.ok) return { ok: false, reason: q.reason };
-  const question = q.text;
+  let question = q.text;
 
   const now = opts.now ?? new Date();
   const today = opts.today ?? todayIn(ctx.timeZone, now);
   const config = opts.config ?? readAiConfig(process.env);
   const t = opts.t ?? catalogTranslator(ctx.locale);
-  const explain = input.explain;
   const topic: Topic = explain ? "incentive" : classifyTopic(question);
 
   await deleteOwnExpired(ctx, now);
@@ -226,6 +228,13 @@ export async function ask(ctx: Ctx, input: AskInput, opts: AskOpts = {}): Promis
     ...(explain ? { only: { notificationId: explain.notificationId } } : {}),
   });
   if (c === null) return { ok: false, reason: "failed" };
+  if (explain) {
+    // Stored and sent as the rep's turn: the catalog wording, then the title as the company wrote it
+    // (cleaned, cut to the question limit). The title is data; it is cleaned again at the boundary below.
+    const title = c.incentives[0]?.title ?? "";
+    const worded = cleanQuestion(`${t("assistant.explainQuestion")} ${title}`);
+    question = worded.ok ? worded.text : Array.from(`${t("assistant.explainQuestion")} ${title}`).slice(0, QUESTION_MAX).join("").trim();
+  }
 
   const nonce = newNonce();
   const { system, contextMessage } = assistantPrompt(c, ctx.locale, nonce);

@@ -2,15 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { getTranslations } from "next-intl/server";
+import { isNotificationId } from "@/domain/assistant/explain";
 import { requireCtx } from "@/server/auth/guard";
 import { ask } from "@/server/assistant/ask";
 import { clearConversation } from "@/server/assistant/conversation";
 import type { ChatReply } from "@/ui/chat-state";
 
 // `after()` is not called here yet: Task 20 adds the maintenance run to `askAction` (R38).
-
-/** A notification id as the page puts it in the address; anything else is not an id. */
-const NOTIFICATION_ID = /^[A-Za-z0-9_-]{1,64}$/;
 
 /**
  * One question to the assistant, for the signed-in rep only (the session decides who; nothing about
@@ -22,7 +20,7 @@ const NOTIFICATION_ID = /^[A-Za-z0-9_-]{1,64}$/;
 export async function askAction(question: string, explain?: string): Promise<ChatReply> {
   const ctx = await requireCtx();
   if (typeof question !== "string") return { ok: false, reason: "empty" };
-  if (explain !== undefined && (typeof explain !== "string" || !NOTIFICATION_ID.test(explain))) return { ok: false, reason: "failed" };
+  if (explain !== undefined && !isNotificationId(explain)) return { ok: false, reason: "failed" };
   try {
     const tr = await getTranslations({ locale: ctx.locale });
     const t = (key: string, values?: Record<string, string | number>) => tr(key as never, values as never);
