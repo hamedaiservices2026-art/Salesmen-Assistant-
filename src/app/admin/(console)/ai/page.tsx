@@ -1,4 +1,4 @@
-import { Info, ListChecks } from "lucide-react";
+import { Gauge, Info, ListChecks } from "lucide-react";
 import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
 import { getCompanyAi } from "@/server/ai/consent";
@@ -48,6 +48,15 @@ export default async function AdminAiPage() {
           <Link href="/admin/ai/mapping" className={secondaryButton}>
             <ListChecks aria-hidden="true" size={18} strokeWidth={2} />
             {t("mappingLink.open")}
+          </Link>
+        </div>
+      </Card>
+      <Card title={t("usageLink.title")}>
+        <div className={`flex flex-wrap items-center justify-between gap-4 px-5 pb-5 ${lead}`}>
+          <p className="m-0 max-w-[60ch] text-[15px] text-ink-2">{t("usageLink.body")}</p>
+          <Link href="/admin/ai/usage" className={secondaryButton}>
+            <Gauge aria-hidden="true" size={18} strokeWidth={2} />
+            {t("usageLink.open")}
           </Link>
         </div>
       </Card>

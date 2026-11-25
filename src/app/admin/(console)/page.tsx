@@ -4,10 +4,12 @@ import { getLocale, getTranslations } from "next-intl/server";
 import { Plus, Upload } from "lucide-react";
 import { formatAmount } from "@/domain/money";
 import type { Locale } from "@/i18n/config";
+import { getAskSummary } from "@/server/admin/ask-summary";
 import { getOverview } from "@/server/admin/overview";
 import { requireRole } from "@/server/auth/guard";
 import { getCompanyPrefs } from "@/server/repos/company";
 import { currentDay } from "@/server/today";
+import { AskCard } from "@/ui/admin/AskCard";
 import { Card } from "@/ui/admin/Card";
 import { PageHeader } from "@/ui/admin/PageHeader";
 import { RepsTable } from "@/ui/admin/RepsTable";
@@ -31,6 +33,7 @@ export default async function AdminOverviewPage() {
   const month = Number(today.slice(5, 7));
   // The language in use (the cookie) names the lines and incentives, as in the console layout.
   const overview = await getOverview({ ...ctx, locale }, { year, month, today });
+  const ask = await getAskSummary(ctx, { now: new Date() });
   const tag = `${INTL_TAG[locale]}-u-nu-latn`;
   const monthName = new Intl.DateTimeFormat(tag, { month: "long", year: "numeric", timeZone: "UTC" }).format(
     new Date(Date.UTC(year, month - 1, 1)),
@@ -110,6 +113,7 @@ export default async function AdminOverviewPage() {
             )}
             <p className="m-0 px-5 text-[12.5px] text-muted">{t("incentives.note")}</p>
           </Card>
+          <AskCard summary={ask} lead={locale === "ur" ? "leading-[2.2]" : ""} />
           <Card title={t("upload.title")} className="flex flex-col gap-1.5 pb-4">
             {up ? (
               <div className="flex flex-col gap-1.5 px-5">

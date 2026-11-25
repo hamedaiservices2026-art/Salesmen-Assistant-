@@ -1330,6 +1330,69 @@
         "title": "Report labels",
         "body": "Tell the reader how your sales program names each box in the end-of-day report.",
         "open": "Open"
+      },
+      "usageLink": {
+        "title": "Usage and limits",
+        "body": "See today's photos, voice notes and questions against the daily limits, and the last 14 days.",
+        "open": "Open"
+      },
+      "usage": {
+        "title": "Usage and limits",
+        "subtitle": "The whole company's use, without names",
+        "back": "Back",
+        "stateTitle": "Service status",
+        "today": {
+          "title": "Today against the daily limit",
+          "of": "{used} of {limit}",
+          "meter": "{kind}: {used} of {limit}",
+          "note": "This limit is for the whole company per day; each rep also has a limit of their own."
+        },
+        "kinds": {
+          "vision": "Photos",
+          "stt": "Voice notes",
+          "chat": "Questions"
+        },
+        "days": {
+          "title": "Last {days} days",
+          "cols": {
+            "date": "Day",
+            "vision": "Photos",
+            "stt": "Voice notes",
+            "chat": "Questions",
+            "failed": "Failed"
+          },
+          "empty": "No use in this period."
+        },
+        "failures": {
+          "title": "Why requests failed",
+          "none": "No request failed in this period.",
+          "outcome": {
+            "invalid_output": "The reply could not be used",
+            "timeout": "The service was too slow",
+            "rate_limited": "Too many requests in a minute",
+            "provider_error": "The service was not working",
+            "bad_request": "The file was not suitable",
+            "rejected": "The company's daily limit was reached"
+          }
+        }
+      }
+    },
+    "ask": {
+      "title": "What reps ask about",
+      "subtitle": "The topics the assistant was asked about most in the last 30 days",
+      "reps": "{reps, plural, one {# rep} other {# reps}}",
+      "note": "No names. A topic asked about by fewer than 3 reps is not shown.",
+      "tooFew": "Not enough questions yet",
+      "topic": {
+        "standing": "Where am I against target",
+        "remaining": "What is left to the target",
+        "commission": "Commission",
+        "incentive": "Incentives",
+        "policy": "Company policies",
+        "focus": "Focus items",
+        "collection": "Collection",
+        "coverage": "Coverage",
+        "tips": "Selling tips"
       }
     }
   },
