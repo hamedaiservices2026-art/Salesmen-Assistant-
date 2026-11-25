@@ -1,5 +1,8 @@
 import { getTranslations } from "next-intl/server";
 
+// The assistant's server action (Task 17) runs on this page: provider calls need up to 60 s (R33).
+export const maxDuration = 60;
+
 export default async function AssistantPage() {
   const t = await getTranslations("assistant");
   return (

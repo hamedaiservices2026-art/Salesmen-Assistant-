@@ -87,7 +87,47 @@
   },
   "assistant": {
     "title": "معاون",
-    "soon": "معاون ایک آنے والے ورژن میں شامل ہوگا"
+    "soon": "معاون ایک آنے والے ورژن میں شامل ہوگا",
+    "errors": {
+      "empty": "پہلے اپنا سوال لکھیں۔",
+      "too_long": "سوال بہت لمبا ہے، تھوڑا مختصر کریں۔"
+    },
+    "fact": {
+      "daysTotal": "مہینے میں فروخت کے دن",
+      "daysPassed": "گزرے ہوئے فروخت کے دن",
+      "daysLeft": "باقی فروخت کے دن",
+      "lineTarget": "{line} · ہدف",
+      "lineAchieved": "{line} · حاصل",
+      "linePct": "{line} · فیصد",
+      "lineExpected": "{line} · آج تک متوقع",
+      "lineRemaining": "{line} · باقی",
+      "lineDaily": "{line} · روزانہ درکار",
+      "lineStatus": "{line} · صورتحال",
+      "status": {
+        "ahead": "رفتار سے آگے",
+        "slightly_behind": "تھوڑا پیچھے",
+        "behind": "پیچھے",
+        "no_target": "ہدف نہیں"
+      },
+      "coverage": "{line} · کور کیے گئے گاہک",
+      "coverageValue": "{total} میں سے {covered}",
+      "focusTarget": "{item} · ہدف",
+      "focusAchieved": "{item} · حاصل",
+      "focusWindow": "{item} · مدت",
+      "window": "{start} سے {end} تک",
+      "commissionSoFar": "اب تک کا کمیشن",
+      "commissionProjected": "مہینے کے آخر میں متوقع",
+      "commissionFull": "پورا ہدف حاصل کرنے پر",
+      "componentSoFar": "{label} · اب تک",
+      "nearestLine": "قریب ترین فائدہ",
+      "nearestGap": "قریب ترین فائدہ · باقی",
+      "nearestGain": "قریب ترین فائدہ · اضافہ",
+      "incentiveName": "ترغیب",
+      "incentiveAmount": "ترغیب · رقم",
+      "incentiveWindow": "ترغیب · مدت",
+      "incentiveThreshold": "{target} · ترغیب کے لیے درکار",
+      "incentiveProgress": "{target} · اب تک حاصل"
+    }
   },
   "close": {
     "title": "دن کا حساب",

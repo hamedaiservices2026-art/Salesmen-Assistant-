@@ -127,6 +127,13 @@
       "when": 1795498118277,
       "tag": "0017_ai_drafts",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1795622315312,
+      "tag": "0018_assistant_messages",
+      "breakpoints": true
     }
   ]
 }

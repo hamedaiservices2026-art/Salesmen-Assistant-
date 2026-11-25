@@ -549,3 +549,29 @@ export const aiDrafts = pgTable(
   },
   (t) => [index("ai_drafts_company_user_date").on(t.companyId, t.userId, t.date), index("ai_drafts_expires").on(t.expiresAt)],
 );
+
+/**
+ * The assistant conversation of one rep (plan 3, decision 7): one rolling conversation, his rows
+ * only, kept 30 days. Admins and supervisors never read it. `verdict` is set on assistant rows;
+ * `citations` hold the document title and section label from our own data, never from a reply.
+ */
+export const assistantMessages = pgTable(
+  "assistant_messages",
+  {
+    id: id(),
+    companyId: companyId(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id),
+    role: text("role", { enum: ["user", "assistant"] }).notNull(),
+    text: text("text").notNull(),
+    verdict: text("verdict", { enum: ["answer", "not_in_documents", "unverified_numbers", "no_answer", "unavailable"] }),
+    citations: jsonb("citations").$type<{ title: string; label: string }[]>().notNull().default(sql`'[]'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("assistant_messages_company_user_created").on(t.companyId, t.userId, t.createdAt),
+    // The retention sweep's scan (system maintenance, across companies).
+    index("assistant_messages_created").on(t.createdAt),
+  ],
+);

@@ -87,7 +87,47 @@
   },
   "assistant": {
     "title": "المساعد",
-    "soon": "المساعد هيتضاف في إصدار قريب"
+    "soon": "المساعد هيتضاف في إصدار قريب",
+    "errors": {
+      "empty": "اكتب سؤالك الأول.",
+      "too_long": "السؤال طويل قوي، اختصره شوية."
+    },
+    "fact": {
+      "daysTotal": "أيام البيع في الشهر",
+      "daysPassed": "أيام البيع اللي فاتت",
+      "daysLeft": "أيام البيع الباقية",
+      "lineTarget": "{line} · التارجت",
+      "lineAchieved": "{line} · المحقق",
+      "linePct": "{line} · النسبة",
+      "lineExpected": "{line} · المفروض لحد النهارده",
+      "lineRemaining": "{line} · الباقي",
+      "lineDaily": "{line} · المطلوب في اليوم",
+      "lineStatus": "{line} · الحالة",
+      "status": {
+        "ahead": "سابق المعدل",
+        "slightly_behind": "متأخر شوية",
+        "behind": "متأخر",
+        "no_target": "من غير تارجت"
+      },
+      "coverage": "{line} · العملاء المغطيين",
+      "coverageValue": "{covered} من {total}",
+      "focusTarget": "{item} · التارجت",
+      "focusAchieved": "{item} · المحقق",
+      "focusWindow": "{item} · الفترة",
+      "window": "من {start} لحد {end}",
+      "commissionSoFar": "العمولة لحد النهارده",
+      "commissionProjected": "المتوقع آخر الشهر",
+      "commissionFull": "لو حققت التارجت كله",
+      "componentSoFar": "{label} · لحد النهارده",
+      "nearestLine": "أقرب مكسب",
+      "nearestGap": "أقرب مكسب · ناقص",
+      "nearestGain": "أقرب مكسب · هتزيد",
+      "incentiveName": "الحافز",
+      "incentiveAmount": "الحافز · المبلغ",
+      "incentiveWindow": "الحافز · الفترة",
+      "incentiveThreshold": "{target} · المطلوب للحافز",
+      "incentiveProgress": "{target} · وصلت لحد دلوقتي"
+    }
   },
   "close": {
     "title": "قفلة اليوم",

@@ -87,7 +87,47 @@
   },
   "assistant": {
     "title": "Assistant",
-    "soon": "The assistant arrives in a later release"
+    "soon": "The assistant arrives in a later release",
+    "errors": {
+      "empty": "Type your question first.",
+      "too_long": "That question is too long. Make it shorter."
+    },
+    "fact": {
+      "daysTotal": "Selling days this month",
+      "daysPassed": "Selling days passed",
+      "daysLeft": "Selling days left",
+      "lineTarget": "{line} · target",
+      "lineAchieved": "{line} · achieved",
+      "linePct": "{line} · percent",
+      "lineExpected": "{line} · expected by today",
+      "lineRemaining": "{line} · remaining",
+      "lineDaily": "{line} · needed per day",
+      "lineStatus": "{line} · status",
+      "status": {
+        "ahead": "Ahead of pace",
+        "slightly_behind": "Slightly behind",
+        "behind": "Behind",
+        "no_target": "No target"
+      },
+      "coverage": "{line} · customers covered",
+      "coverageValue": "{covered} of {total}",
+      "focusTarget": "{item} · target",
+      "focusAchieved": "{item} · achieved",
+      "focusWindow": "{item} · period",
+      "window": "{start} to {end}",
+      "commissionSoFar": "Commission so far",
+      "commissionProjected": "Expected at month end",
+      "commissionFull": "If you hit the full target",
+      "componentSoFar": "{label} · so far",
+      "nearestLine": "Nearest win",
+      "nearestGap": "Nearest win · still needed",
+      "nearestGain": "Nearest win · you gain",
+      "incentiveName": "Incentive",
+      "incentiveAmount": "Incentive · amount",
+      "incentiveWindow": "Incentive · period",
+      "incentiveThreshold": "{target} · needed for the incentive",
+      "incentiveProgress": "{target} · reached so far"
+    }
   },
   "close": {
     "title": "Close the day",
