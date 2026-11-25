@@ -13,9 +13,9 @@ Everything here is checked against the code at this commit except the parts that
 
 1. Import the GitHub repository `Salesmen-Assistant-` (branch `claude/sales-rep-support-system-oxd6dn`, or merge it into the default branch first). Framework: Next.js (detected). Package manager: pnpm (detected from `pnpm-lock.yaml`). Node: 22 (`engines` and `.nvmrc`).
 2. Under **Settings → Functions**, set the function region to the one nearest the database.
-3. Environment variable (Production): `DATABASE_URL`, the direct connection string from step 1. Nothing else.
+3. Environment variable (Production): `DATABASE_URL`, the direct connection string from step 1. The photo and AI features add more in section 7; without them the rest of the app works.
 
-Do not set `APP_TODAY`, `ALLOW_APP_TODAY`, `ALLOW_DEMO_SEED` or `ALLOW_LOCAL_DB` on Vercel: the first two pin "today" for demos and tests, the others exist for local runs.
+Do not set `APP_TODAY`, `ALLOW_APP_TODAY`, `ALLOW_DEMO_SEED`, `ALLOW_LOCAL_DB`, `AI_PROVIDER=fake`, `ALLOW_AI_FAKE` or `ALLOW_LOCAL_FILES` on Vercel: the first two pin "today" for demos and tests, the others exist for local runs and the offline end-to-end runs.
 
 4. Deploy. The first request creates the tables (migrations run once, under a lock).
 
@@ -68,6 +68,7 @@ Production never loads the demo: it has accounts whose passwords would be public
 ## 5. What to expect on the phone
 
 - It is a website, not yet an installable app: open it in Safari. Home Screen install, push notifications, and offline use arrive in plan 4.
+- With AI set up (section 7) the rep can record his day by a photo of the day-end report or a voice note, reviews the filled form and confirms it, attaches photos to returns, and asks the assistant about his numbers and the policy documents. Without it, typing works as before and the photo, voice and assistant buttons say they are unavailable.
 - Arabic is the default; Settings switches to English or Urdu.
 - A mid-month incentive created in `/admin/incentives` reaches each rep as an in-app notification (the bell on his home screen shows the unread count).
 - Review the free-tier terms of the database and hosting services before entering real customer data.
@@ -80,3 +81,93 @@ Nothing in the admin console is withheld for the free tier; every admin screen d
 - **Upload memory.** Reading a 2 MB `.xlsx` can use up to about 300 MB of memory. Keep the Vercel function memory at the plan's default or higher; a file that stays within the 2 MB and 5,000-row limits is the supported case.
 - **A forgotten PIN or password needs a new link from the admin** (`New sign-in link` in `/admin/users`); for the owner, run `pnpm admin:create-owner` again. The old PIN or password keeps working until the new link is opened.
 - Migrations use the connection in `DATABASE_URL`; behind a transaction pooler they can hang. A separate migration URL is planned.
+
+## 7. AI and photos
+
+The AI features and the photos are optional. Nothing in sections 1 to 6 needs them, and a rep can always type his close.
+
+### Owner's checklist
+
+1. **Provide the keys** as **Production** variables in Vercel (Settings, Environment Variables): `GEMINI_API_KEY` and `GROQ_API_KEY`, and `OPENROUTER_API_KEY` only if you use OpenRouter. Redeploy afterwards: a changed variable applies to a new deployment.
+2. **Run the smoke check once** on your computer, with the same keys in your shell: `AI_SMOKE=1 pnpm ai:smoke`. It lists the model ids each key can really use and makes one tiny call per job. The design's `gemini-4-hydrogen` was **not found** in the providers' documentation, and the defaults in `docs/ai-providers.md` (`gemini-3.5-flash-lite`, `whisper-large-v3`) are marked UNVERIFIED because no live check has been possible yet. Correct `AI_GEMINI_VISION_MODEL`, `AI_GEMINI_CHAT_MODEL`, `AI_GEMINI_AUDIO_MODEL`, `AI_GROQ_STT_MODEL` (and the OpenRouter ones) to ids from that list, and copy the result into `docs/ai-providers.md`.
+3. **Create the private storage bucket** (below) and confirm that a photo uploads, loads and deletes. The Storage request shape the app uses is UNVERIFIED until you have done this once.
+4. **Check on a real iPhone in the first week** (below), and fill `/admin/ai/mapping` from the first real report.
+5. **Review the notice wording** the reps and the admin see before AI is used (see "What is sent" below) and answer the questions in section 8.
+
+### Private photo storage (Supabase Storage)
+
+1. In the Supabase project open **Storage** and create a bucket named `private-files` with **public access off**. The app never creates buckets and never makes a public link; every photo is served only by `/files/<id>` to a signed-in person who may see it.
+2. In Vercel set (Production): `STORAGE_DRIVER=supabase`, `SUPABASE_URL` (`https://<ref>.supabase.co`) and `SUPABASE_SERVICE_ROLE_KEY` (the project's server key: a `sb_secret_...` key, or a legacy `service_role` key). Set `STORAGE_BUCKET` only if you named the bucket differently. These are server variables: never give one a `NEXT_PUBLIC_` name, because such a variable is sent to every browser.
+3. Without `STORAGE_DRIVER=supabase` a production build refuses the local disk (a serverless disk does not persist), so photo features fail with a storage error instead of losing photos. Do not set `ALLOW_LOCAL_FILES` on Vercel.
+4. Test it: as a rep add a photo to a return, save the close, reopen it and check the thumbnail loads. A failure here, or in the first live upload, usually means a path or header of the Storage request (`src/server/files/supabase-store.ts` keeps them in one block at the top, noted in `docs/ai-providers.md`).
+
+### The providers
+
+- **Gemini** (Google AI Studio key) reads report photos and answers assistant questions, and is the fallback for voice. **Groq** turns voice recordings into text. **OpenRouter** is an optional second provider for photos and questions, used for each only when its model id is also set; no free OpenRouter model id has been verified.
+- Hosts the deployment must be able to reach: `generativelanguage.googleapis.com`, `api.groq.com`, `openrouter.ai` (only if used) and your `<ref>.supabase.co`. A request that cannot reach one is treated as a failed call and the next provider, if any, is tried.
+- Photo, voice and assistant requests are allowed 60 seconds (`maxDuration`); Vercel's Hobby limit is well above that.
+
+### Limits
+
+- **The free tiers' own limits** (requests per minute and per day, and what a provider does with free-tier content) changed several times in the sources checked and are mostly UNVERIFIED: read the live pages and your AI Studio and Groq consoles, and see `docs/ai-providers.md`.
+- **This product's limits**, whatever the providers allow: per rep per day 20 photos, 30 voice notes and 50 questions; per rep per minute 3, 5 and 6; per company per day 200, 300 and 500; for the whole deployment per day 400, 600 and 800 (`AI_GLOBAL_DAY_VISION`, `AI_GLOBAL_DAY_STT`, `AI_GLOBAL_DAY_CHAT`); and 40 photo uploads per rep per day. A failed request still counts. There is no deployment-wide per-minute limit until you set `AI_GLOBAL_MINUTE_VISION`, `AI_GLOBAL_MINUTE_STT` and `AI_GLOBAL_MINUTE_CHAT` (about 80 percent of the provider's limit once you have read it).
+- The admin sees today's use against the company limits, and the last 14 days, at `/admin/ai/usage`.
+
+### What is sent
+
+- A report photo (which can show customer names), a voice recording and a question with the rep's own figures, incentives and the company's policy text go to the AI providers to be read and answered. The rep's PIN and phone number are never sent by the app. Nothing a model returns is saved or shown as a figure until the rep has reviewed it and pressed confirm, or, for the assistant, until the app has checked every number against the rep's own figures. No model takes part in any calculation.
+- **Free tiers may use what is sent to improve their services.** Google's pricing page lists "content used to improve our products" as yes for the free Gemini tier; the other providers' terms were not verified. The rep's notice and the admin's confirmation say this, and say it is free during the trial. If you move to a paid plan, update that wording in the three language catalogs and raise `AI_NOTICE_VERSION`, so reps accept it again.
+- Each rep reads and accepts the notice once before his first use (and again whenever its version is raised); he can withdraw in Settings. The admin sees the same points before switching AI on for the company at `/admin/ai`.
+
+### Switching AI off
+
+- **Everything at once:** set `AI_DISABLED=1` as a Production variable and redeploy. No provider is called, whatever any company's setting says.
+- **One company:** the admin presses "turn off" at `/admin/ai`. A new company starts with AI off. The photo, voice and assistant buttons then say they are unavailable and typing is unaffected.
+- **One rep:** he withdraws his agreement in Settings.
+
+### Never set in production
+
+`AI_PROVIDER=fake`, `ALLOW_AI_FAKE`, `ALLOW_LOCAL_FILES`, `APP_TODAY`, `ALLOW_APP_TODAY`, `ALLOW_DEMO_SEED`, `ALLOW_LOCAL_DB`. The fake provider returns fixed sample figures, so a deployment that used it would show every rep the same invented numbers. Keys are never put in a variable whose name starts with `NEXT_PUBLIC_` and never in the repository.
+
+### How long things are kept
+
+| What | Kept | Notes |
+| --- | --- | --- |
+| Report photos | 30 days after the day they record | Only the rep who took one can open it. |
+| Return photos | 180 days after the day they record | The rep, his supervisor and the admin can open them. |
+| A photo not saved with a close | 24 hours | Then it is deleted. |
+| Assistant conversations | 30 days | One rolling conversation per rep; the rep can clear it at any time; admins and supervisors never read it. |
+| AI usage rows (counts and codes only, no text, no names in the admin view) | 90 days | |
+| Daily counters | 3 days | |
+| A draft's receipt (the proof a close was read for this rep and day) | Valid for 24 hours, deleted a day after it expires | |
+| Voice recordings | Not kept | Only the text is used. |
+
+Old items are cleared by `runMaintenance` (`src/server/maintenance.ts`). It runs after a photo upload or an assistant question, at most once every 10 minutes per server instance, so something may outlive its period until the next upload or question; meanwhile the app serves no photo past its retention and shows no conversation row older than 30 days. Plan 4 adds a scheduled job that calls the same function.
+
+### What to check on a real iPhone in week one
+
+Nothing below could be tested without a real device, so none of it is verified:
+
+1. **Camera capture** for a return photo (the camera opens, the photo uploads) and choosing a report photo from the library or a screenshot.
+2. **Voice recording**: Safari should record `audio/mp4`; check the permission prompt, a 10-second note, a note cut by locking the phone, and the file-picker fallback if recording is not offered.
+3. **Arabic read-aloud**: whether the iPhone offers an Arabic voice. When it does not, the assistant shows the answer written and a hint, with no listen button.
+4. **A real day-end report photo from the sales program** (the spec still lacks a sample): how well it is read, and which labels it uses.
+5. **Real Arabic recordings in the rep's own dialect**: how well the numbers are heard, and what the voice reader gets wrong.
+
+When the first real report is available, open `/admin/ai/mapping` and write each field's name exactly as the report prints it, so reading from photos becomes more accurate.
+
+## 8. Questions for the owner
+
+Each has a working default and none blocks the build.
+
+1. **The notice the rep reads before using AI.** Is the Arabic wording acceptable (`ai.notice` in `src/i18n/messages/ar.json`), and should the company's name or a contact person appear in it? Please review it and the data-use sentence about free tiers.
+2. **Who may see photos.** Default: a report photo only by the rep who took it; return photos by him, his supervisor and the admin. Should admins also see report photos?
+3. **How long to keep things.** Defaults: report photos 30 days, return photos 180 days, conversations 30 days, usage counts 90 days. Does the company need return photos for longer (for claims with suppliers)?
+4. **Voice recordings.** Default: not kept. Keep them for a few days so a disputed number can be replayed?
+5. **"What reps ask most" for a small team.** Default: a topic appears only when 3 different reps asked it, so with one pilot rep the card stays empty. Show topics anyway during the pilot?
+6. **AI on by default.** Default: off for every new company until its admin turns it on. Should the pilot company start with it on?
+7. **Daily limits.** Defaults per rep: 20 photos, 30 voice notes, 50 questions a day. Enough for the pilot rep?
+8. **Free services and customer names.** The design accepts free tiers for the pilot, and a report photo can show customer names. Does the pilot company agree in writing, or should photos wait for a paid tier?
+9. **Reading aloud.** Default: the phone's own voice; no button when the phone has no Arabic voice. If the pilot rep's iPhone has none, is a server voice (possibly paid later) wanted?
+10. **Returns and focus items in a photo.** Default: the rep types them. Should a later version try to read them from the report?
+11. **The real report.** Screenshots of the sales program's day-end report are still needed (design spec section 13, item 3) to fill the label mapping and to test reading on real photos, and real Arabic voice notes from the rep to test the dialect.

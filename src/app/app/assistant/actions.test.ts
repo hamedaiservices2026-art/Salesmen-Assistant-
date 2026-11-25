@@ -6,13 +6,47 @@ vi.mock("@/server/auth/guard", () => ({ requireCtx: async () => ({ userId: "ahme
 vi.mock("@/server/assistant/ask", () => ({ ask: (...a: unknown[]) => (thrower ? thrower() : ask(...a)) }));
 vi.mock("@/server/assistant/conversation", () => ({ clearConversation: async () => ({ deleted: 0 }) }));
 vi.mock("next/cache", () => ({ revalidatePath: () => undefined }));
+// `after()` callbacks are collected and run by the test, as the framework runs them once the reply is sent.
+const scheduled: (() => Promise<void> | void)[] = [];
+vi.mock("next/server", () => ({ after: (fn: () => Promise<void> | void) => void scheduled.push(fn) }));
+const runMaintenance = vi.fn();
+vi.mock("@/server/maintenance", () => ({ runMaintenance: (...a: unknown[]) => runMaintenance(...a) }));
 vi.mock("next-intl/server", () => ({ getTranslations: async () => (key: string) => key }));
 
 import { askAction } from "./actions";
 
 beforeEach(() => {
   ask.mockReset();
+  runMaintenance.mockReset();
+  scheduled.length = 0;
   thrower = null;
+});
+
+describe("askAction maintenance (R38, R59)", () => {
+  it("schedules the maintenance run after the reply, once per ask, and never for a refused shape", async () => {
+    ask.mockResolvedValue({ ok: true, verdict: "no_answer", facts: [] });
+    await askAction("q");
+    expect(runMaintenance).not.toHaveBeenCalled();
+    expect(scheduled).toHaveLength(1);
+    await scheduled[0]!();
+    expect(runMaintenance).toHaveBeenCalledTimes(1);
+    expect(runMaintenance.mock.calls[0]![1]).toBeInstanceOf(Date);
+    await askAction(5 as unknown as string);
+    await askAction("q", "a/b");
+    expect(scheduled).toHaveLength(1);
+  });
+  it("a maintenance failure is swallowed and logged by class name only", async () => {
+    ask.mockResolvedValue({ ok: true, verdict: "no_answer", facts: [] });
+    runMaintenance.mockRejectedValue(new Error("secret detail"));
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      await askAction("q");
+      await expect(scheduled[0]!()).resolves.toBeUndefined();
+      expect(JSON.stringify(log.mock.calls)).not.toContain("secret detail");
+    } finally {
+      log.mockRestore();
+    }
+  });
 });
 
 describe("askAction", () => {

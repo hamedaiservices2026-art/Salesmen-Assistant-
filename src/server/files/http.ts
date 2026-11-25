@@ -9,20 +9,6 @@ import type { FileStore } from "./store";
 export { PHOTO_REQUESTED_WITH };
 /** The photo limit plus room for the multipart framing and the other form fields. */
 export const FILE_POST_MAX_BODY = PHOTO_MAX_BYTES + 65_536;
-/** Least time between two photo sweeps started by this server instance (R70). */
-export const SWEEP_INTERVAL_MS = 60_000;
-let lastSweepAt: number | null = null;
-
-/**
- * True when this instance may start a photo sweep now (and records that it did): at most one per
- * `SWEEP_INTERVAL_MS`. The route asks this only after a successful upload (R70).
- */
-export function claimSweepSlot(nowMs: number): boolean {
-  if (lastSweepAt !== null && nowMs - lastSweepAt < SWEEP_INTERVAL_MS) return false;
-  lastSweepAt = nowMs;
-  return true;
-}
-
 /** Seconds a client waits before retrying when the decoder is busy (R69). */
 const BUSY_RETRY_AFTER_SECONDS = 5;
 

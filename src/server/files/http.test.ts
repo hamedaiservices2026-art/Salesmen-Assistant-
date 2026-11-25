@@ -23,7 +23,7 @@ vi.mock("./image", async (importOriginal) => {
       imageMock.forceBusy ? Promise.resolve({ ok: false as const, error: "busy" as const }) : real.normalisePhoto(...args),
   };
 });
-import { FILE_POST_MAX_BODY, PHOTO_REQUESTED_WITH, SWEEP_INTERVAL_MS, claimSweepSlot, handleFileGet, handleFilePost } from "./http";
+import { FILE_POST_MAX_BODY, PHOTO_REQUESTED_WITH, handleFileGet, handleFilePost } from "./http";
 
 let db: Db;
 let root: string;
@@ -252,17 +252,5 @@ describe("handleFileGet", () => {
     const id = await ahmedsPhoto();
     const empty: FileStore = { ...store, get: async () => null };
     await expectEmpty404(await handleFileGet(getRequest(id), ahmed(), id, { store: empty }));
-  });
-});
-
-describe("claimSweepSlot (R70.3)", () => {
-  it("allows one sweep per minute per instance", () => {
-    expect(SWEEP_INTERVAL_MS).toBe(60_000);
-    const t0 = 1_000_000_000;
-    expect(claimSweepSlot(t0)).toBe(true);
-    expect(claimSweepSlot(t0 + 1)).toBe(false);
-    expect(claimSweepSlot(t0 + 59_999)).toBe(false);
-    expect(claimSweepSlot(t0 + 60_000)).toBe(true);
-    expect(claimSweepSlot(t0 + 60_001)).toBe(false);
   });
 });

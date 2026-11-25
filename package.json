@@ -15,6 +15,7 @@
     "e2e": "node scripts/e2e-smoke.mjs",
     "db:pilot": "tsx src/db/run-pilot.ts",
     "e2e:admin": "node scripts/e2e-admin.mjs",
+    "e2e:ai": "node scripts/e2e-ai.mjs",
     "ai:smoke": "tsx scripts/ai-smoke.mjs"
   },
   "dependencies": {

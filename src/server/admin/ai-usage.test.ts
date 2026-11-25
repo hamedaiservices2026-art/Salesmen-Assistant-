@@ -7,7 +7,7 @@ import { Forbidden, type Role } from "@/server/auth/roles";
 import type { Ctx } from "@/server/ctx";
 import { reserveAi } from "@/server/ai/quota";
 import { logUsage } from "@/server/ai/usage";
-import { getAiUsage } from "./ai-usage";
+import { aiDay, getAiUsage } from "./ai-usage";
 
 const NOW = new Date("2026-11-14T10:00:00Z");
 const TODAY = "2026-11-14";
@@ -95,6 +95,21 @@ describe("getAiUsage", () => {
   it("refuses every role but admin", async () => {
     for (const role of ["rep", "supervisor", "owner"] as const) {
       await expect(getAiUsage(ctxOf("ahmed", role), { today: TODAY })).rejects.toBeInstanceOf(Forbidden);
+    }
+  });
+});
+
+describe("aiDay", () => {
+  it("is the real day in the company's time zone, never the demo date override (the counters use the real clock)", () => {
+    const saved = process.env.APP_TODAY;
+    process.env.APP_TODAY = "2026-11-14";
+    try {
+      // 22:30 UTC on 5 Dec is already 6 Dec in Riyadh (UTC+3).
+      expect(aiDay("Asia/Riyadh", new Date("2026-12-05T22:30:00Z"))).toBe("2026-12-06");
+      expect(aiDay("UTC", new Date("2026-12-05T22:30:00Z"))).toBe("2026-12-05");
+    } finally {
+      if (saved === undefined) delete process.env.APP_TODAY;
+      else process.env.APP_TODAY = saved;
     }
   });
 });

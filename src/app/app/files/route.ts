@@ -1,8 +1,7 @@
 import { after } from "next/server";
 import { currentCtx } from "@/server/auth/guard";
-import { claimSweepSlot, handleFilePost } from "@/server/files/http";
-import { sweepFiles } from "@/server/files/files";
-import { getFileStore } from "@/server/files/store";
+import { handleFilePost } from "@/server/files/http";
+import { runMaintenance } from "@/server/maintenance";
 
 export const maxDuration = 30;
 
@@ -10,14 +9,14 @@ export const maxDuration = 30;
 export async function POST(request: Request): Promise<Response> {
   const ctx = await currentCtx();
   const response = await handleFilePost(request, ctx);
-  if (ctx && response.status === 200 && claimSweepSlot(Date.now())) {
-    // Old and removed photos are cleared after the reply is sent, in a small batch, at most once a
-    // minute per instance (R38, R70).
+  if (ctx && response.status === 200) {
+    // Retention is applied after the reply is sent (R38). `runMaintenance` lets one instance run
+    // it at most once per 10 minutes, so an upload cannot make it run more often (R59).
     after(async () => {
       try {
-        await sweepFiles(ctx.db, getFileStore(), new Date());
+        await runMaintenance(ctx.db, new Date());
       } catch (e) {
-        console.error("photo sweep failed", e instanceof Error ? e.name : "unknown error");
+        console.error("maintenance failed", e instanceof Error ? e.name : "unknown error");
       }
     });
   }

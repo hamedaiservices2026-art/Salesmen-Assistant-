@@ -1,14 +1,14 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { getTranslations } from "next-intl/server";
 import { isNotificationId } from "@/domain/assistant/explain";
 import { requireCtx } from "@/server/auth/guard";
 import { ask } from "@/server/assistant/ask";
 import { clearConversation } from "@/server/assistant/conversation";
+import { runMaintenance } from "@/server/maintenance";
 import type { ChatReply } from "@/ui/chat-state";
-
-// `after()` is not called here yet: Task 20 adds the maintenance run to `askAction` (R38).
 
 /**
  * One question to the assistant, for the signed-in rep only (the session decides who; nothing about
@@ -21,6 +21,14 @@ export async function askAction(question: string, explain?: string): Promise<Cha
   const ctx = await requireCtx();
   if (typeof question !== "string") return { ok: false, reason: "empty" };
   if (explain !== undefined && !isNotificationId(explain)) return { ok: false, reason: "failed" };
+  // Retention is applied after the reply is sent (R38); `runMaintenance` lets one instance run it at most once per 10 minutes (R59).
+  after(async () => {
+    try {
+      await runMaintenance(ctx.db, new Date());
+    } catch (e) {
+      console.error("maintenance failed", e instanceof Error ? e.name : "unknown error");
+    }
+  });
   try {
     const tr = await getTranslations({ locale: ctx.locale });
     const t = (key: string, values?: Record<string, string | number>) => tr(key as never, values as never);

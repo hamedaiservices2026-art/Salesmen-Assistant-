@@ -1,6 +1,6 @@
 # AI providers: verified facts and open checks
 
-Written 2026-11-23 (Task 1 of plan 3).
+Written 2026-11-23 (Task 1 of plan 3); brought up to date 2026-11-25 (Task 20, "Where things stand at the end of plan 3").
 
 ## How this was researched, and its limit
 
@@ -108,6 +108,21 @@ The model id is also checked in the adapter before it goes into a URL path (`mod
 `AI_SMOKE=1 pnpm ai:smoke` (never run by tests, e2e or CI; refuses when `CI` is set). It first lists the models each key can use (Gemini models that support `generateContent`; Groq models; free OpenRouter models, with an `[image]` marker for vision) and says whether `gemini-4-hydrogen` and the configured ids are in the list. Then it makes one tiny call per job with a synthetic 64x64 JPEG (text `CASH 100`) and a synthetic one-second tone, and prints a table of provider, job, model, HTTP status (400 request shape, 401/403 key, 404 model id, 429 limit), outcome code, Gemini `finishReason`, latency and whether the reply parsed. It prints no key and no response body and writes nothing. The speech-to-text calls send a WAV tone (the recorder types are not producible in the script), so they check endpoint, auth and model, not Arabic accuracy or the webm/mp4/ogg path.
 
 **Live smoke run: not run with a real key** (2026-11-23). A run with `AI_SMOKE_PROXY_AUTH=1` reached `generativelanguage.googleapis.com` but got HTTP 400 for the placeholder key, and `api.groq.com` and `openrouter.ai` were unreachable from the session, so no result says anything about the providers. The owner must run it with real keys and copy the model lists and the table here; until then `gemini-3.5-flash-lite` and all limits above remain unconfirmed (R66).
+
+## Where things stand at the end of plan 3 (Task 20, 2026-11-25)
+
+**What has been checked, and by what.** Everything the app does with a model reply (parsing, field mapping, the confirm gate, the assistant's number checks, quotas, retention, who may open a photo) is covered by unit tests and by `pnpm e2e:ai`, which drives the whole flow in a browser against the **fake provider only**, with no key in the environment and every request to another host aborted. That proves the app's behaviour. It says **nothing** about a real provider.
+
+**What the smoke check has verified: nothing live.** `AI_SMOKE=1 pnpm ai:smoke` has not been run with a real key (see above). So these are all still UNVERIFIED and are the owner's first tasks:
+
+1. The real model ids. `gemini-4-hydrogen` was not found; `gemini-3.5-flash-lite` and `whisper-large-v3` are defaults taken from search summaries. Run the smoke check, read its model lists, and set `AI_GEMINI_VISION_MODEL`, `AI_GEMINI_CHAT_MODEL`, `AI_GEMINI_AUDIO_MODEL`, `AI_GROQ_STT_MODEL` (and the OpenRouter ones) as Production variables.
+2. Every request shape in the adapter table (paths, auth headers, JSON mode, thinking setting) and every rate limit and daily limit in the provider tables.
+3. The Supabase Storage REST shape and its missing-object and conflict status codes: confirm with one live upload, read and delete of a return photo.
+4. Whether each free tier may use submitted content to improve its services: Google's pricing page says yes for the free Gemini tier; Groq's and OpenRouter's terms were not read.
+
+**What is unverified on a real iPhone** (week-one checks; the steps are in `docs/DEPLOY.md`, section 7): camera capture for return photos; recording as `audio/mp4` in Safari, the permission prompt, a note cut by locking the phone, and the file-picker fallback; whether the iPhone has Arabic (and Urdu) `speechSynthesis` voices and whether speech starts from a tap; reading a real day-end report photo from the sales program; and how well real Arabic dialect recordings are heard. Headless Chromium with a fake microphone covered the recorder's logic and the draft flow only.
+
+**What to do with the first real report.** Open `/admin/ai/mapping` and write each field's name as the report prints it. Until then the reader relies on the built-in names.
 
 ## Hosts to allow for outbound requests
 

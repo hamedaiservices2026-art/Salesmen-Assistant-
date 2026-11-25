@@ -1,6 +1,6 @@
 import { and, eq, gte, sql } from "drizzle-orm";
 import * as s from "@/db/schema";
-import type { ISODate } from "@/domain/calendar";
+import { todayIn, type ISODate } from "@/domain/calendar";
 import { assertRole } from "@/server/auth/roles";
 import type { Ctx } from "@/server/ctx";
 import { getCompanyAi } from "@/server/ai/consent";
@@ -19,6 +19,15 @@ export type AiUsageView = {
   enabled: boolean;
   envDisabled: boolean;
 };
+
+/**
+ * The day the AI counters and the usage log are kept by: the real day in the company's time zone.
+ * `reserveAi` buckets by the real clock, so the usage page must not use `currentDay`, which the
+ * demo date override (`APP_TODAY`) changes: it would read yesterday's, or another month's, counters.
+ */
+export function aiDay(timeZone: string, now: Date = new Date()): ISODate {
+  return todayIn(timeZone, now);
+}
 
 /** `date` shifted by whole days (UTC arithmetic on a calendar date). */
 function shift(date: ISODate, days: number): ISODate {
