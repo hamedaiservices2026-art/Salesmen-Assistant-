@@ -5,7 +5,7 @@ import ur from "@/i18n/messages/ur.json";
 import type { CloseDraft } from "@/domain/ai/draft";
 import type { ClosePhotoFail } from "@/server/ai/close-photo";
 import type { CloseVoiceFail } from "@/server/ai/close-voice";
-import { AI_READ_REASONS, readErrorKey, readFromAi, type ReadReason } from "./ai-client";
+import { AI_READ_REASONS, readErrorKey, readFromAi, transcribeAudio, type ReadReason } from "./ai-client";
 
 // Type-level: a reason either route can return that the client does not know is a compile error here.
 type Unknown = Exclude<ClosePhotoFail["reason"] | CloseVoiceFail["reason"], ReadReason>;
@@ -209,5 +209,60 @@ describe("readFromAi", () => {
     ctl.abort();
     vi.stubGlobal("fetch", vi.fn(async () => Promise.reject(new DOMException("a", "AbortError"))));
     expect(await readFromAi("photo", "2026-11-14", new Blob(["x"]), { signal: ctl.signal })).toEqual({ ok: false, reason: "cancelled" });
+  });
+});
+
+describe("readErrorKey for the assistant (kinds transcribe and ask)", () => {
+  const EXTRA = ["empty", "too_long", "too_large", "unsupported_type", "audio_type", "timeout", "unauthorized", "bad_request", "company_off", "disabled", "no_notice", "no_provider", "quota", "rate_limited", "failed", "unreadable", "busy", "no_audio", "something_new"];
+  it("every reason has copy in ar, en and ur for both kinds", () => {
+    for (const kind of ["transcribe", "ask"] as const) {
+      for (const reason of EXTRA) {
+        const key = readErrorKey(kind, reason);
+        for (const [name, c] of [["ar", ar], ["en", en], ["ur", ur]] as const) expect(typeof lookup(c, key), `${name} ${kind} ${reason} -> ${key}`).toBe("string");
+      }
+    }
+  });
+  it("picks the assistant wording", () => {
+    expect(readErrorKey("ask", "empty")).toBe("assistant.errors.empty");
+    expect(readErrorKey("ask", "too_long")).toBe("assistant.errors.too_long");
+    expect(readErrorKey("transcribe", "empty")).toBe("assistant.errors.nothingHeard");
+    expect(readErrorKey("transcribe", "too_large")).toBe("close.read.errors.audio_too_large");
+    expect(readErrorKey("transcribe", "unsupported_type")).toBe("ai.unavailable.audio_type");
+    expect(readErrorKey("ask", "quota")).toBe("ai.unavailable.quota");
+    expect(readErrorKey("ask", "no_provider")).toBe("ai.unavailable.disabled");
+  });
+});
+
+describe("transcribeAudio", () => {
+  it("posts the recording to transcribe with the custom header and returns the transcript", async () => {
+    const fetchMock = vi.fn(async () => reply(200, { transcript: "  مشروبات كام  " }));
+    vi.stubGlobal("fetch", fetchMock);
+    const r = await transcribeAudio(new Blob(["x"], { type: "audio/webm" }));
+    expect(r).toEqual({ ok: true, transcript: "مشروبات كام" });
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("/app/ai/transcribe");
+    expect(init.method).toBe("POST");
+    expect((init.headers as Record<string, string>)["x-requested-with"]).toBe("ai");
+    expect((init.body as FormData).get("audio")).toBeInstanceOf(Blob);
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+  });
+  it("maps reasons and statuses, never trusts a reply without a transcript", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => reply(422, { reason: "empty" })));
+    expect(await transcribeAudio(new Blob(["x"]))).toEqual({ ok: false, reason: "empty" });
+    vi.stubGlobal("fetch", vi.fn(async () => reply(504, "gateway", "text/html")));
+    expect(await transcribeAudio(new Blob(["x"]))).toEqual({ ok: false, reason: "timeout" });
+    vi.stubGlobal("fetch", vi.fn(async () => reply(200, { transcript: 5 })));
+    expect(await transcribeAudio(new Blob(["x"]))).toEqual({ ok: false, reason: "failed" });
+    vi.stubGlobal("fetch", vi.fn(async () => reply(200, { transcript: "   " })));
+    expect(await transcribeAudio(new Blob(["x"]))).toEqual({ ok: false, reason: "empty" });
+    vi.stubGlobal("fetch", vi.fn(async () => reply(401, { reason: "unauthorized" })));
+    expect(await transcribeAudio(new Blob(["x"]))).toEqual({ ok: false, reason: "unauthorized" });
+  });
+  it("a cancel is cancelled, a network error is failed", async () => {
+    const ctl = new AbortController();
+    vi.stubGlobal("fetch", vi.fn(async () => { ctl.abort(); throw new DOMException("aborted", "AbortError"); }));
+    expect(await transcribeAudio(new Blob(["x"]), { signal: ctl.signal })).toEqual({ ok: false, reason: "cancelled" });
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new TypeError("net"); }));
+    expect(await transcribeAudio(new Blob(["x"]))).toEqual({ ok: false, reason: "failed" });
   });
 });

@@ -7,6 +7,7 @@ import { AI_NOTICE_VERSION } from "@/server/ai/availability";
 import { aiNoticeAccepted } from "@/server/ai/consent";
 import { requireCtx } from "@/server/auth/guard";
 import { AiNotice } from "@/ui/components/AiNotice";
+import { ClearConversation } from "@/app/app/assistant/clear-conversation";
 import { getLogin } from "@/server/repos/profile";
 import { setLocaleAction } from "./actions";
 import { ChangePinForm } from "./change-pin-form";
@@ -77,6 +78,12 @@ export default async function SettingsPage() {
             {t("ai.title")}
           </h2>
           <AiNotice accepted={aiAccepted} version={AI_NOTICE_VERSION} />
+        </section>
+        <section aria-labelledby="assistant-title" className="flex flex-col gap-2.5">
+          <h2 id="assistant-title" className={`m-0 text-[15px] font-bold ${locale === "ur" ? "leading-[2.2]" : ""}`}>
+            {t("assistant.title")}
+          </h2>
+          <ClearConversation label={t("assistant.clear")} showRetention />
         </section>
         <SignOutForm action={signOutAction} className="flex flex-col gap-2">
           <p className="m-0 flex flex-wrap items-baseline gap-2 text-[15px]">

@@ -69,7 +69,16 @@ function byStatus(status: number): ReadReason {
  * anything unknown is the plain "could not read it". The photo and voice wording differ where the
  * thing to do differs.
  */
-export function readErrorKey(kind: ReadKind, reason: string): string {
+export function readErrorKey(kind: ReadKind | "transcribe" | "ask", reason: string): string {
+  // The assistant's two kinds: its own wording where it differs, the voice wording otherwise.
+  if (kind === "ask") {
+    if (reason === "empty" || reason === "too_long") return `assistant.errors.${reason}`;
+    if (reason === "timeout") return "ai.unavailable.failed";
+    kind = "voice";
+  } else if (kind === "transcribe") {
+    if (reason === "empty") return "assistant.errors.nothingHeard";
+    kind = "voice";
+  }
   switch (reason) {
     case "unauthorized":
     case "bad_request":
@@ -173,4 +182,43 @@ export async function readFromAi(kind: ReadKind, date: string, blob: Blob, opts:
   const reason = reply && isReason(reply.reason) ? reply.reason : reply && BAD_REQUEST.has(reply.reason) ? "bad_request" : byStatus(res.status);
   const transcript = reply ? text(reply.transcript) : undefined;
   return { ok: false, reason, ...(transcript ? { transcript } : {}) };
+}
+
+/**
+ * Sends one recording to be turned into text for a question the rep then reads, edits and sends
+ * himself. The reply is untrusted: only a non-empty text (cut to the transcript limit) is used.
+ */
+export async function transcribeAudio(blob: Blob, opts: { signal?: AbortSignal } = {}): Promise<{ ok: true; transcript: string } | { ok: false; reason: ReadReason | "cancelled" }> {
+  const body = new FormData();
+  body.set("audio", blob, "voice");
+  let res: Response;
+  try {
+    res = await fetch("/app/ai/transcribe", {
+      method: "POST",
+      body,
+      credentials: "same-origin",
+      headers: { "x-requested-with": AI_REQUESTED_WITH },
+      signal: withTimeout(opts.signal),
+    });
+  } catch (e) {
+    if (opts.signal?.aborted) return { ok: false, reason: "cancelled" };
+    return { ok: false, reason: e instanceof DOMException && e.name === "TimeoutError" ? "timeout" : "failed" };
+  }
+  type TReply = { transcript?: unknown; reason?: unknown };
+  let reply = null as TReply | null;
+  if ((res.headers.get("content-type") ?? "").toLowerCase().includes("application/json")) {
+    try {
+      const parsed: unknown = await res.json();
+      if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) reply = parsed as TReply;
+    } catch {
+      reply = null;
+    }
+  }
+  if (res.ok) {
+    if (!reply || typeof reply.transcript !== "string") return { ok: false, reason: "failed" };
+    const transcript = text(reply.transcript);
+    return transcript ? { ok: true, transcript } : { ok: false, reason: "empty" };
+  }
+  const reason = reply && isReason(reply.reason) ? reply.reason : reply && BAD_REQUEST.has(reply.reason) ? "bad_request" : byStatus(res.status);
+  return { ok: false, reason };
 }

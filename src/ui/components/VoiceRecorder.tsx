@@ -28,7 +28,7 @@ function browserSupport(): "ok" | "unsupported" {
  * MediaRecorder, an insecure page) the button is replaced by a file picker for an existing
  * recording (audio only, no `capture`: iOS Safari offers no recorder through a file input; R56).
  */
-export function VoiceRecorder({ onRecorded, disabled = false }: { onRecorded: (audio: Blob, cut?: CutReason) => void; disabled?: boolean }) {
+export function VoiceRecorder({ onRecorded, disabled = false, hint }: { onRecorded: (audio: Blob, cut?: CutReason) => void; disabled?: boolean; hint?: string }) {
   const t = useTranslations("close.voice");
   const [phase, setPhase] = useState<RecorderPhase>("idle");
   const [error, setError] = useState<"denied" | "dismissed" | "failed" | null>(null);
@@ -166,7 +166,7 @@ export function VoiceRecorder({ onRecorded, disabled = false }: { onRecorded: (a
           {t("cancel")}
         </button>
       )}
-      <p className="m-0 text-[13px] text-ink-2">{t("hint")}</p>
+      <p className="m-0 text-[13px] text-ink-2">{hint ?? t("hint")}</p>
       {message && (
         <p role="alert" className="m-0 rounded-xl bg-alert-tint px-3.5 py-2.5 text-[13.5px] font-semibold text-alert">
           {message}

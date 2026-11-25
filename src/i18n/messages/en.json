@@ -87,10 +87,11 @@
   },
   "assistant": {
     "title": "Assistant",
-    "soon": "The assistant arrives in a later release",
+    "subtitle": "Answers from your numbers and the company's policy",
     "errors": {
       "empty": "Type your question first.",
-      "too_long": "That question is too long. Make it shorter."
+      "too_long": "That question is too long. Make it shorter.",
+      "nothingHeard": "We did not hear anything clear. Say your question again or type it."
     },
     "fact": {
       "daysTotal": "Selling days this month",
@@ -127,7 +128,47 @@
       "incentiveWindow": "Incentive · period",
       "incentiveThreshold": "{target} · needed for the incentive",
       "incentiveProgress": "{target} · reached so far"
-    }
+    },
+    "incentiveTitle": "New incentive from management",
+    "explain": "Explain it simply",
+    "explainQuestion": "Explain this incentive to me simply",
+    "listen": "Listen",
+    "stop": "Stop",
+    "noVoice": "Your phone has no voice for this language, so you will read the answer",
+    "clear": "Clear the conversation",
+    "clearConfirm": "The conversation will be deleted for good",
+    "clearYes": "Delete",
+    "clearNo": "Cancel",
+    "retention": "Conversations are deleted automatically after 30 days",
+    "cleared": "Deleted",
+    "conversationLabel": "Conversation",
+    "sourcesLabel": "Sources",
+    "thinking": "Preparing the answer",
+    "hearing": "Listening to the recording",
+    "askLabel": "Your question",
+    "askPlaceholder": "Type your question or tap the microphone",
+    "send": "Send",
+    "mic": "Ask by voice",
+    "micClose": "Close recording",
+    "counterLabel": "Characters",
+    "who": {
+      "user": "You",
+      "assistant": "Assistant"
+    },
+    "verdict": {
+      "notInDocuments": "I can't find this in the company's documents. Ask your supervisor.",
+      "unverified": "I couldn't be sure of the number. Here are your figures from the system:",
+      "unverifiedOld": "I couldn't be sure of the number. Ask again to see your figures from the system.",
+      "noAnswer": "I'm not sure of the answer. Try asking in a different way."
+    },
+    "suggest": {
+      "label": "Suggested questions",
+      "standing": "Where am I against target?",
+      "commission": "What do I need for a higher commission?",
+      "incentives": "What are this month's incentives?",
+      "policy": "What is the returns policy?"
+    },
+    "hint": "Say your question, for example: how much is left on the drinks target"
   },
   "close": {
     "title": "Close the day",
@@ -367,6 +408,11 @@
       "read": "Read the notice",
       "withdraw": "Withdraw my consent",
       "close": "Close"
+    },
+    "assistant": {
+      "title": "Assistant conversations",
+      "clear": "Delete assistant conversations",
+      "done": "Deleted"
     }
   },
   "currency": {
