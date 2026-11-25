@@ -60,15 +60,47 @@ describe("chatReducer", () => {
     expect(s.fieldError).toBe("too_long");
     expect(s.pending).toBe(false);
   });
-  it("a temporary failure adds an unavailable card and does not block", () => {
+  it.each(["rate_limited", "failed", "unreadable", "disabled", "company_off", "no_provider", "no_notice", "quota"] as const)(
+    "%s keeps the rep's question: no bubble, the field holds it again, a transient notice says why",
+    (reason) => {
+      const s = chatReducer(sent(fresh(), "سؤالي"), { type: "result", result: { ok: false, reason } });
+      expect(s.items).toEqual([]);
+      expect(s.input).toBe("سؤالي");
+      expect(s.notice).toBe(reason);
+      expect(s.pending).toBe(false);
+      expect(s.fieldError).toBeNull();
+    },
+  );
+  it("a refusal after earlier answers removes only the new question's bubble", () => {
+    let s = chatReducer(sent(fresh(), "أ"), { type: "result", result: answer });
+    s = chatReducer(sent(s, "ب"), { type: "result", result: { ok: false, reason: "rate_limited" } });
+    expect(s.items.map((i) => i.kind)).toEqual(["user", "answer"]);
+    expect(s.input).toBe("ب");
+  });
+  it("the field text the rep typed meanwhile is not overwritten by the restored question", () => {
+    let s = sent(fresh(), "قديم");
+    s = chatReducer(s, { type: "input", text: "جديد" });
+    s = chatReducer(s, { type: "result", result: { ok: false, reason: "failed" } });
+    expect(s.input).toBe("جديد");
+  });
+  it("a temporary failure does not block", () => {
     const s = chatReducer(sent(fresh(), "q"), { type: "result", result: { ok: false, reason: "rate_limited" } });
-    expect(s.items.at(-1)).toMatchObject({ kind: "unavailable", reason: "rate_limited" });
     expect(isBlocked(s)).toBe(false);
   });
   it.each(["disabled", "company_off", "no_provider", "no_notice", "quota"] as const)("%s blocks the input", (reason) => {
     const s = chatReducer(sent(fresh(), "q"), { type: "result", result: { ok: false, reason } });
     expect(s.blocked).toBe(reason);
     expect(isBlocked(s)).toBe(true);
+  });
+  it("the notice goes when the rep types, sends again or clears", () => {
+    const failed = chatReducer(sent(fresh(), "q"), { type: "result", result: { ok: false, reason: "failed" } });
+    expect(chatReducer(failed, { type: "input", text: "q2" }).notice).toBeNull();
+    expect(sent(failed, "q").notice).toBeNull();
+    expect(chatReducer(failed, { type: "clear" }).notice).toBeNull();
+  });
+  it("a transcript is cut to 500 characters", () => {
+    const s = chatReducer(fresh({ input: "ا".repeat(300) }), { type: "transcript", text: "ب".repeat(400) });
+    expect(Array.from(s.input)).toHaveLength(QUESTION_MAX);
   });
   it("a transcript fills the field and is never sent", () => {
     const s = chatReducer(fresh(), { type: "transcript", text: "مشروبات كام" });
@@ -79,10 +111,10 @@ describe("chatReducer", () => {
   it("a transcript is appended to a field the rep already typed in", () => {
     expect(chatReducer(fresh({ input: "أولا" }), { type: "transcript", text: "ثانيا" }).input).toBe("أولا ثانيا");
   });
-  it("clear empties the conversation, the error and the block", () => {
+  it("clear empties the conversation and the error", () => {
     const s = chatReducer(chatReducer(sent(fresh(), "q"), { type: "result", result: { ok: false, reason: "failed" } }), { type: "clear" });
     expect(s.items).toEqual([]);
-    expect(s.blocked).toBeNull();
+    expect(s.notice).toBeNull();
   });
   it("ids are unique and stable", () => {
     let s = sent(fresh(), "a");

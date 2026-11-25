@@ -70,14 +70,37 @@ function byStatus(status: number): ReadReason {
  * thing to do differs.
  */
 export function readErrorKey(kind: ReadKind | "transcribe" | "ask", reason: string): string {
-  // The assistant's two kinds: its own wording where it differs, the voice wording otherwise.
-  if (kind === "ask") {
-    if (reason === "empty" || reason === "too_long") return `assistant.errors.${reason}`;
-    if (reason === "timeout") return "ai.unavailable.failed";
-    kind = "voice";
-  } else if (kind === "transcribe") {
-    if (reason === "empty") return "assistant.errors.nothingHeard";
-    kind = "voice";
+  // The assistant has its own copy (R82): nothing on its screen speaks of the close screen.
+  if (kind === "ask" || kind === "transcribe") {
+    switch (reason) {
+      case "empty":
+        return kind === "ask" ? "assistant.errors.empty" : "assistant.errors.nothingHeard";
+      case "too_long":
+        return "assistant.errors.too_long";
+      case "disabled":
+      case "company_off":
+      case "no_provider":
+        return "assistant.unavailable.disabled";
+      case "no_notice":
+      case "quota":
+      case "rate_limited":
+      case "unreadable":
+      case "timeout":
+      case "busy":
+      case "unauthorized":
+      case "bad_request":
+      case "audio_type":
+        return `assistant.unavailable.${reason}`;
+      case "unsupported_type":
+        return "assistant.unavailable.audio_type";
+      case "too_large":
+        return "assistant.unavailable.audio_too_large";
+      case "no_audio":
+      case "forbidden":
+        return "assistant.unavailable.bad_request";
+      default:
+        return "assistant.unavailable.failed";
+    }
   }
   switch (reason) {
     case "unauthorized":

@@ -21,8 +21,7 @@ export type ChatItem =
   | { id: string; kind: "user"; text: string }
   | { id: string; kind: "answer"; text: string; citations: ChatCitation[] }
   /** `facts` null: a verdict loaded from the stored conversation, which keeps no figures. */
-  | { id: string; kind: "verdict"; verdict: VerdictKind; facts: ChatFact[] | null }
-  | { id: string; kind: "unavailable"; reason: Exclude<FailReason, "empty" | "too_long"> };
+  | { id: string; kind: "verdict"; verdict: VerdictKind; facts: ChatFact[] | null };
 
 /** A stored row as the page hands it over. */
 export type StoredMessage = { id: string; role: "user" | "assistant"; text: string; verdict: string | null; citations: ChatCitation[] };
@@ -36,6 +35,8 @@ export type ChatState = {
   pending: boolean;
   input: string;
   fieldError: "empty" | "too_long" | null;
+  /** Why the last question was refused or failed: a transient card (never stored), gone when the rep types or asks again. */
+  notice: Exclude<FailReason, "empty" | "too_long"> | null;
   blocked: BlockReason | null;
   /** The question of the request in flight, so a refusal of its shape can put it back in the field. */
   asking: string | null;
@@ -60,7 +61,7 @@ export function initialChat(stored: readonly StoredMessage[], blocked: BlockReas
     else if (m.verdict === "answer") items.push({ id: `s-${m.id}`, kind: "answer", text: m.text, citations: m.citations });
     else if (m.verdict !== null && VERDICTS.includes(m.verdict)) items.push({ id: `s-${m.id}`, kind: "verdict", verdict: m.verdict as VerdictKind, facts: null });
   }
-  return { items, pending: false, input: "", fieldError: null, blocked, asking: null, seq: 0 };
+  return { items, pending: false, input: "", fieldError: null, notice: null, blocked, asking: null, seq: 0 };
 }
 
 export const isBlocked = (s: ChatState): boolean => s.blocked !== null;
@@ -85,13 +86,15 @@ export function submitCheck(
 export function chatReducer(s: ChatState, a: ChatAction): ChatState {
   switch (a.type) {
     case "input":
-      return { ...s, input: a.text, fieldError: null };
+      return { ...s, input: a.text, fieldError: null, notice: null };
     case "transcript": {
       const text = a.text.trim();
       if (text === "") return s;
       // the rep reads it, edits it and sends it himself
-      const input = s.input.trim() === "" ? text : `${s.input.trim()} ${text}`;
-      return { ...s, input, fieldError: null };
+      const joined = s.input.trim() === "" ? text : `${s.input.trim()} ${text}`;
+      // never longer than a question may be, so the counter and the limit stay true
+      const input = Array.from(joined).slice(0, QUESTION_MAX).join("");
+      return { ...s, input, fieldError: null, notice: null };
     }
     case "send": {
       const c = submitCheck(s, a.question);
@@ -100,24 +103,18 @@ export function chatReducer(s: ChatState, a: ChatAction): ChatState {
         return s;
       }
       const id = `u${s.seq + 1}`;
-      return { ...s, items: [...s.items, { id, kind: "user", text: c.question }], pending: true, input: "", fieldError: null, asking: c.question, seq: s.seq + 1 };
+      return { ...s, items: [...s.items, { id, kind: "user", text: c.question }], pending: true, input: "", fieldError: null, notice: null, asking: c.question, seq: s.seq + 1 };
     }
     case "result": {
       if (!s.pending) return s;
       const r = a.result;
       const base = { ...s, pending: false, asking: null };
       if (!r.ok) {
-        if (r.reason === "empty" || r.reason === "too_long") {
-          const items = s.items.at(-1)?.kind === "user" ? s.items.slice(0, -1) : s.items;
-          return { ...base, items, input: s.asking ?? s.input, fieldError: r.reason };
-        }
-        const id = `a${s.seq + 1}`;
-        return {
-          ...base,
-          items: [...s.items, { id, kind: "unavailable", reason: r.reason }],
-          blocked: BLOCKING.has(r.reason) ? (r.reason as BlockReason) : s.blocked,
-          seq: s.seq + 1,
-        };
+        // The question is the rep's: its bubble goes, the field gets it back (unless he already typed something new).
+        const items = s.items.at(-1)?.kind === "user" ? s.items.slice(0, -1) : s.items;
+        const input = s.input === "" ? (s.asking ?? "") : s.input;
+        if (r.reason === "empty" || r.reason === "too_long") return { ...base, items, input, fieldError: r.reason };
+        return { ...base, items, input, notice: r.reason, blocked: BLOCKING.has(r.reason) ? (r.reason as BlockReason) : s.blocked };
       }
       const id = `a${s.seq + 1}`;
       const item: ChatItem = r.verdict === "answer" ? { id, kind: "answer", text: r.text, citations: r.citations } : { id, kind: "verdict", verdict: r.verdict, facts: r.facts };
@@ -126,6 +123,6 @@ export function chatReducer(s: ChatState, a: ChatAction): ChatState {
     case "unblock":
       return { ...s, blocked: null };
     case "clear":
-      return { ...s, items: [], fieldError: null, asking: null, pending: false };
+      return { ...s, items: [], fieldError: null, notice: null, asking: null, pending: false };
   }
 }

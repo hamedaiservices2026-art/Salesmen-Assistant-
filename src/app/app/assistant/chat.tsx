@@ -4,9 +4,9 @@ import { useEffect, useReducer, useRef, useState } from "react";
 import { BookOpen, CircleSlash, LoaderCircle, Mic, SendHorizontal, X } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { AiNoticeSheet } from "@/ui/components/AiNotice";
-import { AiUnavailable, type AiUnavailableReason } from "@/ui/components/AiUnavailable";
+import { AssistantUnavailable } from "@/ui/components/AssistantUnavailable";
 import { IncentiveCard } from "@/ui/components/IncentiveCard";
-import { ReadAloud } from "@/ui/components/ReadAloud";
+import { NoVoiceHint, ReadAloud, ReadAloudProvider } from "@/ui/components/ReadAloud";
 import { VoiceRecorder } from "@/ui/components/VoiceRecorder";
 import { readErrorKey, transcribeAudio } from "@/ui/ai-client";
 import {
@@ -18,19 +18,22 @@ import {
   submitCheck,
   type BlockReason,
   type ChatItem,
+  type ChatReply,
   type StoredMessage,
 } from "@/ui/chat-state";
 import { askAction } from "./actions";
 import { ClearConversation } from "./clear-conversation";
 
-export type AiStatus = { available: boolean; reason: AiUnavailableReason | null };
+export type AiStatus = { available: boolean; reason: string | null };
 export type IncentiveView = { id: string; title: string; body: string; when: string };
 
 /** Notification ids already explained in this page load, for a browser that keeps no session storage. */
 const explainedInMemory = new Set<string>();
+/** Explain requests in flight, so a double effect run cannot send one twice. */
+const explainBusy = new Set<string>();
 
 function chipClass(): string {
-  return "inline-flex items-center gap-1.5 rounded-full border border-line bg-white px-2.5 py-1 text-[12.5px] font-medium text-ink-2";
+  return "inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-2xl border border-line bg-white px-2.5 py-1 text-[12.5px] font-medium text-ink-2 break-words";
 }
 
 function Bubble({ item }: { item: ChatItem }) {
@@ -39,7 +42,7 @@ function Bubble({ item }: { item: ChatItem }) {
   const lead = useLocale() === "ur" ? "leading-[2.2]" : "leading-relaxed";
   if (item.kind === "user") {
     return (
-      <div className="self-end max-w-[82%] rounded-2xl rounded-be-[4px] bg-brand px-3.5 py-2.5 text-[14.5px] text-white">
+      <div className="min-w-0 max-w-[82%] self-end rounded-2xl rounded-be-[4px] bg-brand px-3.5 py-2.5 text-[14.5px] text-white">
         <span className="sr-only">{t("who.user")}: </span>
         <p dir="auto" className={`m-0 whitespace-pre-line break-words ${lead}`}>
           {item.text}
@@ -47,15 +50,8 @@ function Bubble({ item }: { item: ChatItem }) {
       </div>
     );
   }
-  if (item.kind === "unavailable") {
-    return (
-      <div className="self-start max-w-[92%]">
-        <AiUnavailable reason={item.reason as AiUnavailableReason} />
-      </div>
-    );
-  }
   return (
-    <div className="flex max-w-[92%] flex-col gap-2.5 self-start rounded-2xl rounded-bs-[4px] border border-line bg-white p-3.5 text-[14.5px]">
+    <div className="flex min-w-0 max-w-[92%] flex-col gap-2.5 self-start rounded-2xl rounded-bs-[4px] border border-line bg-white p-3.5 text-[14.5px]">
       <span className="sr-only">{t("who.assistant")}: </span>
       {item.kind === "answer" ? (
         <>
@@ -64,7 +60,7 @@ function Bubble({ item }: { item: ChatItem }) {
             {item.text}
           </p>
           {item.citations.length > 0 && (
-            <ul aria-label={t("sourcesLabel")} className="m-0 flex list-none flex-wrap gap-1.5 p-0">
+            <ul aria-label={t("sourcesLabel")} className="m-0 flex min-w-0 list-none flex-wrap gap-1.5 p-0">
               {item.citations.map((c, i) => (
                 <li key={`${c.title}-${c.label}-${i}`} className={chipClass()}>
                   <BookOpen aria-hidden="true" size={14} strokeWidth={2} className="shrink-0" />
@@ -86,7 +82,7 @@ function Bubble({ item }: { item: ChatItem }) {
                 ? t("verdict.notInDocuments")
                 : item.verdict === "no_answer"
                   ? t("verdict.noAnswer")
-                  : item.facts === null
+                  : item.facts === null || item.facts.length === 0
                     ? t("verdict.unverifiedOld")
                     : t("verdict.unverified")}
             </span>
@@ -146,29 +142,49 @@ export function Chat({
   const [voiceOpen, setVoiceOpen] = useState(false);
   const [hearing, setHearing] = useState(false);
   const [voiceMessage, setVoiceMessage] = useState<string | null>(null);
-  const [voiceUnavailable, setVoiceUnavailable] = useState<AiUnavailableReason | null>(null);
+  const [voiceUnavailable, setVoiceUnavailable] = useState<string | null>(null);
   const [noticeOpen, setNoticeOpen] = useState(false);
   const transcribing = useRef<AbortController | null>(null);
 
-  function submit(raw: string, explain?: string) {
-    if (pendingRef.current) return;
+  const overlayOpen = voiceOpen || noticeOpen;
+  const focusField = () => {
+    if (!overlayOpen) field.current?.focus();
+  };
+
+  /** Sends `raw` once; resolves with the reply, or null when nothing was sent. */
+  function submit(raw: string, explain?: string): Promise<ChatReply | null> {
+    if (pendingRef.current) return Promise.resolve(null);
     const c = submitCheck({ pending: false, blocked }, raw);
     if (!c.ok) {
       if (c.reason === "empty" || c.reason === "too_long") dispatch({ type: "send", question: raw });
-      return;
+      return Promise.resolve(null);
     }
     pendingRef.current = true;
     dispatch({ type: "send", question: c.question });
-    void askAction(c.question, explain)
-      .catch(() => ({ ok: false as const, reason: "failed" as const }))
+    focusField();
+    return askAction(c.question, explain)
+      .catch((): ChatReply => ({ ok: false, reason: "failed" }))
       .then((result) => {
         pendingRef.current = false;
         dispatch({ type: "result", result });
+        return result;
       });
   }
 
-  // `?explain=<notificationId>`: one request on load. The guard is per tab (session storage), so a
-  // reload, a back button or a double effect run of development mode cannot send it twice.
+  // After a result (an answer or a refusal) the rep types the next question: focus returns to the field.
+  const wasPending = useRef(false);
+  useEffect(() => {
+    if (wasPending.current && !state.pending) field.current?.focus();
+    wasPending.current = state.pending;
+  }, [state.pending]);
+  // A field error moves focus to the field it is about.
+  useEffect(() => {
+    if (state.fieldError) field.current?.focus();
+  }, [state.fieldError]);
+
+  // `?explain=<notificationId>`: one request on load. The guard is per tab (session storage) and is
+  // written only after an answer, so a reload, a back button or a double effect run of development
+  // mode cannot send it twice, and a failed first attempt is not lost.
   const submitRef = useRef(submit);
   useEffect(() => {
     submitRef.current = submit;
@@ -179,15 +195,23 @@ export function Chat({
     window.history.replaceState(null, "", window.location.pathname);
     if (blocked !== null) return;
     const key = `assistant.explain.${explainId}`;
-    let first = true;
+    let done = false;
     try {
-      if (window.sessionStorage.getItem(key) !== null) first = false;
-      else window.sessionStorage.setItem(key, "1");
+      done = window.sessionStorage.getItem(key) !== null;
     } catch {
-      if (explainedInMemory.has(explainId)) first = false;
-      else explainedInMemory.add(explainId);
+      done = explainedInMemory.has(explainId);
     }
-    if (first) submitRef.current(explainQuestion, explainId);
+    if (done || explainBusy.has(explainId)) return;
+    explainBusy.add(explainId);
+    void submitRef.current(explainQuestion, explainId).then((r) => {
+      explainBusy.delete(explainId);
+      if (r?.ok !== true) return;
+      try {
+        window.sessionStorage.setItem(key, "1");
+      } catch {
+        explainedInMemory.add(explainId);
+      }
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once per id on load
   }, [explainId]);
 
@@ -244,11 +268,13 @@ export function Chat({
   const errorKey = state.fieldError ? readErrorKey("ask", state.fieldError) : null;
 
   return (
-    <>
+    <ReadAloudProvider>
       <main className="flex flex-1 flex-col gap-3 px-5 pb-3 pt-4">
         {incentives.map((n) => (
-          <IncentiveCard key={n.id} title={n.title} body={n.body} when={n.when} explainDisabled={state.pending || blocked !== null} onExplain={() => submit(explainQuestion, n.id)} />
+          <IncentiveCard key={n.id} title={n.title} body={n.body} when={n.when} explainDisabled={state.pending || blocked !== null} onExplain={() => void submit(explainQuestion, n.id)} />
         ))}
+
+        <NoVoiceHint />
 
         <div role="log" aria-label={t("conversationLabel")} className="flex flex-col gap-3">
           {state.items.map((item) => (
@@ -265,9 +291,11 @@ export function Chat({
           )}
         </div>
 
+        {state.notice !== null && state.notice !== blocked && <AssistantUnavailable reason={state.notice} />}
+
         {blocked !== null && (
           <div className="flex flex-col gap-2">
-            <AiUnavailable reason={blocked} />
+            <AssistantUnavailable reason={blocked} />
             {blocked === "no_notice" && (
               <button
                 type="button"
@@ -286,7 +314,7 @@ export function Chat({
               <button
                 key={q}
                 type="button"
-                onClick={() => submit(q)}
+                onClick={() => void submit(q)}
                 className="min-h-11 rounded-full border border-line bg-white px-3.5 text-[13.5px] font-medium text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
               >
                 {q}
@@ -304,7 +332,7 @@ export function Chat({
       </main>
 
       <div className="sticky bottom-[68px] z-10 flex flex-col gap-2 border-t border-line bg-white px-4 py-2.5">
-        {voiceUnavailable && <AiUnavailable reason={voiceUnavailable} />}
+        {voiceUnavailable && <AssistantUnavailable kind="transcribe" reason={voiceUnavailable} />}
         {voiceOpen && <VoiceRecorder hint={t("hint")} onRecorded={(blob) => void onRecorded(blob)} />}
         <div role="status">
           {hearing && (
@@ -328,14 +356,14 @@ export function Chat({
           aria-label={t("askLabel")}
           onSubmit={(e) => {
             e.preventDefault();
-            submit(state.input);
+            void submit(state.input);
           }}
           className="flex items-center gap-2"
         >
           <button
             type="button"
             onClick={onMic}
-            aria-label={voiceOpen ? t("micClose") : t("mic")}
+            aria-label={t("mic")}
             aria-pressed={voiceOpen}
             disabled={hearing || state.pending}
             className="flex size-[52px] shrink-0 items-center justify-center rounded-full border-0 bg-brand text-white hover:bg-brand-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:opacity-60"
@@ -356,15 +384,14 @@ export function Chat({
               maxLength={QUESTION_MAX}
               value={state.input}
               disabled={blocked !== null}
+              aria-describedby={counterVisible(state.input) ? "assistant-counter" : undefined}
               placeholder={t("askPlaceholder")}
               onChange={(e) => dispatch({ type: "input", text: e.target.value })}
               className="h-12 w-full rounded-xl border border-line bg-white px-3.5 text-[14.5px] text-ink placeholder:text-ink-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:opacity-60"
             />
-            {counterVisible(state.input) && (
-              <span aria-label={t("counterLabel")} dir="ltr" className="pointer-events-none absolute -top-5 end-1 rounded bg-white px-1 text-[12px] tabular-nums text-ink-2">
-                {counterText(state.input)}
-              </span>
-            )}
+            <span id="assistant-counter" role="status" aria-label={t("counterLabel")} dir="ltr" className="pointer-events-none absolute -top-5 end-1 rounded bg-white px-1 text-[12px] tabular-nums text-ink-2">
+              {counterVisible(state.input) ? counterText(state.input) : ""}
+            </span>
           </div>
           <button
             type="submit"
@@ -384,9 +411,11 @@ export function Chat({
           onClose={() => {
             setNoticeOpen(false);
             dispatch({ type: "unblock" });
+            // the dialog gives focus back to what opened it; a question is what comes next
+            requestAnimationFrame(() => field.current?.focus());
           }}
         />
       )}
-    </>
+    </ReadAloudProvider>
   );
 }

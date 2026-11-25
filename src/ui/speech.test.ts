@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CITATION_MARK, pickVoice, SPEAK_MAX, speakable } from "./speech";
+import { pickVoice, SPEAK_MAX, speakable, takeHintOnce } from "./speech";
 
 describe("pickVoice", () => {
   it("prefers ar-SA for Arabic", () => {
@@ -26,8 +26,21 @@ describe("pickVoice", () => {
 });
 
 describe("speakable", () => {
-  it("drops lines that start with the citation marker", () => {
-    expect(speakable(`الجواب الأول.\n${CITATION_MARK} سياسة · بند\nالجواب الثاني.`)).toBe("الجواب الأول.\nالجواب الثاني.");
+  it("keeps every line of the answer, including one that starts with a section sign", () => {
+    expect(speakable("الجواب الأول.\n§ 4.2 بند\nالجواب الثاني.")).toBe("الجواب الأول.\n§ 4.2 بند\nالجواب الثاني.");
+  });
+  it("a full stop inside a number or a name is not a sentence end", () => {
+    const text = `${"كلمة ".repeat(110)}3.5 كرتونة ${"و".repeat(100)}`;
+    const out = speakable(text);
+    expect(out.length).toBeLessThanOrEqual(SPEAK_MAX);
+    expect(out.endsWith("3.")).toBe(false);
+    expect(out.endsWith("3")).toBe(false);
+    const long = `${"ا".repeat(500)} 12.50 ${"ب".repeat(300)}`;
+    expect(speakable(long).endsWith("12.")).toBe(false);
+  });
+  it("a full stop followed by a space or the end is a sentence end", () => {
+    const text = `${"ا".repeat(100)}. ${"ب".repeat(300)}. ${"ج".repeat(400)}`;
+    expect(speakable(text)).toBe(`${"ا".repeat(100)}. ${"ب".repeat(300)}.`);
   });
   it("leaves short text as it is (trimmed)", () => {
     expect(speakable("  مرحبا.  ")).toBe("مرحبا.");
@@ -53,7 +66,28 @@ describe("speakable", () => {
     expect(out.endsWith("كلمة")).toBe(true);
     expect(speakable("x".repeat(900))).toHaveLength(SPEAK_MAX);
   });
-  it("nothing left after dropping citations is the empty string", () => {
-    expect(speakable(`${CITATION_MARK} a\n${CITATION_MARK} b`)).toBe("");
+  it("blank text is the empty string", () => {
+    expect(speakable("  \n ")).toBe("");
+  });
+});
+
+describe("takeHintOnce (the no-voice hint, once per device)", () => {
+  const store = () => {
+    const m = new Map<string, string>();
+    return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v) };
+  };
+  it("is true the first time and false after", () => {
+    const s = store();
+    const memory = { shown: false };
+    expect(takeHintOnce(() => s, memory)).toBe(true);
+    expect(takeHintOnce(() => s, memory)).toBe(false);
+  });
+  it("private mode (storage throws): once per page load, never throws", () => {
+    const boom = () => {
+      throw new Error("denied");
+    };
+    const memory = { shown: false };
+    expect(takeHintOnce(boom, memory)).toBe(true);
+    expect(takeHintOnce(boom, memory)).toBe(false);
   });
 });

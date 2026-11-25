@@ -168,7 +168,21 @@
       "incentives": "What are this month's incentives?",
       "policy": "What is the returns policy?"
     },
-    "hint": "Say your question, for example: how much is left on the drinks target"
+    "hint": "Say your question, for example: how much is left on the drinks target",
+    "unavailable": {
+      "disabled": "The assistant is off right now. Ask your supervisor.",
+      "no_notice": "Read the notice and agree to it first so you can ask.",
+      "quota": "You have reached today's limit of questions. Try tomorrow.",
+      "rate_limited": "Wait a minute and try again.",
+      "failed": "We could not answer right now. Try again.",
+      "unreadable": "We could not understand the reply. Try again.",
+      "timeout": "The answer took too long. Try again.",
+      "busy": "The service is busy. Try again in a little while.",
+      "audio_type": "This recording type is not supported on your device. Type your question.",
+      "audio_too_large": "The recording is too long. Make it shorter or type your question.",
+      "bad_request": "The request was not understood. Try again or type your question.",
+      "unauthorized": "Your session has ended. Sign in again to continue."
+    }
   },
   "close": {
     "title": "Close the day",
@@ -411,8 +425,7 @@
     },
     "assistant": {
       "title": "Assistant conversations",
-      "clear": "Delete assistant conversations",
-      "done": "Deleted"
+      "clear": "Delete assistant conversations"
     }
   },
   "currency": {

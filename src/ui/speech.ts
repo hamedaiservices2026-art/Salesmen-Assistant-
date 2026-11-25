@@ -4,8 +4,6 @@ import type { Locale } from "@/i18n/config";
 
 export type VoiceLike = { lang: string; name: string; default?: boolean; localService?: boolean };
 
-/** A line of the text that starts with this mark is a citation chip, not part of the answer, and is never read out. */
-export const CITATION_MARK = "§";
 /** The most characters read in one go. */
 export const SPEAK_MAX = 600;
 
@@ -31,20 +29,27 @@ export function pickVoice(voices: readonly VoiceLike[], locale: Locale): number 
   return best;
 }
 
-const SENTENCE_END = /[.!?؟۔]/;
+/** Characters that end a sentence wherever they stand. */
+const STRONG_END = /[!?؟۔]/;
 
-/** The text to read: citation lines dropped, at most 600 characters, cut at a sentence end (else a space). */
+/** Whether the text ends a sentence at index `i` (a full stop only before a space or the end, never inside a number or a name). */
+function endsSentence(s: string, i: number): boolean {
+  const c = s[i]!;
+  if (STRONG_END.test(c)) return true;
+  if (c !== ".") return false;
+  const next = s[i + 1];
+  return next === undefined || /\s/.test(next);
+}
+
+/** The text to read: at most 600 characters, cut at a sentence end (else a space). */
 export function speakable(text: string): string {
-  const kept = String(text)
-    .split(/\r?\n/)
-    .filter((line) => !line.trimStart().startsWith(CITATION_MARK))
-    .join("\n")
-    .trim();
+  const kept = String(text).trim();
   if (kept.length <= SPEAK_MAX) return kept;
   const head = kept.slice(0, SPEAK_MAX);
   let end = -1;
+  // `endsSentence` looks at the character after the stop in the whole text, so a stop at the cut is judged by what really follows.
   for (let i = head.length - 1; i >= 0; i--) {
-    if (SENTENCE_END.test(head[i]!)) {
+    if (endsSentence(kept, i)) {
       end = i + 1;
       break;
     }
@@ -52,4 +57,21 @@ export function speakable(text: string): string {
   if (end > 0) return head.slice(0, end).trim();
   const space = head.search(/\s\S*$/);
   return (space > 0 ? head.slice(0, space) : head).trim();
+}
+
+/**
+ * True the first time it is asked on this device, false after (the no-voice hint). `getStorage`
+ * may throw (private mode, blocked storage); then `memory` holds it for the page load.
+ */
+export function takeHintOnce(getStorage: () => Pick<Storage, "getItem" | "setItem">, memory: { shown: boolean }, key = "assistant.noVoiceHint"): boolean {
+  try {
+    const s = getStorage();
+    if (s.getItem(key) !== null) return false;
+    s.setItem(key, "1");
+    return true;
+  } catch {
+    if (memory.shown) return false;
+    memory.shown = true;
+    return true;
+  }
 }

@@ -1,45 +1,31 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useId, useRef, useState } from "react";
 import { Square, Volume2 } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import type { Locale } from "@/i18n/config";
-import { pickVoice, speakable } from "@/ui/speech";
+import { pickVoice, speakable, takeHintOnce } from "@/ui/speech";
 
 /** How long the phone gets to list its voices (they often arrive after the page). */
 const VOICES_WAIT_MS = 1500;
-const HINT_KEY = "assistant.noVoiceHint";
+const memory = { shown: false };
 
 type Found = { phase: "wait" } | { phase: "none" } | { phase: "ready"; voice: SpeechSynthesisVoice };
-
-/** Once per device: true the first time it is asked, false after. Private mode without storage: asked once per page load. */
-let hintShownInMemory = false;
-function takeHint(): boolean {
-  try {
-    if (window.localStorage.getItem(HINT_KEY) !== null) return false;
-    window.localStorage.setItem(HINT_KEY, "1");
-    return true;
-  } catch {
-    if (hintShownInMemory) return false;
-    hintShownInMemory = true;
-    return true;
-  }
-}
+type Api = { found: Found; hint: boolean; speakingId: string | null; toggle: (id: string, text: string) => void };
+const Voices = createContext<Api | null>(null);
 
 /**
- * The read-aloud button, with the phone's own voices only. It renders nothing until the phone has
- * `speechSynthesis` and a voice for the rep's language (waiting at most 1.5 s for the list). It
- * speaks only from a tap, and stops on a second tap, when the page is hidden or left, and when
- * the component goes away (a route change unmounts it). No voice: no button, and once per device
- * the hint that the answer is only written.
+ * One voice detection and one speaker for every read-aloud button on the screen. It looks for a
+ * voice of the rep's language once (waiting at most 1.5 s for the list), speaks only from a tap,
+ * and stops on a second tap, when the page is hidden or left, and when it unmounts (a route
+ * change). Only one answer is read at a time.
  */
-export function ReadAloud({ text, className = "", hintClassName = "" }: { text: string; className?: string; hintClassName?: string }) {
-  const t = useTranslations("assistant");
+export function ReadAloudProvider({ children }: { children: React.ReactNode }) {
   const locale = useLocale() as Locale;
   const [found, setFound] = useState<Found>({ phase: "wait" });
-  const [speaking, setSpeaking] = useState(false);
   const [hint, setHint] = useState(false);
-  const mine = useRef<SpeechSynthesisUtterance | null>(null);
+  const [speakingId, setSpeakingId] = useState<string | null>(null);
+  const current = useRef<SpeechSynthesisUtterance | null>(null);
 
   useEffect(() => {
     const synth = typeof window !== "undefined" ? window.speechSynthesis : undefined;
@@ -49,7 +35,7 @@ export function ReadAloud({ text, className = "", hintClassName = "" }: { text: 
       done = true;
       setFound(next);
       // No voice: the hint, once per device.
-      if (next.phase === "none" && takeHint()) setHint(true);
+      if (next.phase === "none" && takeHintOnce(() => window.localStorage, memory)) setHint(true);
     };
     const settle = (final: boolean) => {
       if (done) return;
@@ -70,14 +56,12 @@ export function ReadAloud({ text, className = "", hintClassName = "" }: { text: 
     };
   }, [locale]);
 
-  // Stops what this button started: on unmount (a route change), when the page is hidden or left.
   useEffect(() => {
     const stop = () => {
-      if (mine.current && typeof window !== "undefined") {
-        mine.current = null;
-        window.speechSynthesis?.cancel();
-        setSpeaking(false);
-      }
+      if (!current.current) return;
+      current.current = null;
+      window.speechSynthesis?.cancel();
+      setSpeakingId(null);
     };
     const onHidden = () => {
       if (document.visibilityState === "hidden") stop();
@@ -87,53 +71,70 @@ export function ReadAloud({ text, className = "", hintClassName = "" }: { text: 
     return () => {
       document.removeEventListener("visibilitychange", onHidden);
       window.removeEventListener("pagehide", stop);
-      if (mine.current) {
-        const synth = window.speechSynthesis;
-        mine.current = null;
-        synth?.cancel();
+      if (current.current) {
+        current.current = null;
+        window.speechSynthesis?.cancel();
       }
     };
   }, []);
 
-  if (found.phase === "none") {
-    return hint ? <p className={`m-0 text-[12.5px] text-ink-2 ${hintClassName}`}>{t("noVoice")}</p> : null;
-  }
-  if (found.phase !== "ready") return null;
-  const { voice } = found;
-
-  function toggle() {
+  function toggle(id: string, text: string) {
+    if (found.phase !== "ready") return;
     const synth = window.speechSynthesis;
-    if (speaking) {
-      mine.current = null;
+    if (speakingId === id) {
+      current.current = null;
       synth.cancel();
-      setSpeaking(false);
+      setSpeakingId(null);
       return;
     }
     const say = speakable(text);
     if (say === "") return;
-    synth.cancel();
+    // Only something already speaking has to be stopped first.
+    if (synth.speaking || synth.pending) synth.cancel();
     const u = new SpeechSynthesisUtterance(say);
-    u.voice = voice;
-    u.lang = voice.lang;
+    u.voice = found.voice;
+    u.lang = found.voice.lang;
     const end = () => {
-      if (mine.current === u) {
-        mine.current = null;
-        setSpeaking(false);
+      if (current.current === u) {
+        current.current = null;
+        setSpeakingId(null);
       }
     };
     u.onend = end;
     u.onerror = end;
-    mine.current = u;
-    setSpeaking(true);
+    current.current = u;
+    setSpeakingId(id);
     synth.speak(u);
   }
 
+  return <Voices.Provider value={{ found, hint, speakingId, toggle }}>{children}</Voices.Provider>;
+}
+
+/** The once-per-device line saying the phone has no voice for this language (own element, own row). */
+export function NoVoiceHint({ className = "" }: { className?: string }) {
+  const t = useTranslations("assistant");
+  const api = useContext(Voices);
+  if (!api?.hint) return null;
+  return (
+    <p role="status" className={`m-0 text-[12.5px] text-ink-2 ${className}`}>
+      {t("noVoice")}
+    </p>
+  );
+}
+
+/** The read-aloud button: nothing until the phone has a voice for the language. */
+export function ReadAloud({ text, className = "" }: { text: string; className?: string }) {
+  const t = useTranslations("assistant");
+  const id = useId();
+  const api = useContext(Voices);
+  if (!api || api.found.phase !== "ready") return null;
+  const speaking = api.speakingId === id;
   return (
     <button
       type="button"
-      onClick={toggle}
+      onClick={() => api.toggle(id, text)}
       aria-pressed={speaking}
-      className={`inline-flex min-h-11 items-center justify-center gap-1.5 rounded-[10px] border border-line bg-white px-3.5 text-[14px] font-semibold text-brand focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand ${className}`}
+      className={`inline-flex min-h-11 items-center justify-center gap-1.5 rounded-[10px] border border-line bg-white px-3.5 py-1.5 text-[14px] font-semibold text-brand focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand ${className}`}
     >
       {speaking ? <Square aria-hidden="true" size={16} strokeWidth={2} fill="currentColor" /> : <Volume2 aria-hidden="true" size={18} strokeWidth={1.9} />}
       {speaking ? t("stop") : t("listen")}

@@ -226,10 +226,21 @@ describe("readErrorKey for the assistant (kinds transcribe and ask)", () => {
     expect(readErrorKey("ask", "empty")).toBe("assistant.errors.empty");
     expect(readErrorKey("ask", "too_long")).toBe("assistant.errors.too_long");
     expect(readErrorKey("transcribe", "empty")).toBe("assistant.errors.nothingHeard");
-    expect(readErrorKey("transcribe", "too_large")).toBe("close.read.errors.audio_too_large");
-    expect(readErrorKey("transcribe", "unsupported_type")).toBe("ai.unavailable.audio_type");
-    expect(readErrorKey("ask", "quota")).toBe("ai.unavailable.quota");
-    expect(readErrorKey("ask", "no_provider")).toBe("ai.unavailable.disabled");
+    expect(readErrorKey("transcribe", "too_large")).toBe("assistant.unavailable.audio_too_large");
+    expect(readErrorKey("transcribe", "unsupported_type")).toBe("assistant.unavailable.audio_type");
+    expect(readErrorKey("ask", "quota")).toBe("assistant.unavailable.quota");
+    expect(readErrorKey("ask", "no_provider")).toBe("assistant.unavailable.disabled");
+    expect(readErrorKey("ask", "company_off")).toBe("assistant.unavailable.disabled");
+    expect(readErrorKey("ask", "timeout")).toBe("assistant.unavailable.timeout");
+    expect(readErrorKey("ask", "busy")).toBe("assistant.unavailable.busy");
+    expect(readErrorKey("ask", "no_notice")).toBe("assistant.unavailable.no_notice");
+  });
+  it("an unknown reason falls back to the failed copy; no assistant copy mentions the close screen's wording", () => {
+    expect(readErrorKey("ask", "something_new")).toBe("assistant.unavailable.failed");
+    expect(readErrorKey("transcribe", "something_new")).toBe("assistant.unavailable.failed");
+    for (const kind of ["ask", "transcribe"] as const) {
+      for (const reason of EXTRA) expect(readErrorKey(kind, reason).startsWith("assistant."), `${kind} ${reason}`).toBe(true);
+    }
   });
 });
 
