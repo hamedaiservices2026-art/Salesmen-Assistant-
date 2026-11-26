@@ -11,8 +11,12 @@ describe("readAiConfig", () => {
     expect(cfg.groq.key).toBeNull();
     expect(cfg.openrouter.key).toBeNull();
     expect(cfg.groq.sttModel).toBe("whisper-large-v3");
-    expect(cfg.openrouter.visionModel).toBeNull();
-    expect(cfg.openrouter.chatModel).toBeNull();
+    expect(cfg.gemini.visionModel).toBe("gemini-4-hydrogen");
+    expect(cfg.gemini.chatModel).toBe("gemini-4-hydrogen");
+    expect(cfg.gemini.audioModel).toBe("gemini-4-hydrogen");
+    expect(cfg.gemini.fallbackModel).toBe("gemini-3.5-flash-lite");
+    expect(cfg.openrouter.visionModel).toBe("google/gemma-4-31b-it:free");
+    expect(cfg.openrouter.chatModel).toBe("google/gemma-4-31b-it:free");
     expect(cfg.globalDay).toEqual({ vision: 400, stt: 600, chat: 800 });
     expect(cfg.globalMinute).toEqual({ vision: null, stt: null, chat: null });
   });
@@ -37,7 +41,7 @@ describe("readAiConfig", () => {
     expect(readAiConfig({ AI_GEMINI_CHAT_MODEL: "../v1/x?y" }).gemini.chatModel).toBe(def);
     expect(readAiConfig({ AI_GEMINI_CHAT_MODEL: "my-model.v2" }).gemini.chatModel).toBe("my-model.v2");
     expect(readAiConfig({ AI_OPENROUTER_CHAT_MODEL: "a/b:free" }).openrouter.chatModel).toBe("a/b:free");
-    expect(readAiConfig({ AI_OPENROUTER_CHAT_MODEL: "a b" }).openrouter.chatModel).toBeNull();
+    expect(readAiConfig({ AI_OPENROUTER_CHAT_MODEL: "a b" }).openrouter.chatModel).toBe("google/gemma-4-31b-it:free");
   });
 
   it("validates global limits", () => {
@@ -74,10 +78,19 @@ describe("providerOrder", () => {
   });
 });
 
+describe("AI_GEMINI_FALLBACK_MODEL", () => {
+  it("defaults to gemini-3.5-flash-lite; a valid id replaces it; none disables it; a bad id keeps the default", () => {
+    expect(readAiConfig({}).gemini.fallbackModel).toBe("gemini-3.5-flash-lite");
+    expect(readAiConfig({ AI_GEMINI_FALLBACK_MODEL: "gemini-3.8-flash" }).gemini.fallbackModel).toBe("gemini-3.8-flash");
+    expect(readAiConfig({ AI_GEMINI_FALLBACK_MODEL: "none" }).gemini.fallbackModel).toBeNull();
+    expect(readAiConfig({ AI_GEMINI_FALLBACK_MODEL: "../x?y" }).gemini.fallbackModel).toBe("gemini-3.5-flash-lite");
+  });
+});
+
 describe("AI_GEMINI_THINKING", () => {
-  it("defaults to off; accepts off, low, default and a whole budget; anything else is off", () => {
-    expect(readAiConfig({}).gemini.thinking).toBe("off");
+  it("defaults to low; accepts off, low, default and a whole budget; anything else is low", () => {
+    expect(readAiConfig({}).gemini.thinking).toBe("low");
     for (const v of ["off", "low", "default", "0", "2048"]) expect(readAiConfig({ AI_GEMINI_THINKING: v }).gemini.thinking).toBe(v);
-    for (const v of ["", "high", "-1", "1.5", "1e3", "9999999", "off; drop"]) expect(readAiConfig({ AI_GEMINI_THINKING: v }).gemini.thinking).toBe("off");
+    for (const v of ["", "high", "-1", "1.5", "1e3", "9999999", "off; drop"]) expect(readAiConfig({ AI_GEMINI_THINKING: v }).gemini.thinking).toBe("low");
   });
 });

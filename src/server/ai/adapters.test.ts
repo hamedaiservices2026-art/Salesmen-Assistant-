@@ -107,7 +107,7 @@ describe("gemini adapter", () => {
     const body = JSON.parse(calls[0]!.init.body as string);
     expect(body.contents[0].parts[0].inlineData.mimeType).toBe("audio/webm");
     expect(body.contents[0].parts[1].text).toMatch(/verbatim.*Arabic/);
-    expect(new URL(calls[0]!.url).pathname).toContain("gemini-3.5-flash-lite");
+    expect(new URL(calls[0]!.url).pathname).toContain("gemini-4-hydrogen");
   });
 
   it("stt with a type the document does not list → bad_request and no request (R48)", async () => {
@@ -151,13 +151,14 @@ describe("gemini adapter", () => {
     expect((await geminiProvider(CFG.gemini, noUsage.fetchImpl).chat(chatReq, signal())).usage).toEqual({ tokensIn: null, tokensOut: null });
   });
 
-  it("thinking: off by default (budget 0); the setting is switchable without code", async () => {
+  it("thinking: level low by default; off is level minimal (Gemini 3.x and 4 reject a budget of 0); switchable without code", async () => {
     const cases: [string | undefined, unknown][] = [
-      [undefined, { thinkingBudget: 0 }],
-      ["off", { thinkingBudget: 0 }],
+      [undefined, { thinkingLevel: "low" }],
+      ["off", { thinkingLevel: "minimal" }],
       ["low", { thinkingLevel: "low" }],
       ["default", undefined],
       ["2048", { thinkingBudget: 2048 }],
+      ["0", { thinkingBudget: 0 }],
     ];
     for (const [setting, expected] of cases) {
       const { calls, fetchImpl } = recorder();
@@ -450,7 +451,8 @@ describe("getProviders (live)", () => {
   });
 
   it("only providers with a key and a model for the kind", () => {
-    expect(names(getProviders("vision", readAiConfig({ GEMINI_API_KEY: KEY, OPENROUTER_API_KEY: KEY })))).toEqual(["gemini"]);
+    expect(names(getProviders("vision", readAiConfig({ GEMINI_API_KEY: KEY })))).toEqual(["gemini"]);
+    expect(names(getProviders("vision", readAiConfig({ GEMINI_API_KEY: KEY, OPENROUTER_API_KEY: KEY })))).toEqual(["gemini", "openrouter"]);
     expect(names(getProviders("vision", CFG))).toEqual(["gemini", "openrouter"]);
     expect(names(getProviders("chat", readAiConfig({ GROQ_API_KEY: KEY })))).toEqual([]);
     expect(names(getProviders("stt", readAiConfig({ GEMINI_API_KEY: KEY })))).toEqual(["gemini"]);

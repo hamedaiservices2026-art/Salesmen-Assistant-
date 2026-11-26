@@ -37,6 +37,11 @@ export interface AiProvider {
   readonly name: ProviderName;
   /** null: this provider does not do that job. */
   modelFor(kind: AiKind): string | null;
+  /**
+   * The same provider on its fallback model for this job (same-provider model fallback), or
+   * null/absent. The runner tries it once when this provider ends overloaded or rate limited.
+   */
+  modelFallback?(kind: AiKind): AiProvider | null;
   /** From docs/ai-providers.md (R48). */
   acceptsAudio(mime: AudioMime): boolean;
   vision(req: VisionRequest, signal: AbortSignal): Promise<TextResult>;

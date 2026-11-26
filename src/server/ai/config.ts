@@ -5,7 +5,7 @@ export type ProviderName = "gemini" | "groq" | "openrouter" | "fake";
 
 export type AiConfig = {
   mode: "live" | "fake" | "off";
-  gemini: { key: Secret | null; visionModel: string; chatModel: string; audioModel: string; thinking: string };
+  gemini: { key: Secret | null; visionModel: string; chatModel: string; audioModel: string; fallbackModel: string | null; thinking: string };
   groq: { key: Secret | null; sttModel: string };
   openrouter: { key: Secret | null; visionModel: string | null; chatModel: string | null };
   globalDay: Record<AiKind, number>;
@@ -16,10 +16,14 @@ export type AiConfig = {
 
 type Env = Record<string, string | undefined>;
 
-// Defaults follow docs/ai-providers.md ("Differences from the design"). The design's
-// `gemini-4-hydrogen` was not found in the providers' current documentation.
+// Defaults follow docs/ai-providers.md. `gemini-4-hydrogen` (the design's id) was verified live in
+// the Gemini model list on 2026-11-26; it answered HTTP 503 (high demand) that day, so a
+// same-provider fallback model is used when the primary is overloaded. The OpenRouter defaults are
+// free, image-capable models (free tier: rate limited, and prompts may be logged or trained on).
 // Provider model ids are configuration, not coding-agent identifiers (R46).
-const DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite";
+const DEFAULT_GEMINI_MODEL = "gemini-4-hydrogen";
+const DEFAULT_GEMINI_FALLBACK_MODEL = "gemini-3.5-flash-lite";
+const DEFAULT_OPENROUTER_MODEL = "google/gemma-4-31b-it:free";
 const DEFAULT_GROQ_STT_MODEL = "whisper-large-v3";
 
 const DEFAULT_GLOBAL_DAY: Record<AiKind, number> = { vision: 400, stt: 600, chat: 800 };
@@ -30,9 +34,7 @@ const CONTEXT_MAX_MIN = 5_000;
 
 const MODEL_ID = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,99}$/;
 
-function modelId(raw: string | undefined, fallback: string): string;
-function modelId(raw: string | undefined, fallback: null): string | null;
-function modelId(raw: string | undefined, fallback: string | null): string | null {
+function modelId(raw: string | undefined, fallback: string): string {
   if (raw !== undefined && MODEL_ID.test(raw) && !raw.includes("..")) return raw;
   return fallback;
 }
@@ -43,9 +45,18 @@ function intIn(raw: string | undefined, min: number, max: number): number | null
   return n >= min && n <= max ? n : null;
 }
 
-/** `AI_GEMINI_THINKING`: "off" | "low" | "default" | a whole token budget; anything else is "off". */
+/**
+ * `AI_GEMINI_THINKING`: "low" (default) | "off" (the minimal level; Gemini 3.x and 4 reject a budget
+ * of 0) | "default" (send nothing) | a whole token budget; anything else is "low".
+ */
 function thinking(raw: string | undefined): string {
-  return raw !== undefined && /^(off|low|default|\d{1,6})$/.test(raw) ? raw : "off";
+  return raw !== undefined && /^(off|low|default|\d{1,6})$/.test(raw) ? raw : "low";
+}
+
+/** `AI_GEMINI_FALLBACK_MODEL`: a model id, or "none" for no model fallback; an invalid id keeps the default. */
+function fallbackModel(raw: string | undefined): string | null {
+  if (raw === "none") return null;
+  return modelId(raw, DEFAULT_GEMINI_FALLBACK_MODEL);
 }
 
 function key(raw: string | undefined): Secret | null {
@@ -80,6 +91,7 @@ export function readAiConfig(env: Env): AiConfig {
       visionModel: modelId(env.AI_GEMINI_VISION_MODEL, DEFAULT_GEMINI_MODEL),
       chatModel: modelId(env.AI_GEMINI_CHAT_MODEL, DEFAULT_GEMINI_MODEL),
       audioModel: modelId(env.AI_GEMINI_AUDIO_MODEL, DEFAULT_GEMINI_MODEL),
+      fallbackModel: fallbackModel(env.AI_GEMINI_FALLBACK_MODEL),
       thinking: thinking(env.AI_GEMINI_THINKING),
     },
     groq: {
@@ -88,8 +100,8 @@ export function readAiConfig(env: Env): AiConfig {
     },
     openrouter: {
       key: key(env.OPENROUTER_API_KEY),
-      visionModel: modelId(env.AI_OPENROUTER_VISION_MODEL, null),
-      chatModel: modelId(env.AI_OPENROUTER_CHAT_MODEL, null),
+      visionModel: modelId(env.AI_OPENROUTER_VISION_MODEL, DEFAULT_OPENROUTER_MODEL),
+      chatModel: modelId(env.AI_OPENROUTER_CHAT_MODEL, DEFAULT_OPENROUTER_MODEL),
     },
     globalDay,
     globalMinute,

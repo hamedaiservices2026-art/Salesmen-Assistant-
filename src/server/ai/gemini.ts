@@ -12,8 +12,7 @@ import {
   type VisionRequest,
 } from "./types";
 
-// Everything the owner's smoke run may need to correct lives in this block (docs/ai-providers.md
-// marks the request shape UNVERIFIED). Provider model ids are configuration in config.ts.
+// Request shape verified live 2026-11-26 (docs/ai-providers.md). Provider model ids are configuration in config.ts.
 const BASE = "https://generativelanguage.googleapis.com";
 const API_VERSION = "v1beta";
 const GENERATE_SUFFIX = ":generateContent";
@@ -25,11 +24,12 @@ const ACCEPTED_AUDIO: ReadonlySet<AudioMime> = new Set<AudioMime>(["audio/webm",
 const LANGUAGE_NAME: Record<Locale, string> = { ar: "Arabic", en: "English", ur: "Urdu" };
 /**
  * Thinking tokens count against maxOutputTokens, so a thinking model can spend the whole budget
- * and return no text. Default "off" (UNVERIFIED which models accept it). `AI_GEMINI_THINKING`
- * overrides it: "off" -> thinkingBudget 0, "low" -> thinkingLevel low, "default" -> send nothing,
- * a whole number -> that thinkingBudget. A model that rejects the field answers 400.
+ * and return no text. Verified live 2026-11-26: Gemini 3.x and 4 reject `thinkingBudget: 0` with
+ * HTTP 400, and accept `thinkingLevel` "low" and "minimal". Default "low". `AI_GEMINI_THINKING`:
+ * "low" -> thinkingLevel low, "off" -> thinkingLevel minimal, "default" -> send nothing, a whole
+ * number -> that thinkingBudget (explicit only).
  */
-const THINKING_DEFAULT = "off";
+const THINKING_DEFAULT = "low";
 /** vision and chat ask for at least this many output tokens (headroom for any thinking). */
 const MIN_OUTPUT_TOKENS = 1024;
 const STT_OUTPUT_TOKENS = 2048;
@@ -38,13 +38,13 @@ const TEMPERATURE = { vision: 0, stt: 0, chat: 0.2 } as const;
 type Part = { text: string } | { inlineData: { mimeType: string; data: string } };
 type Content = { role: "user" | "model"; parts: Part[] };
 
-function thinkingConfig(setting: string | undefined): Record<string, unknown> | undefined {
+export function thinkingConfig(setting: string | undefined): Record<string, unknown> | undefined {
   const s = setting ?? THINKING_DEFAULT;
   if (s === "default") return undefined;
   if (s === "low") return { thinkingLevel: "low" };
-  if (s === "off") return { thinkingBudget: 0 };
+  if (s === "off") return { thinkingLevel: "minimal" };
   const n = Number(s);
-  return Number.isSafeInteger(n) && n >= 0 ? { thinkingBudget: n } : { thinkingBudget: 0 };
+  return Number.isSafeInteger(n) && n >= 0 ? { thinkingBudget: n } : { thinkingLevel: "low" };
 }
 
 function textOf(json: unknown, provider: "gemini", allowEmpty = false): TextResult {
@@ -94,6 +94,11 @@ export function geminiProvider(cfg: AiConfig["gemini"], fetchImpl: typeof fetch 
   return {
     name: "gemini",
     modelFor: modelOf,
+    modelFallback(kind) {
+      const fb = cfg.fallbackModel;
+      if (fb === null || cfg.key === null || fb === modelOf(kind)) return null;
+      return geminiProvider({ ...cfg, visionModel: fb, chatModel: fb, audioModel: fb, fallbackModel: null }, fetchImpl);
+    },
     acceptsAudio: (mime) => ACCEPTED_AUDIO.has(mime),
     vision(req: VisionRequest, signal) {
       return generate(

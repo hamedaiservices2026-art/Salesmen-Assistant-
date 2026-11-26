@@ -92,13 +92,14 @@ Upload templates: `/admin/uploads` offers a downloadable `.xlsx` template for ea
 | `AI_PROVIDER` | `fake` selects the offline fake provider (tests, demos, `pnpm e2e:ai`). In a production build it is ignored (AI is off) unless `ALLOW_AI_FAKE=1`. Never for a real deployment. |
 | `ALLOW_AI_FAKE` | `1` lets a production build use the fake provider (end-to-end runs only). Never set it on a deployment. |
 | `AI_DISABLED` | `1` switches AI off for the whole deployment, whatever any company's setting says. |
-| `AI_GEMINI_VISION_MODEL`, `AI_GEMINI_CHAT_MODEL`, `AI_GEMINI_AUDIO_MODEL` | Gemini model ids for photos, questions and the voice fallback. Default `gemini-3.5-flash-lite`, which is UNVERIFIED (see `docs/ai-providers.md`). |
+| `AI_GEMINI_VISION_MODEL`, `AI_GEMINI_CHAT_MODEL`, `AI_GEMINI_AUDIO_MODEL` | Gemini model ids for photos, questions and the voice fallback. Default `gemini-4-hydrogen` (verified in the live model list on 2026-11-26; it can answer 503 under demand, then the fallback model below is used). |
+| `AI_GEMINI_FALLBACK_MODEL` | Gemini model used once, inside the same request, when the primary model answers 503 or 429 after its retry. Default `gemini-3.5-flash-lite`; `none` disables it. The usage log records the model that answered and `fallback`. |
 | `AI_GROQ_STT_MODEL` | Groq model id for voice. Default `whisper-large-v3`. |
-| `AI_OPENROUTER_VISION_MODEL`, `AI_OPENROUTER_CHAT_MODEL` | OpenRouter model ids. No default: OpenRouter is not used until both a key and the id are set. |
-| `AI_GEMINI_THINKING` | `off` (default), `low`, `default` or a whole token budget: how Gemini's thinking tokens are limited. |
+| `AI_OPENROUTER_VISION_MODEL`, `AI_OPENROUTER_CHAT_MODEL` | OpenRouter model ids. Default `google/gemma-4-31b-it:free` for both (image capable; free tier, about 20 requests per minute and 50 per day, and free endpoints may log or train on prompts). OpenRouter is used only when `OPENROUTER_API_KEY` is set. |
+| `AI_GEMINI_THINKING` | `low` (default, sends `thinkingLevel: low`), `off` (sends `thinkingLevel: minimal`; Gemini 3.x and 4 reject a budget of 0), `default` (sends nothing) or a whole token budget (sent as `thinkingBudget`). |
 | `AI_CONTEXT_MAX` | Characters of context one assistant question may send, 5000 to 60000 (default 60000). Lower it if the chat provider's tokens-per-minute limit is hit. |
 | `AI_GLOBAL_DAY_VISION`, `AI_GLOBAL_DAY_STT`, `AI_GLOBAL_DAY_CHAT` | Daily requests for the whole deployment, per kind (photos, voice, questions). Defaults 400, 600, 800. |
-| `AI_GLOBAL_MINUTE_VISION`, `AI_GLOBAL_MINUTE_STT`, `AI_GLOBAL_MINUTE_CHAT` | Requests per minute for the whole deployment, per kind. No default (no deployment-wide minute limit until set). One request can make up to 4 provider calls (two attempts on the primary, two on the fallback) while counting once, so set each to about 40 percent of the provider's verified per-minute limit. |
+| `AI_GLOBAL_MINUTE_VISION`, `AI_GLOBAL_MINUTE_STT`, `AI_GLOBAL_MINUTE_CHAT` | Requests per minute for the whole deployment, per kind. No default (no deployment-wide minute limit until set). One request can make up to 5 provider calls (two attempts on the primary model, one on Gemini's fallback model, two on the next provider) while counting once, so set each to about 40 percent of the provider's verified per-minute limit. |
 | `STORAGE_DRIVER` | `local` (default) or `supabase`: where private photos are kept. |
 | `FILES_DIR` | Folder for the local driver. Default `.data/files`. |
 | `ALLOW_LOCAL_FILES` | `1` lets a production build use the local folder (a single server with a lasting disk, or `pnpm e2e` and `pnpm e2e:ai`). A production build otherwise refuses it. Not for Vercel. |

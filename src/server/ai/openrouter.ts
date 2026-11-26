@@ -3,8 +3,9 @@ import { postJson } from "./http";
 import { asCount, toBase64 } from "./models";
 import { AiError, type AiProvider, type ChatRequest, type TextResult, type VisionRequest } from "./types";
 
-// Request shape UNVERIFIED (docs/ai-providers.md); every constant is in this block. The model ids
-// are configuration (null until an operator picks a free model).
+// Request shape and the free default models: see docs/ai-providers.md (free tier: 20 requests per
+// minute and 50 per day class limits, 429 on the first live call; prompts may be logged). Every
+// constant is in this block; model ids are configuration (config.ts).
 // Deliberately NOT sent: `response_format` (free models may not support it; the reply is parsed
 // strictly anyway) and `provider.data_collection` (UNVERIFIED how it interacts with free models;
 // set the data policy on the account instead, see docs/ai-providers.md).

@@ -10,9 +10,15 @@
 //    and a synthetic tone generated here. No real data, no database, nothing written anywhere.
 //  - Prints a pass/fail table with measured latency. Response bodies are never printed.
 //  - Model ids come from the same variables as the app (AI_GEMINI_*_MODEL, AI_GROQ_STT_MODEL,
-//    AI_OPENROUTER_*_MODEL); set them to try another id without changing code.
+//    AI_OPENROUTER_*_MODEL, AI_GEMINI_FALLBACK_MODEL); set them to try another id without changing
+//    code. Gemini vision and chat run through the app's runner, so the table shows the model that
+//    actually answered and whether it was the fallback model. An OpenRouter free model that answers
+//    429 is retried once after 20 s. To prove the adapter shapes on a model that is up, pin it:
+//    AI_GEMINI_VISION_MODEL=gemini-3.5-flash-lite AI_GEMINI_CHAT_MODEL=gemini-3.5-flash-lite
+//    AI_GEMINI_AUDIO_MODEL=gemini-3.5-flash-lite AI_GEMINI_FALLBACK_MODEL=none
 import { readAiConfig } from "../src/server/ai/config.ts";
-import { geminiProvider } from "../src/server/ai/gemini.ts";
+import { geminiProvider, thinkingConfig } from "../src/server/ai/gemini.ts";
+import { runAi } from "../src/server/ai/run.ts";
 import { openrouterProvider } from "../src/server/ai/openrouter.ts";
 import { parseJsonReply } from "../src/server/ai/json.ts";
 import { Secret } from "../src/server/ai/secret.ts";
@@ -110,7 +116,7 @@ for (const name of ["gemini", "groq", "openrouter"]) {
   say(`${name}: ${ids.length} model(s)${name === "openrouter" ? " (free only)" : ""}`);
   say(ids.sort().map((i) => `  ${i}`).join("\n"));
   if (name === "gemini") {
-    const wanted = ["gemini-4-hydrogen", config.gemini.visionModel, config.gemini.chatModel, config.gemini.audioModel];
+    const wanted = ["gemini-4-hydrogen", config.gemini.visionModel, config.gemini.chatModel, config.gemini.audioModel, config.gemini.fallbackModel].filter((w) => w !== null);
     for (const w of [...new Set(wanted)]) say(`  -> ${w}: ${ids.includes(w) ? "AVAILABLE" : "NOT in the list"}`);
   }
   if (name === "groq") say(`  -> ${config.groq.sttModel}: ${ids.includes(config.groq.sttModel) ? "AVAILABLE" : "NOT in the list"}`);
@@ -148,6 +154,7 @@ const okReply = (text) => {
   return v !== null && typeof v === "object" && v.ok === true;
 };
 
+// `fn` returns { text, model?, fallback? }; the model that answered is the one printed.
 async function timed(provider, job, model, fn, parsed) {
   const t0 = Date.now();
   last.status = null;
@@ -155,14 +162,18 @@ async function timed(provider, job, model, fn, parsed) {
   let outcome = "ok";
   let ok = false;
   let reply = false;
+  let answered = model ?? "-";
+  let fallback = "no";
   try {
     const r = await fn();
     ok = true;
     reply = parsed(r.text);
+    if (typeof r.model === "string") answered = r.model;
+    if (r.fallback === true) fallback = "yes";
   } catch (e) {
     outcome = typeof e?.code === "string" ? e.code : "error";
   }
-  rows.push({ provider, job, model: model ?? "-", outcome, http: last.status === null ? "-" : String(last.status), finish: last.finish ?? "-", latencyMs: Date.now() - t0, parsed: ok ? (reply ? "yes" : "no") : "-", pass: ok && reply });
+  rows.push({ provider, job, model: printable(answered), fallback, outcome, http: last.status === null ? "-" : String(last.status), finish: last.finish ?? "-", latencyMs: Date.now() - t0, parsed: ok ? (reply ? "yes" : "no") : "-", pass: ok && reply });
 }
 
 // Records the HTTP status of the last adapter request (and, for Gemini, the finishReason, read
@@ -189,20 +200,44 @@ const recordingFetch = async (url, init) => {
 const question = 'Reply with the JSON {"ok":true}';
 const jpeg = await makeJpeg();
 
+/** Runs one job through the app's runner for one provider (its fallback model included). */
+function viaRunner(p, kind, call) {
+  return async () => {
+    const r = await runAi({ kind, providers: [p], call, parse: (t) => (okReply(t) ? true : null) });
+    if (!r.ok) throw Object.assign(new Error("run"), { code: r.code });
+    return { text: '{"ok":true}', model: r.model, fallback: r.fallback };
+  };
+}
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+/** A free OpenRouter model that answers 429 is retried once after 20 s. */
+function retryOn429(fn) {
+  return async () => {
+    try {
+      return await fn();
+    } catch (e) {
+      if (e?.code !== "rate_limited") throw e;
+      say("  openrouter answered 429; retrying once in 20 s");
+      await sleep(20_000);
+      return await fn();
+    }
+  };
+}
+
 for (const [name, make] of [
   ["gemini", () => geminiProvider(config.gemini, recordingFetch)],
   ["openrouter", () => openrouterProvider(config.openrouter, recordingFetch)],
 ]) {
   if (config[name].key === null) continue;
   const p = make();
+  const wrap = name === "openrouter" ? retryOn429 : (f) => f;
   if (p.modelFor("vision")) {
-    await timed(name, "vision", p.modelFor("vision"), () =>
-      p.vision({ image: jpeg, system: "Reply only with JSON.", prompt: 'Reply with the JSON {"ok":true}, and add a "text" field with the text in the image.', maxOutputTokens: 100 }, signal()),
+    await timed(name, "vision", p.modelFor("vision"), wrap(viaRunner(p, "vision", (q, sig) =>
+      q.vision({ image: jpeg, system: "Reply only with JSON.", prompt: 'Reply with the JSON {"ok":true}, and add a "text" field with the text in the image.', maxOutputTokens: 100 }, sig))),
       okReply);
   }
   if (p.modelFor("chat")) {
-    await timed(name, "chat", p.modelFor("chat"), () =>
-      p.chat({ system: "Reply only with JSON.", messages: [{ role: "user", text: question }], maxOutputTokens: 100 }, signal()),
+    await timed(name, "chat", p.modelFor("chat"), wrap(viaRunner(p, "chat", (q, sig) =>
+      q.chat({ system: "Reply only with JSON.", messages: [{ role: "user", text: question }], maxOutputTokens: 100 }, sig))),
       okReply);
   }
 }
@@ -232,18 +267,26 @@ if (config.groq.key !== null) {
   }, okReply);
 }
 if (config.gemini.key !== null) {
-  const model = config.gemini.audioModel;
-  await timed("gemini", "stt", model, async () => {
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
-      method: "POST", redirect: "error", signal: signal(),
-      headers: { "x-goog-api-key": config.gemini.key.reveal(), "content-type": "application/json" },
-      body: JSON.stringify({ contents: [{ role: "user", parts: [{ inlineData: { mimeType: "audio/wav", data: Buffer.from(wav).toString("base64") } }, { text: "Transcribe this recording verbatim. Reply with the transcript only." }] }], generationConfig: { temperature: 0, maxOutputTokens: 1024, ...(config.gemini.thinking === "off" ? { thinkingConfig: { thinkingBudget: 0 } } : {}) } }),
-    });
-    last.status = res.status;
-    if (!res.ok) throw Object.assign(new Error("http"), { code: `http_${res.status}` });
-    const j = await res.json();
-    if (!Array.isArray(j?.candidates)) throw Object.assign(new Error("shape"), { code: "invalid_output" });
-    return { text: '{"ok":true}' };
+  const models = [config.gemini.audioModel, config.gemini.fallbackModel].filter((m, i, all) => m !== null && all.indexOf(m) === i);
+  const thinking = thinkingConfig(config.gemini.thinking);
+  await timed("gemini", "stt", config.gemini.audioModel, async () => {
+    for (const [i, model] of models.entries()) {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+        method: "POST", redirect: "error", signal: signal(),
+        headers: { "x-goog-api-key": config.gemini.key.reveal(), "content-type": "application/json" },
+        body: JSON.stringify({ contents: [{ role: "user", parts: [{ inlineData: { mimeType: "audio/wav", data: Buffer.from(wav).toString("base64") } }, { text: "Transcribe this recording verbatim. Reply with the transcript only." }] }], generationConfig: { temperature: 0, maxOutputTokens: 1024, ...(thinking ? { thinkingConfig: thinking } : {}) } }),
+      });
+      last.status = res.status;
+      if ((res.status === 503 || res.status === 429) && i + 1 < models.length) {
+        await res.body?.cancel().catch(() => {});
+        continue;
+      }
+      if (!res.ok) throw Object.assign(new Error("http"), { code: `http_${res.status}` });
+      const j = await res.json();
+      if (!Array.isArray(j?.candidates)) throw Object.assign(new Error("shape"), { code: "invalid_output" });
+      return { text: '{"ok":true}', model, fallback: i > 0 };
+    }
+    throw Object.assign(new Error("none"), { code: "provider_error" });
   }, okReply);
 }
 
@@ -251,8 +294,8 @@ say();
 say("== Results ==");
 if (rows.length === 0) say("No provider has a key (set GEMINI_API_KEY, GROQ_API_KEY or OPENROUTER_API_KEY, or AI_SMOKE_PROXY_AUTH=1).");
 else {
-  const cols = ["provider", "job", "model", "http", "outcome", "finish", "latencyMs", "parsed", "result"];
-  const table = rows.map((r) => [r.provider, r.job, r.model, r.http, r.outcome, r.finish, String(r.latencyMs), r.parsed, r.pass ? "PASS" : "FAIL"]);
+  const cols = ["provider", "job", "model", "fallback", "http", "outcome", "finish", "latencyMs", "parsed", "result"];
+  const table = rows.map((r) => [r.provider, r.job, r.model, r.fallback, r.http, r.outcome, r.finish, String(r.latencyMs), r.parsed, r.pass ? "PASS" : "FAIL"]);
   const w = cols.map((c, i) => Math.max(c.length, ...table.map((r) => r[i].length)));
   const line = (r) => r.map((c, i) => c.padEnd(w[i])).join("  ");
   say(line(cols));

@@ -147,31 +147,47 @@ export async function runAi<T>(job: RunJob<T>, deps: Partial<RunDeps> = {}): Pro
     );
     if (usable.length > 0 && deadline <= start) lastCode = "timeout";
 
-    providers: for (const [index, p] of usable.entries()) {
+    // One provider (or its same-provider fallback model) gets up to `maxAttempts` tries with a
+    // retry wait between them. Returns the success, or null to move on; `done` is set when the
+    // run's deadline has passed.
+    let done = false;
+    const tryProvider = async (p: AiProvider, maxAttempts: number, fallback: boolean): Promise<RunOk<T> | null> => {
       const model = p.modelFor(job.kind) as string;
-      for (let n = 0; n < MAX_ATTEMPTS_PER_PROVIDER; n++) {
+      for (let n = 0; n < maxAttempts; n++) {
         const left = deadline - d.now();
-        if (left <= 0) break providers;
+        if (left <= 0) {
+          done = true;
+          return null;
+        }
         attempts++;
         lastProvider = p.name;
         const a = await attempt(job, p, d.abortAfter(Math.min(CALL_TIMEOUT_MS, left)));
         if (a.ok) {
-          return {
-            ok: true,
-            value: a.value,
-            provider: p.name,
-            model,
-            attempts,
-            fallback: index > 0,
-            latencyMs: d.now() - start,
-            usage: a.usage,
-          };
+          return { ok: true, value: a.value, provider: p.name, model, attempts, fallback, latencyMs: d.now() - start, usage: a.usage };
         }
         lastCode = a.code;
-        if (n + 1 >= MAX_ATTEMPTS_PER_PROVIDER) break;
+        if (n + 1 >= maxAttempts) break;
         const wait = waitBeforeRetry(a, d.random);
         if (wait === null || deadline - d.now() - wait < RETRY_MIN_LEFT_MS) break;
         await d.sleep(wait);
+      }
+      return null;
+    };
+
+    for (const [index, p] of usable.entries()) {
+      const won = await tryProvider(p, MAX_ATTEMPTS_PER_PROVIDER, index > 0);
+      if (won) return won;
+      if (done) break;
+      // Overloaded (503) or rate limited after the retry budget: the same provider's fallback
+      // model gets one attempt inside the same deadline, recorded with the model actually used.
+      const failed = lastCode as AiErrorCode;
+      if (failed === "provider_error" || failed === "rate_limited") {
+        const variant = p.modelFallback?.(job.kind) ?? null;
+        if (variant !== null && variant.modelFor(job.kind) !== null) {
+          const fb = await tryProvider(variant, 1, true);
+          if (fb) return fb;
+          if (done) break;
+        }
       }
     }
   } catch {
