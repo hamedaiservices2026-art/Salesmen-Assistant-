@@ -15,7 +15,10 @@ async function open(): Promise<Db> {
     ]);
     await migratePostgres(target.url);
     // prepare: false keeps it working behind a transaction-mode pooler (Supabase).
-    return drizzle(postgres(target.url, { prepare: false }), { schema }) as unknown as Db;
+    // Each serverless instance keeps a small pool and lets idle connections go quickly, so many
+    // instances together stay under Supabase's session-pooler limit (15 clients on the free plan).
+    const max = Math.max(1, Number(process.env.DB_POOL_MAX) || 2);
+    return drizzle(postgres(target.url, { prepare: false, max, idle_timeout: 5, max_lifetime: 300 }), { schema }) as unknown as Db;
   }
   const [{ drizzle }, { PGlite }, { migratePglite }, { mkdir }, { dirname }] = await Promise.all([
     import("drizzle-orm/pglite"),

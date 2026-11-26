@@ -95,6 +95,7 @@ Nothing in the admin console is withheld for the free tier; every admin screen d
 - **Upload memory.** Reading a 2 MB `.xlsx` can use up to about 300 MB of memory. Keep the Vercel function memory at the plan's default or higher; a file that stays within the 2 MB and 5,000-row limits is the supported case.
 - **A forgotten PIN or password needs a new link from the admin** (`New sign-in link` in `/admin/users`); for the owner, run `pnpm admin:create-owner` again (`/setup` works only before the first owner exists). The old PIN or password keeps working until the new link is opened.
 - Migrations use the connection in `DATABASE_URL`; behind a transaction pooler they can hang. A separate migration URL is planned.
+- If pages fail with `EMAXCONNSESSION` (max clients reached), the app keeps only 2 connections per instance and releases idle ones after 5 seconds (`DB_POOL_MAX` changes the 2). If it still happens under load, upgrade the Supabase plan or wait a minute; connections free themselves.
 
 ## 7. AI and photos
 
