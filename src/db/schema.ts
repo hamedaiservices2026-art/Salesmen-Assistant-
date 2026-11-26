@@ -575,3 +575,19 @@ export const assistantMessages = pgTable(
     index("assistant_messages_created").on(t.createdAt),
   ],
 );
+
+/**
+ * The one-time `/setup` page's wrong-token counter: a single global row (`id` = 1). Every try
+ * reserves one of five in a conditional UPDATE; five wrong tries in 15 minutes lock the page for
+ * 15 minutes. Holds counts and times only, never a token.
+ */
+export const setupAttempts = pgTable(
+  "setup_attempts",
+  {
+    id: integer("id").primaryKey(),
+    failures: integer("failures").notNull().default(0),
+    windowStartedAt: timestamp("window_started_at", { withTimezone: true }),
+    lockedUntil: timestamp("locked_until", { withTimezone: true }),
+  },
+  (t) => [check("setup_attempts_single_row", sql`${t.id} = 1`)],
+);

@@ -22,8 +22,16 @@ const nextConfig: NextConfig = {
       { key: "Content-Security-Policy", value: "default-src 'none'; frame-ancestors 'none'; sandbox" },
       { key: "Referrer-Policy", value: "no-referrer" },
     ];
+    // The one-time owner setup: never cached, never indexed, and the invite link it shows never
+    // leaves as a referrer. Listed after the global rule so its Referrer-Policy applies.
+    const setup = [
+      { key: "Cache-Control", value: "no-store" },
+      { key: "Referrer-Policy", value: "no-referrer" },
+      { key: "X-Robots-Tag", value: "noindex" },
+    ];
     return [
       { source: "/:path*", headers: everywhere },
+      { source: "/setup", headers: setup },
       { source: "/invite/:path*", headers: noReferrer },
       { source: "/admin/invite/:path*", headers: noReferrer },
       { source: "/files/:path*", headers: photo },

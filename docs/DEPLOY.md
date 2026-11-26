@@ -21,19 +21,33 @@ Do not set `APP_TODAY`, `ALLOW_APP_TODAY`, `ALLOW_DEMO_SEED`, `ALLOW_LOCAL_DB`, 
 
 ## 3. The owner's path (no demo data)
 
-Production never loads the demo: it has accounts whose passwords would be public in the source. Run these on any computer or cloud session that has the repo and Node 22 with pnpm (`pnpm install` first). `DATABASE_URL` is the string from step 1.
+Production never loads the demo: it has accounts whose passwords would be public in the source.
 
-1. **Create the platform owner.**
+1. **Create the platform owner.** Pick one of the two ways.
+
+   **A. In the browser, no commands (the `/setup` page).**
+
+   1. Make a setup code: a random string of at least 32 characters (for example 40 letters and digits from a password manager). Keep it private; anyone holding it can create the owner while the page is open.
+   2. In Vercel open **Settings → Environment Variables**, add `SETUP_TOKEN` with that code, environment **Production** only, and save.
+   3. **Redeploy** (Deployments → the latest one → Redeploy): a variable reaches the site only after a new deployment.
+   4. Open `https://<your-vercel-domain>/setup`. Type the setup code, your email and your name, and press the button. The page shows your `/admin/invite/<token>` link once: open it, choose a password of at least 10 characters with at least 5 different characters, and you are signed in.
+   5. **Delete `SETUP_TOKEN`** in Vercel and **redeploy** again.
+
+   `/setup` answers "page not found" while `SETUP_TOKEN` is missing or shorter than 32 characters, and forever once any owner exists, even if the variable is still set. A wrong code shows only "not accepted" after about a second; five wrong codes in 15 minutes lock the page for 15 minutes (even the right code is refused then; wait and try again). The link is shown once and never logged; if you lose it before opening it, use way B for a new link.
+
+   **B. With a command.** On any computer or cloud session that has the repo and Node 22 with pnpm (`pnpm install` first); `DATABASE_URL` is the string from step 1:
 
    ```bash
    DATABASE_URL='<direct connection string>' pnpm admin:create-owner you@example.com "Your Name"
    ```
 
-   It prints `/admin/invite/<token>`. Open `https://<your-vercel-domain>` + that path, choose a password of at least 10 characters with at least 5 different characters. You are signed in at `/admin/companies`. Later sign-ins are at `/admin/signin` with the email and password. The link expires after 7 days; run the command again for a new one.
+   It prints `/admin/invite/<token>`. Open `https://<your-vercel-domain>` + that path and choose a password as above. Running it again for the same email issues a fresh link (and voids the old one).
+
+   Either way you land in the console; later sign-ins are at `/admin/signin` with the email and password. The invite link expires after 7 days.
 
 2. **Create the company.** In `/admin/companies` fill the company name, currency, time zone, default language and the first admin's name and email. The page shows that admin's invite link once; send it to him. He opens it and sets his own password.
 
-3. **Optional: load the pilot structure.** Run
+3. **Optional: load the pilot structure.** On a computer with the repo (as in way B above), run
 
    ```bash
    DATABASE_URL='<direct connection string>' pnpm db:pilot "<company name or id>"
@@ -79,7 +93,7 @@ Nothing in the admin console is withheld for the free tier; every admin screen d
 
 - **One upload at a time per server instance.** The upload lock is in memory, per admin and per instance. A second upload from the same admin while one runs is told to wait; two instances (as on a serverless host) do not coordinate, but a file is still applied all-or-nothing inside the database.
 - **Upload memory.** Reading a 2 MB `.xlsx` can use up to about 300 MB of memory. Keep the Vercel function memory at the plan's default or higher; a file that stays within the 2 MB and 5,000-row limits is the supported case.
-- **A forgotten PIN or password needs a new link from the admin** (`New sign-in link` in `/admin/users`); for the owner, run `pnpm admin:create-owner` again. The old PIN or password keeps working until the new link is opened.
+- **A forgotten PIN or password needs a new link from the admin** (`New sign-in link` in `/admin/users`); for the owner, run `pnpm admin:create-owner` again (`/setup` works only before the first owner exists). The old PIN or password keeps working until the new link is opened.
 - Migrations use the connection in `DATABASE_URL`; behind a transaction pooler they can hang. A separate migration URL is planned.
 
 ## 7. AI and photos

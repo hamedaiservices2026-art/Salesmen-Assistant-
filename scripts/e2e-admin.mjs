@@ -88,6 +88,159 @@ async function waitForServer(base) {
   fail("server did not start within 60 seconds");
 }
 
+// A test-only setup token (synthetic, long enough to switch the feature on).
+const SETUP_TOKEN = "e2e-setup-token-0123456789abcdefghijklmnop";
+const SETUP_OWNER = { email: "setup-owner@example.test", name: "Setup Owner", password: "setup-owner-pass-2026" };
+/** Server output captured during the setup phase, to prove the token and the invite are never logged. */
+let serverLog = "";
+
+/** Starts `next start` on a free port with `extraEnv`; its output is echoed and kept in serverLog. */
+async function startServer(extraEnv) {
+  const port = await freePort();
+  const base = `http://127.0.0.1:${port}`;
+  serverExited = false;
+  serverError = undefined;
+  server = spawn("node_modules/.bin/next", ["start", "-p", String(port), "-H", "127.0.0.1"], {
+    stdio: ["ignore", "pipe", "pipe"],
+    env: { ...process.env, ...extraEnv, NODE_ENV: "production" },
+  });
+  server.stdout.on("data", (d) => {
+    serverLog += d;
+    process.stdout.write(d);
+  });
+  server.stderr.on("data", (d) => {
+    serverLog += d;
+    process.stderr.write(d);
+  });
+  server.once("error", (e) => {
+    // A failed spawn never emits "exit": mark the server gone so cleanup does not wait for it.
+    serverError = e;
+    serverExited = true;
+  });
+  server.once("exit", () => {
+    serverExited = true;
+  });
+  await waitForServer(base);
+  return base;
+}
+
+async function stopServer() {
+  if (server && !serverExited) {
+    await new Promise((resolve) => {
+      const kill = setTimeout(() => server.kill("SIGKILL"), 5000);
+      server.once("exit", () => {
+        clearTimeout(kill);
+        resolve();
+      });
+      server.kill("SIGTERM");
+    });
+  }
+  server = undefined;
+}
+
+/**
+ * /setup on an empty database: headers, the generic refusal with its delay, a cross-origin replay
+ * of the action refused by Next, the owner created once, his invite sets a password, he signs in,
+ * and /setup is a 404 from then on.
+ */
+async function setupPhase(env) {
+  step("One-time owner setup (/setup)");
+  const base = await startServer({ ...env, PGLITE_DIR: join(dataRoot, "pglite-setup"), SETUP_TOKEN });
+  const unknown = await fetch(`${base}/no-such-page-e2e`);
+  const first = await fetch(`${base}/setup`);
+  check("/setup opens on an empty database with SETUP_TOKEN set", first.status === 200, 200, first.status);
+  const hdr = (name) => first.headers.get(name) ?? "";
+  check("/setup sends Cache-Control no-store", hdr("cache-control").includes("no-store"), "no-store", hdr("cache-control"));
+  check("/setup sends Referrer-Policy no-referrer", hdr("referrer-policy") === "no-referrer", "no-referrer", hdr("referrer-policy"));
+  check("/setup sends X-Robots-Tag noindex", hdr("x-robots-tag") === "noindex", "noindex", hdr("x-robots-tag"));
+
+  const browser2 = browser ?? (browser = await chromium.launch());
+  const page = await (await browser2.newContext({ viewport: { width: 390, height: 844 } })).newPage();
+  await page.goto(`${base}/setup`, { waitUntil: "load" });
+  let actionRequest;
+  page.on("request", (r) => {
+    if (r.method() === "POST" && r.headers()["next-action"]) actionRequest = r;
+  });
+  const WRONG = "wrong-setup-token-e2e-0000000000000000000";
+  await page.fill('input[name="token"]', WRONG);
+  await page.fill('input[name="email"]', SETUP_OWNER.email);
+  await page.fill('input[name="name"]', SETUP_OWNER.name);
+  const started = Date.now();
+  await page.locator('form:has(input[name="token"]) button[type="submit"]').click();
+  const alert = page.locator('p[role="alert"]');
+  await alert.filter({ hasText: copy("setup.errors.refused") }).waitFor({ timeout: 20000 });
+  const waited = Date.now() - started;
+  const alertText = (await alert.innerText()).trim();
+  check("a wrong token shows only the generic refusal", alertText === copy("setup.errors.refused"), copy("setup.errors.refused"), alertText);
+  check("a wrong token is answered after the artificial delay", waited >= 900, ">= 900 ms", `${waited} ms`);
+  if (!actionRequest) fail("the setup form did not post a server action");
+
+  // Replay the captured action with the RIGHT token from another origin: Next must refuse it.
+  const replayHeaders = { ...actionRequest.headers() };
+  for (const k of ["host", "content-length", "origin", "referer", "cookie"]) delete replayHeaders[k];
+  const replayBody = actionRequest.postDataBuffer().toString("utf8").replace(WRONG, SETUP_TOKEN);
+  const cross = await fetch(`${base}/setup`, {
+    method: "POST",
+    headers: { ...replayHeaders, origin: "https://evil.example" },
+    body: replayBody,
+  });
+  check("a cross-origin call of the action is refused", cross.status >= 400 && cross.status !== 404, "an error status (Next's Origin check)", cross.status);
+  const still = await fetch(`${base}/setup`);
+  check("the refused cross-origin call created no owner", still.status === 200, 200, still.status);
+
+  // The real form, same origin, right token.
+  await page.fill('input[name="token"]', SETUP_TOKEN);
+  await page.fill('input[name="email"]', SETUP_OWNER.email);
+  await page.fill('input[name="name"]', SETUP_OWNER.name);
+  await page.locator('form:has(input[name="token"]) button[type="submit"]').click();
+  const link = page.locator("output");
+  await link.first().waitFor({ timeout: 20000 });
+  const found = /\/admin\/invite\/\S+/.exec(await link.first().innerText());
+  if (!found) fail(`no invite link on the setup page: ${squash(await page.locator("body").innerText())}`);
+  const ownerInvite = found[0];
+  const okResponse = await actionRequest.response();
+  const okCache = (okResponse && (await okResponse.allHeaders())["cache-control"]) ?? "";
+  check("the action's response is Cache-Control no-store", okCache.includes("no-store"), "no-store", okCache);
+  check("setup shows the owner's /admin/invite link once", ownerInvite.startsWith("/admin/invite/"), "/admin/invite/<token>", ownerInvite);
+  has("setup tells the owner to delete SETUP_TOKEN", await page.locator("body").innerText(), "SETUP_TOKEN");
+
+  const after = await fetch(`${base}/setup`);
+  check("/setup is 404 once the owner exists", after.status === 404, 404, after.status);
+  check("the /setup 404 has the status of an unknown route", after.status === unknown.status, unknown.status, after.status);
+  const again = await fetch(`${base}/setup`, {
+    method: "POST",
+    headers: { ...replayHeaders, origin: base },
+    body: replayBody,
+  });
+  check("the action answers 404 once the owner exists", again.status === 404, 404, again.status);
+
+  // The invite sets a password and signs him in; then the normal sign-in works.
+  const owner = await (await browser2.newContext()).newPage();
+  await owner.goto(`${base}${ownerInvite}`, { waitUntil: "load" });
+  await owner.fill('input[name="password"]', SETUP_OWNER.password);
+  await owner.fill('input[name="confirm"]', SETUP_OWNER.password);
+  await Promise.all([
+    owner.waitForURL((u) => !u.pathname.includes("/invite/"), { timeout: 20000 }),
+    owner.locator('form:has(input[name="confirm"]) button[type="submit"]').click(),
+  ]);
+  const ownerPath = new URL(owner.url()).pathname;
+  check("the setup owner's invite signs him in", ownerPath.startsWith("/admin") && !ownerPath.startsWith("/admin/signin"), "/admin...", owner.url());
+  const fresh = await (await browser2.newContext()).newPage();
+  await fresh.goto(`${base}/admin/signin`, { waitUntil: "load" });
+  await fresh.fill('input[name="email"]', SETUP_OWNER.email);
+  await fresh.fill('input[name="password"]', SETUP_OWNER.password);
+  await Promise.all([
+    fresh.waitForURL(/\/admin\/companies$/, { timeout: 20000 }),
+    fresh.locator('form:has(input[name="email"]) button[type="submit"]').click(),
+  ]);
+  check("the setup owner signs in at /admin/signin", new URL(fresh.url()).pathname === "/admin/companies", "/admin/companies", fresh.url());
+
+  const inviteToken = ownerInvite.split("/").pop();
+  check("the server never logged the setup token", !serverLog.includes(SETUP_TOKEN), "absent", "found in server output");
+  check("the server never logged the owner's invite token", !serverLog.includes(inviteToken), "absent", "found in server output");
+  await stopServer();
+}
+
 async function main() {
   dataRoot = mkdtempSync(join(tmpdir(), "salesman-e2e-admin-"));
   const env = {
@@ -102,23 +255,15 @@ async function main() {
   run("pnpm", ["build"]);
   const seedOut = run("pnpm", ["db:seed"], env);
 
-  const port = await freePort();
-  const base = `http://127.0.0.1:${port}`;
-  server = spawn("node_modules/.bin/next", ["start", "-p", String(port), "-H", "127.0.0.1"], {
-    stdio: ["ignore", "inherit", "inherit"],
-    env: { ...process.env, ...env, NODE_ENV: "production" },
-  });
-  server.once("error", (e) => {
-    // A failed spawn never emits "exit": mark the server gone so cleanup does not wait for it.
-    serverError = e;
-    serverExited = true;
-  });
-  server.once("exit", () => {
-    serverExited = true;
-  });
-  await waitForServer(base);
+  // The one-time owner setup runs first, on its own empty database, then the seeded run starts.
+  await setupPhase(env);
 
-  browser = await chromium.launch();
+  // SETUP_TOKEN stays set on the seeded server: the demo has an owner, so /setup must 404.
+  const base = await startServer({ ...env, SETUP_TOKEN });
+  const setupAfterSeed = await fetch(`${base}/setup`);
+  check("/setup is 404 on a database that has an owner, even with SETUP_TOKEN set", setupAfterSeed.status === 404, 404, setupAfterSeed.status);
+
+  browser ??= await chromium.launch();
   const newPage = async (viewport = { width: 1440, height: 1000 }) => (await browser.newContext({ viewport })).newPage();
   const body = (page) => page.locator("body").innerText();
   const path = (page) => new URL(page.url()).pathname;
@@ -406,16 +551,7 @@ check("the scheme shows as published, version 1", status.startsWith(publishedPre
 async function cleanup() {
   await browser?.close().catch(() => {});
   browser = undefined;
-  if (server && !serverExited) {
-    await new Promise((resolve) => {
-      const kill = setTimeout(() => server.kill("SIGKILL"), 5000);
-      server.once("exit", () => {
-        clearTimeout(kill);
-        resolve();
-      });
-      server.kill("SIGTERM");
-    });
-  }
+  await stopServer();
   // The database directory goes only after the server that held it has exited.
   if (dataRoot) rmSync(dataRoot, { recursive: true, force: true });
   dataRoot = undefined;

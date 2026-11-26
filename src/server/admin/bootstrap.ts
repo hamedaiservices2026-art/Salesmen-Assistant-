@@ -32,16 +32,23 @@ export async function createOwner(db: Db, input: { email: string; name: string }
       return { inviteToken: await createInvite(tx as unknown as Db, existing.id, now) };
     });
   }
-  const ownerId = randomUUID();
-  const inviteToken = await db.transaction(async (tx) => {
-    await tx
-      .insert(s.companies)
-      .values({ id: PLATFORM_ID, name: "Platform", sellingWeekdays: [6, 0, 1, 2, 3, 4], weekStartsOn: 6 })
-      .onConflictDoNothing();
-    await tx
-      .insert(s.users)
-      .values({ id: ownerId, companyId: PLATFORM_ID, role: "owner", name: input.name.trim() || email, login: email });
-    return createInvite(tx as unknown as Db, ownerId);
-  });
+  const inviteToken = await db.transaction((tx) => insertOwnerWithInvite(tx as unknown as Db, email, input.name));
   return { inviteToken };
+}
+
+/**
+ * Inside the caller's transaction: creates the `platform` company when missing and a new owner
+ * with `email` (already normalized), and returns his invite token (only its hash is stored).
+ * Shared by `createOwner` and the one-time `/setup` page.
+ */
+export async function insertOwnerWithInvite(tx: Db, email: string, name: string): Promise<string> {
+  const ownerId = randomUUID();
+  await tx
+    .insert(s.companies)
+    .values({ id: PLATFORM_ID, name: "Platform", sellingWeekdays: [6, 0, 1, 2, 3, 4], weekStartsOn: 6 })
+    .onConflictDoNothing();
+  await tx
+    .insert(s.users)
+    .values({ id: ownerId, companyId: PLATFORM_ID, role: "owner", name: name.trim() || email, login: email });
+  return createInvite(tx, ownerId);
 }

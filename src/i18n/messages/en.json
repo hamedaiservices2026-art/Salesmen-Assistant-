@@ -1468,5 +1468,26 @@
   "photos": {
     "keptRep": "Return photos and report photos are kept on a private cloud storage service used by the app. Return photos stay 180 days and your supervisor and the admin can see them; report photos stay 30 days and only you can see them. A photo not saved with a close is deleted after a day.",
     "keptAdmin": "Return photos and report photos are kept on a private cloud storage service used by the app. Return photos stay 180 days and the rep, his supervisor and the admin can see them; report photos stay 30 days and only the rep can see them. A photo not saved with a close is deleted after a day."
+  },
+  "setup": {
+    "heading": "Create the owner account",
+    "instruction": "This page is used once. Type the setup code you saved in Vercel, then your email and name.",
+    "token": "Setup code",
+    "email": "Owner email",
+    "name": "Owner name",
+    "submit": "Create the owner",
+    "errors": {
+      "refused": "Not accepted",
+      "email": "Check the email address",
+      "name": "Write the name, up to 100 characters"
+    },
+    "done": {
+      "title": "The owner account is ready",
+      "body": "Open this link now and choose your password. It is shown only once and works for 7 days.",
+      "link": "Owner sign-in link",
+      "copy": "Copy link",
+      "copied": "Copied",
+      "next": "Then delete SETUP_TOKEN in Vercel and redeploy. This page will not open again."
+    }
   }
 }

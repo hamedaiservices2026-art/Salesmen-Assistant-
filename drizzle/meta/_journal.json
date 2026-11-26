@@ -134,6 +134,13 @@
       "when": 1795622315312,
       "tag": "0018_assistant_messages",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1795730527299,
+      "tag": "0019_setup_attempts",
+      "breakpoints": true
     }
   ]
 }

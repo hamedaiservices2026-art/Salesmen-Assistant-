@@ -53,7 +53,7 @@ pnpm typecheck
 pnpm lint
 pnpm build
 pnpm e2e         # builds, seeds a temporary database, and drives the whole rep flow in a browser
-pnpm e2e:admin   # the owner's path (company, admin, rep, lines, targets, published scheme, commission screen) and the demo company's admin path (overview order, coverage line, Excel upload, supervisor coverage, incentive and notification, isolation and role checks)
+pnpm e2e:admin   # the one-time /setup page on an empty database, then the owner's path (company, admin, rep, lines, targets, published scheme, commission screen) and the demo company's admin path (overview order, coverage line, Excel upload, supervisor coverage, incentive and notification, isolation and role checks)
 pnpm e2e:ai      # the AI features with the offline fake provider: photo and voice close, return photos and who may open them, the assistant, the admin's switch and usage
 ```
 
@@ -106,6 +106,7 @@ Upload templates: `/admin/uploads` offers a downloadable `.xlsx` template for ea
 | `SUPABASE_URL` | `https://<ref>.supabase.co`, for `STORAGE_DRIVER=supabase`. |
 | `SUPABASE_SERVICE_ROLE_KEY` | The Supabase server key (`sb_secret_...`, or a legacy `service_role` key) for `STORAGE_DRIVER=supabase`. Server only; never `NEXT_PUBLIC_*`. |
 | `STORAGE_BUCKET` | The private bucket name. Default `private-files`. The app never creates buckets or public links. |
+| `SETUP_TOKEN` | Switches on the one-time owner setup page `/setup` (for an owner who cannot run `pnpm admin:create-owner`). At least 32 random characters; unset or shorter = off. The page answers 404 while off and forever once any owner exists. Set it in Vercel (Production), redeploy, open `/setup`, create the owner, then delete it and redeploy. See [docs/DEPLOY.md](docs/DEPLOY.md) section 3. |
 
 ## Local database warning
 
@@ -130,7 +131,7 @@ Built (plan 2, admin): an admin console under `/admin` with its own email and pa
 
 Built (plan 3, AI): the rep records his day by a photo of the day-end report or a voice note, and gets the same form he would have typed, pre-filled as a draft. He reviews it; a figure the reader was unsure of must be acknowledged, a report dated another day must have its date confirmed, and nothing is saved until he presses confirm. Returns carry photos, kept privately and served only to the people allowed to see them. The assistant answers by text or voice from the rep's own figures, the month's incentives and the policy documents, with citations, checks every number it shows against those figures, and reads answers aloud with the phone's own voice; an incentive notification has an "explain simply" button. The admin switches AI on or off for the company, maps report labels to fields (`/admin/ai/mapping`), sees usage against the daily limits (`/admin/ai/usage`), and sees which topics reps ask about most, without names and only for topics asked by at least 3 reps. No model takes part in any calculation. Old photos, conversations, usage rows and counters are cleared by `runMaintenance` (`src/server/maintenance.ts`), which runs after photo uploads and assistant questions, at most once every 10 minutes per server instance.
 
-Pilot setup on a real database (no demo data): `pnpm admin:create-owner`, then `pnpm db:pilot <company>` for the six pilot lines and a draft November scheme; see [docs/DEPLOY.md](docs/DEPLOY.md).
+Pilot setup on a real database (no demo data): the owner via `/setup` (with `SETUP_TOKEN`) or `pnpm admin:create-owner`, then `pnpm db:pilot <company>` for the six pilot lines and a draft November scheme; see [docs/DEPLOY.md](docs/DEPLOY.md).
 
 Next (plan 4): push notifications, install guide, offline use (including a queue for a confirmed close), a scheduled job for `runMaintenance` and a mobile supervisor view.
 
