@@ -357,3 +357,41 @@ describe("fix round 1: every currency and unit label of the catalogs is a unit w
     expect(checkNumbers(`${label} 3`, set(), "loose")).toMatchObject({ ok: false });
   });
 });
+
+describe("checkNumbers: multipliers, short forms and fractions of a figure (final review B-L2)", () => {
+  const allowed = new Set(["414", "6400", "1860", "38", "3478.55"]);
+  const strict = (a: string) => checkNumbers(a, allowed, "strict").ok;
+
+  it("a figure said twice or three times over fails strict", () => {
+    for (const a of [
+      "عمولتك هتبقى دبل الـ 414 ريال",
+      "عمولتك 414 ريال مرتين",
+      "عمولتك 414 ريال تلات مرات",
+      "عمولتك 414 ريال ثلاث مرات",
+      "عمولتك 414 ريال خمس مرات",
+      "عمولتك 414 ريال 3 مرات",
+      "عمولتك هتبقى ضعفين الـ 414",
+      "عمولتك 414 اضعاف",
+    ])
+      expect(strict(a), a).toBe(false);
+  });
+
+  it("a fraction word before ال and a figure is near a number", () => {
+    expect(strict("عمولتك نص الـ 6400 ريال")).toBe(false);
+    expect(strict("عمولتك تلتين الـ 6400")).toBe(false);
+    expect(strict("عمولتك ربع الـ 6400")).toBe(false);
+  });
+
+  it("an unread short number form before a word fails strict", () => {
+    expect(strict("عندك تلات زيارات")).toBe(false);
+    expect(strict("فاضل خمس ايام")).toBe(false);
+  });
+
+  it("ordinary uses stay fine", () => {
+    expect(strict("حاول مرة تانية")).toBe(true);
+    expect(strict("زي المرة اللي فاتت عمولتك 414 ريال")).toBe(true);
+    expect(strict("عمولتك 414 ريال")).toBe(true);
+    expect(strict("حسب نص السياسة")).toBe(true);
+    expect(checkNumbers("عندك تلات زيارات", allowed, "loose").ok).toBe(true);
+  });
+});

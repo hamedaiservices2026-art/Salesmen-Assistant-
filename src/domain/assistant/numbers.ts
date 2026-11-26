@@ -56,7 +56,9 @@ const URDU_NUMBERS = set([
   "بیس", "تیس", "چالیس", "پچاس", "ساٹھ", "ستر", "نوے", "سو",
 ]);
 /** Multipliers (`ضعف عمولتك`, `double`, `twice`): a figure computed from another one; unread in a strict answer. */
-const MULTIPLIERS = set(["ضعف", "ضعفين", "اضعاف", "double", "twice", "triple", "thrice"]);
+const MULTIPLIERS = set(["ضعف", "ضعفين", "اضعاف", "دبل", "مرتين", "double", "twice", "triple", "thrice"]);
+/** "Times" (`تلات مرات`, `414 مرة`): ordinary words too (`مرة تانية`), so a multiplier only right after a number (final review B-L2). */
+const TIMES = set(["مره", "مرات"]);
 /** Fraction words: alone they are ordinary words too (`نص` is also "text"), so they count only near a number or a unit. */
 const FRACTIONS = set(["نص", "نصف", "ربع", "ربعين", "ارباع", "ثلث", "ثلثين", "تلتين", "half", "quarter", "quarters", "third", "thirds"]);
 
@@ -340,6 +342,7 @@ type WordScan = { big: WordNumber[]; small: WordNumber[]; smallNearUnit: WordNum
 
 const PERCENT_TAILS = set(["الميه", "المائه", "المئه"]);
 const IN = N("في");
+const AL = N("ال");
 const JOIN_WORDS = new Set([WAW, "and"]);
 
 function hasDigit(t: string): boolean {
@@ -453,15 +456,33 @@ function scanWords(prepared: string): WordScan {
     if (words.length === 0) continue; // only digit tokens: read by `digitNumbers`
     const onlyFractions = words.every((t) => FRACTIONS.has(baseOf(t)) || FRACTIONS.has(t));
     const unitNear = slice.some((t) => isUnitLike(t)) || tokenNearUnit(tokens, b.start, b.end);
-    const numberNear = isNumberish(tokens[b.start - 1]) || isNumberish(tokens[b.end]);
+    // `نص الـ 6400`: a fraction of the figure after the article is near a number too (B-L2).
+    const numberNear = isNumberish(tokens[b.start - 1]) || isNumberish(tokens[b.end]) || (tokens[b.end] === AL && isNumberish(tokens[b.end + 1]));
     if (onlyFractions && !unitNear && !numberNear) continue; // `حسب نص السياسة`: "text", not "half"
     suspects.push({ text: slice.join(" "), unitNear: unitNear || slice.some((t) => withoutPrefixes(t).some((w) => SCALES.has(w))) });
   }
+  // Tokens a number or an unreadable run already holds.
+  const covered = new Uint8Array(tokens.length);
+  for (const r of numbers) for (let k = r.start; k < r.end; k++) covered[k] = 1;
+  for (const r of bad) for (let k = r.start; k < r.end; k++) covered[k] = 1;
   for (let k = 0; k < tokens.length; k++) {
     const t = tokens[k]!;
     const scale = withoutPrefixes(t).some((w) => UNREAD_SCALES.has(w));
-    if (scale || URDU_NUMBERS.has(t) || withoutPrefixes(t).some((w) => MULTIPLIERS.has(w))) {
+    const times = TIMES.has(t) && (isNumberish(tokens[k - 1]) || hasDigit(tokens[k - 1] ?? ""));
+    if (scale || times || URDU_NUMBERS.has(t) || withoutPrefixes(t).some((w) => MULTIPLIERS.has(w))) {
       suspects.push({ text: t, unitNear: scale || tokenNearUnit(tokens, k, k + 1) });
+      continue;
+    }
+    if (covered[k] === 1) continue;
+    // A number word the reader left unread (`تلات زيارات`, `خمس مرات`: a short form before a word; B-L2).
+    if (isNumberish(t) && !hasDigit(t)) {
+      suspects.push({ text: t, unitNear: tokenNearUnit(tokens, k, k + 1) });
+      continue;
+    }
+    // A fraction word the reader does not take (`تلتين`) next to a number, or before `ال` and one (B-L2).
+    if (FRACTIONS.has(baseOf(t)) || FRACTIONS.has(t)) {
+      const near = isNumberish(tokens[k - 1]) || isNumberish(tokens[k + 1]) || (tokens[k + 1] === AL && isNumberish(tokens[k + 2]));
+      if (near) suspects.push({ text: t, unitNear: true });
     }
   }
   return { big, small, smallNearUnit, suspects };

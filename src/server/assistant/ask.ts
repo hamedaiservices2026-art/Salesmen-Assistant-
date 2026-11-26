@@ -21,6 +21,7 @@ import type { AiProvider } from "@/server/ai/types";
 import { buildRepContext, catalogTranslator, type Fact, type FactMeta, type RepContext, type Translate } from "./context";
 import { deleteOwnExpired, HISTORY_TURNS, recentMessages, type Citation } from "./conversation";
 import { assistantPrompt, cleanUntrusted, newNonce } from "./prompt";
+import { maskNames } from "@/domain/assistant/mask";
 
 export const QUESTION_MAX = 500;
 /** Facts shown on a verdict card when the answer could not be verified. */
@@ -61,14 +62,6 @@ function allowedFor(topic: Topic, c: RepContext): ReadonlySet<string> {
   }
   if (topic === "incentive") for (const n of c.incentiveNumbers) out.add(n);
   return out;
-}
-
-/** Each exact occurrence of a name we gave, longest first, replaced by a neutral mark. */
-function maskNames(answer: string, names: readonly string[]): string {
-  if (typeof answer !== "string") return answer;
-  let s = answer.toWellFormed().normalize("NFKC");
-  for (const name of names) if (name !== "" && /\p{Nd}/u.test(name)) s = s.split(name).join(" ∎ ");
-  return s;
 }
 
 type Turn = { role: "user" | "assistant"; text: string };

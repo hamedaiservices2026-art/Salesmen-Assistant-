@@ -59,6 +59,75 @@ describe("applyRead", () => {
   });
 });
 
+describe("a second read (R84)", () => {
+  const lines3: FormLine[] = [...lines];
+  const photo = (fields: CloseDraft["fields"], reportDate: string, dateMismatch: boolean): CloseDraft => ({ source: "photo", date: "2026-11-25", fields, problems: [], reportDate, dateMismatch });
+  const A = "a".repeat(32);
+  const B = "b".repeat(32);
+
+  it("an earlier read's figures the new read does not give go back to what the page loaded with", () => {
+    const s1 = applyRead(empty, { draft: photo({ "line:bev": f(118), "line:food": f(790000), cashSales: f(1480000) }, "2026-11-24", true), draftId: A }, { lines: lines3, touched: new Set(), initial: {} });
+    const s2 = applyRead(s1, { draft: photo({ "line:bev": f(120) }, "2026-11-25", false), draftId: B }, { lines: lines3, touched: new Set(), initial: {} });
+    expect(s2.values).toEqual({ "line.bev": "120", "line.food": "", cashSales: "" });
+    const input = { marks: s2.review!.marks, filled: s2.review!.filled, current: s2.values, acknowledged: s2.acked, order: [] };
+    expect(fieldReview("line.food", input)).toBeNull();
+    expect(fieldReview("cashSales", input)).toBeNull();
+    expect(s2.review!.marks).toEqual({ "line.bev": "ai" });
+    expect(s2.review!.replaced).toEqual({ "line.bev": "118" });
+    expect(s2.review!.missing).toEqual(["line.food", "cashSales"]);
+  });
+
+  it("a loaded (saved) value comes back, and its replaced note goes", () => {
+    const loaded = { "line.food": "7000" };
+    const s1 = applyRead({ ...empty, values: loaded }, { draft: photo({ "line:bev": f(118), "line:food": f(790000) }, "2026-11-25", false), draftId: A }, { lines: lines3, touched: new Set(), initial: loaded });
+    expect(s1.review!.replaced).toEqual({ "line.food": "7000" });
+    const s2 = applyRead(s1, { draft: photo({ "line:bev": f(120) }, "2026-11-25", false), draftId: B }, { lines: lines3, touched: new Set(), initial: loaded });
+    expect(s2.values["line.food"]).toBe("7000");
+    expect(s2.review!.replaced).toEqual({ "line.bev": "118" });
+    expect(Object.hasOwn(s2.review!.filled, "line.food")).toBe(false);
+  });
+
+  it("without the loaded values, an earlier figure the new read does not give stays but is marked low", () => {
+    const s1 = applyRead(empty, { draft: photo({ "line:bev": f(118), "line:food": f(790000) }, "2026-11-25", false), draftId: A }, { lines: lines3, touched: new Set() });
+    const s2 = applyRead(s1, { draft: photo({ "line:bev": f(120) }, "2026-11-25", false), draftId: B }, { lines: lines3, touched: new Set() });
+    expect(s2.values["line.food"]).toBe("7900");
+    expect(fieldReview("line.food", { marks: s2.review!.marks, filled: s2.review!.filled, current: s2.values, acknowledged: s2.acked, order: [] })).toBe("low");
+    expect(reviewState({ marks: s2.review!.marks, filled: s2.review!.filled, current: s2.values, acknowledged: s2.acked, order: [] }).canConfirm).toBe(false);
+  });
+
+  it("an edited or acknowledged earlier figure stays as it is", () => {
+    const s1 = applyRead(empty, { draft: photo({ "line:bev": f(118, true), "line:food": f(790000) }, "2026-11-25", false), draftId: A }, { lines: lines3, touched: new Set(), initial: {} });
+    const worked: SessionState = { ...s1, values: { ...s1.values, "line.food": "8000" }, acked: new Set(["line.bev"]) };
+    const s2 = applyRead(worked, { draft: photo({ cashSales: f(1480000) }, "2026-11-25", false), draftId: B }, { lines: lines3, touched: new Set(["line.food"]), initial: {} });
+    expect(s2.values).toEqual({ "line.bev": "118", "line.food": "8000", cashSales: "14800" });
+    expect(fieldReview("line.bev", { marks: s2.review!.marks, filled: s2.review!.filled, current: s2.values, acknowledged: s2.acked, order: [] })).toBe("ai");
+  });
+
+  it("a report dated another day keeps the date gate after a later read dated right, until the rep says the date is right", () => {
+    const s1 = applyRead(empty, { draft: photo({ "line:bev": f(118) }, "2026-11-24", true), draftId: A }, { lines: lines3, touched: new Set(), initial: {} });
+    expect(s1.review!.dateMismatch).toBe(true);
+    expect(s1.review!.mismatchDate).toBe("2026-11-24");
+    const s2 = applyRead(s1, { draft: photo({ "line:bev": f(120) }, "2026-11-25", false), draftId: B }, { lines: lines3, touched: new Set(), initial: {} });
+    expect(s2.review!.dateMismatch).toBe(true);
+    expect(s2.review!.mismatchDate).toBe("2026-11-24");
+    const gate = reviewState({ marks: s2.review!.marks, filled: s2.review!.filled, current: s2.values, acknowledged: s2.acked, order: [], dateMismatch: s2.review!.dateMismatch, dateAcknowledged: false });
+    expect(gate.canConfirm).toBe(false);
+    // the rep had said the first date is right: a later read dated right needs nothing more
+    const s3 = applyRead(s1, { draft: photo({ "line:bev": f(120) }, "2026-11-25", false), draftId: B }, { lines: lines3, touched: new Set(), initial: {}, dateAcknowledged: true });
+    expect(s3.review!.dateMismatch).toBe(false);
+    expect(s3.review!.mismatchDate).toBeNull();
+  });
+
+  it("the date gate survives a reload with the stored session", () => {
+    const s1 = applyRead(empty, { draft: photo({ "line:bev": f(118) }, "2026-11-24", true), draftId: A }, { lines: lines3, touched: new Set(), initial: {} });
+    const s2 = applyRead(s1, { draft: photo({ "line:bev": f(120) }, "2026-11-25", false), draftId: B }, { lines: lines3, touched: new Set(), initial: {} });
+    const saved = JSON.parse(JSON.stringify(toStored(s2, new Set())));
+    const back = restoreSession({ draft: photo({ "line:bev": f(120) }, "2026-11-25", false), draftId: B }, {}, lines3, saved);
+    expect(back.state.review!.dateMismatch).toBe(true);
+    expect(back.state.review!.mismatchDate).toBe("2026-11-24");
+  });
+});
+
 describe("clearReading", () => {
   it("puts back what the page loaded with, keeps what the rep changed, and clears review and acknowledgements", () => {
     const s0 = applyRead({ ...empty, values: { "line.bev": "100" } }, read({ "line:bev": f(118), "line:food": f(790000) }), { lines, touched: new Set() });
@@ -102,6 +171,21 @@ describe("restoreSession (a reload; R79)", () => {
     expect(back.state.values).toEqual({ "line.bev": "118", "line.food": "7900" });
     expect(back.state.acked.size).toBe(0);
     expect(reviewState({ marks: back.state.review!.marks, filled: back.state.review!.filled, current: back.state.values, acknowledged: back.state.acked, order: [] }).canConfirm).toBe(false);
+  });
+
+  it("a line the admin recorded after the draft was stored comes back with the loaded value, not the draft's (R16)", () => {
+    const coll: FormLine[] = [{ lineId: "coll", code: "coll", unit: "value", kind: "collection", field: "line.coll", optional: false }];
+    const r = read({ "line:coll": f(500000) });
+    const s1 = applyRead(empty, r, { lines: coll, touched: new Set() });
+    const stored = JSON.parse(JSON.stringify(toStored({ ...s1, acked: new Set(["line.coll"]) }, new Set(["line.coll"]))));
+    const after: FormLine[] = [{ ...coll[0]!, adminAmount: 420000 }];
+    const back = restoreSession(r, { "line.coll": "4200" }, after, stored);
+    expect(back.state.values["line.coll"]).toBe("4200");
+    expect(Object.hasOwn(back.state.review!.marks, "line.coll")).toBe(false);
+    expect(Object.hasOwn(back.state.review!.filled, "line.coll")).toBe(false);
+    expect(back.state.acked.has("line.coll")).toBe(false);
+    expect(back.state.review!.skippedAdmin).toEqual({ "line.coll": "5,000" });
+    expect(fieldReview("line.coll", { marks: back.state.review!.marks, filled: back.state.review!.filled, current: back.state.values, acknowledged: back.state.acked, order: [] })).toBeNull();
   });
 
   it("toStored is null with no draft", () => {

@@ -21,14 +21,17 @@ export function isTopic(value: unknown): value is Topic {
  * keywords match whole words (a trailing `s`/`es` allowed), and a phrase matches consecutive words, so
  * `learn` is not `earn` and `in return` is not the policy word `returns` (R80). Beyond the plan's lists
  * (R80): commission spellings and pay words, `ناقص`/`بقي`/`تبقى` for remaining, sales, achievement and
- * rank words for standing.
+ * rank words for standing; "what will I get" verbs (`هاخد`, `مستحقات`, `get`, `take home`) for
+ * commission, so such a question is checked against the commission figures.
  */
 const KEYWORDS: readonly (readonly [Topic, readonly string[]])[] = (
   [
     ["incentive", ["حافز", "حوافز", "بونص", "مكافا", "incentive", "bonus", "ترغیب"]],
     [
       "commission",
-      ["عمول", "هكسب", "كومشن", "كوميشن", "كمشن", "قبض", "مرتب", "راتب", "ربح", "commission", "comission", "commision", "earn", "earning", "earnings", "payout", "paid", "make", "salary", "کمیشن"],
+      ["عمول", "هكسب", "كومشن", "كوميشن", "كمشن", "قبض", "مرتب", "راتب", "ربح", "commission", "comission", "commision", "earn", "earning", "earnings", "payout", "paid", "make", "salary", "کمیشن",
+        // what the rep gets (final review): "what will I get / take home" is a commission question, not standing
+        "هاخد", "اخد", "هيدخلي", "فلوسي", "مستحقات", "بيصير لي", "احصل", "get", "receive", "take home"],
     ],
     ["remaining", ["باقي", "فاضل", "متبقي", "ناقص", "بقي", "تبقى", "remaining", "left", "more do i need", "how much more", "باقی"]],
     ["collection", ["تحصيل", "collection", "وصولی"]],

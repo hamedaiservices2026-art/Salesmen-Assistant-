@@ -808,3 +808,30 @@ describe("parseSpokenClose: a cut recording (R79)", () => {
     expect(parseSpokenClose("مشروبات مية وعشرين ونص", VOCAB, { cut: true }).fields).toEqual(parse("مشروبات مية وعشرين ونص").fields);
   });
 });
+
+describe("parseSpokenClose: a trailing و/and after a number (R85)", () => {
+  const conf = (text: string) => Object.fromEntries(parse(text).fields.map((f) => [f.key, [f.value, f.confidence]]));
+
+  it("at the end of the transcript the number may be unfinished: shaky even when not cut", () => {
+    expect(conf("مشروبات مية وعشرين أغذية ألف و")).toEqual({ "line:bev": ["120", 0.9], "line:food": ["1000", 0.5] });
+    expect(conf("نقدي خمسة آلاف و")).toEqual({ cashSales: ["5000", 0.5] });
+    expect(conf("نقدي خمسة آلاف و...")).toEqual({ cashSales: ["5000", 0.5] });
+    expect(conf("مشروبات مية و")).toEqual({ "line:bev": ["100", 0.5] });
+    expect(conf("مشروبات مية و كرتونة")).toEqual({ "line:bev": ["100", 0.5] });
+    expect(conf("أغذية ألفين و.")).toEqual({ "line:food": ["2000", 0.5] });
+    expect(conf("food two thousand and")).toEqual({ "line:food": ["2000", 0.5] });
+    expect(conf("food 2000 and")).toEqual({ "line:food": ["2000", 0.5] });
+    expect(conf("مشروبات مية وعشرين وال")).toEqual({ "line:bev": ["120", 0.5] });
+  });
+
+  it("before the next label too", () => {
+    expect(conf("مشروبات مية و أغذية ألف")).toEqual({ "line:bev": ["100", 0.5], "line:food": ["1000", 0.9] });
+    expect(conf("food 2000 and collection 3000")).toEqual({ "line:food": ["2000", 0.5], "line:coll": ["3000", 0.9] });
+  });
+
+  it("a و joining number words, or glued to the next label, changes nothing", () => {
+    expect(conf("مشروبات مية و خمسين")).toEqual({ "line:bev": ["150", 0.9] });
+    expect(conf("مشروبات مية وخمسين وأغذية ألف")).toEqual({ "line:bev": ["150", 0.9], "line:food": ["1000", 0.9] });
+    expect(parse(V1).fields.map((f) => f.confidence)).toEqual([0.9, 0.9, 0.9, 0.9]);
+  });
+});

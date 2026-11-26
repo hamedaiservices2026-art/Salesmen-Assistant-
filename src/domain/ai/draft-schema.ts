@@ -68,6 +68,9 @@ const SessionSchema = z
     replaced: textMap(64),
     skippedAdmin: textMap(64),
     missing: names,
+    // A report dated another day seen earlier in this review (R84); absent in entries stored before it.
+    dateMismatch: z.boolean().optional(),
+    mismatchDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   })
   .strict();
 

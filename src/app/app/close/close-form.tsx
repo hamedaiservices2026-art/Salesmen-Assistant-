@@ -98,12 +98,14 @@ export function CloseForm({
   // Fields the rep typed in since the page loaded: a draft never fills them.
   const touched = useRef(new Set<string>());
   const latest = useRef(session);
+  const dateOkRef = useRef(dateOkFor);
   const formEl = useRef<HTMLFormElement>(null);
   const focusNext = useRef(false);
   const router = useRouter();
   const { values, review, acked } = session;
   useEffect(() => {
     latest.current = session;
+    dateOkRef.current = dateOkFor;
   });
   const setValues = (update: (v: Record<string, string>) => Record<string, string>) => setSession((s) => ({ ...s, values: update(s.values) }));
 
@@ -123,7 +125,9 @@ export function CloseForm({
 
   /** Puts a draft into the form: only fields the rep has not touched or acknowledged are filled, and the rest of the form stays as it is. */
   function apply(read: DraftRead) {
-    const next = applyRead(latest.current, read, { lines, touched: touched.current });
+    const shown = latest.current.review;
+    // An earlier report dated another day keeps the gate until the rep said its date is right (R84).
+    const next = applyRead(latest.current, read, { lines, touched: touched.current, initial, dateAcknowledged: shown !== null && dateOkRef.current === shown.draftId });
     latest.current = next;
     setSession(next);
     setChangesLost(false);
@@ -209,7 +213,7 @@ export function CloseForm({
   const order = [...salesItems, ...moneyItems, ...focusItems, ...STOCK.map(stock)].map((it) => it.name);
   const marks = review?.marks ?? {};
   const reviewInput = { marks, filled: review?.filled ?? {}, current: values, acknowledged: acked, order };
-  const dateMismatch = review?.draft.dateMismatch === true;
+  const dateMismatch = review?.dateMismatch === true;
   const { pending: toCheck, canConfirm: reviewed } = reviewState({ ...reviewInput, dateMismatch, dateAcknowledged: review !== null && dateOkFor === review.draftId });
   // A read in flight or a saved close holds the confirm button too.
   const canConfirm = reviewed && !reading && !state.saved;
@@ -259,7 +263,8 @@ export function CloseForm({
     );
   };
 
-  const reportDate = review?.draft.reportDate ?? null;
+  // The report dated another day (an earlier read's, while its gate stands; R84).
+  const mismatchDate = review?.mismatchDate ?? null;
 
   return (
     <>
@@ -270,9 +275,9 @@ export function CloseForm({
             source={review.draft.source}
             transcript={review.transcript}
             problems={review.draft.problems.length}
-            reportDate={reportDate}
-            dateMismatch={review.draft.dateMismatch}
-            openDayHref={reportDate && pastSellingDays.includes(reportDate) ? `/app/close?date=${reportDate}` : null}
+            reportDate={mismatchDate}
+            dateMismatch={review.dateMismatch}
+            openDayHref={mismatchDate && pastSellingDays.includes(mismatchDate) ? `/app/close?date=${mismatchDate}` : null}
             onClear={clearAll}
             cut={review.cut}
             changesLost={changesLost}

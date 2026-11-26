@@ -141,7 +141,10 @@ export function parseSpokenClose(
       // Another number (or unreadable run) later in the same gap: the speaker may have corrected it.
       // Words other than filler between the label and the number, or right after it, lower it too (R77).
       const tidy = onlyFiller(tokens, prev.end, it.start) && onlyFiller(tokens, it.end, after?.start ?? tokens.length);
-      claim(i - 1, i, after !== undefined && after.t !== "mention" ? SHAKY_CONFIDENCE : tidy ? BEFORE_CONFIDENCE : SHAKY_CONFIDENCE);
+      // A `و`/`and` left hanging after the number (at the end, or before the next label) means it may
+      // be unfinished (`ألف و…`), cut or not (R85).
+      const dangling = hasJoiner(tokens, it.end, after?.start ?? tokens.length);
+      claim(i - 1, i, after !== undefined && after.t !== "mention" ? SHAKY_CONFIDENCE : tidy && !dangling ? BEFORE_CONFIDENCE : SHAKY_CONFIDENCE);
       return;
     }
     const next = items[i + 1];
@@ -218,6 +221,14 @@ function corrected(tokens: string[], from: number, to: number): boolean {
 
 function hasNegation(tokens: string[], from: number, to: number): boolean {
   for (let k = from; k < to; k++) if (NEGATIONS.has(tokens[k]!)) return true;
+  return false;
+}
+
+const JOINERS: ReadonlySet<string> = new Set([normaliseArabic("و"), normaliseArabic("وال"), "and"]);
+
+/** True when `tokens[from..to)` holds a standalone `و`, `وال` or `and` (R85). */
+function hasJoiner(tokens: string[], from: number, to: number): boolean {
+  for (let k = from; k < to; k++) if (JOINERS.has(tokens[k]!)) return true;
   return false;
 }
 

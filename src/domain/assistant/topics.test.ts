@@ -156,3 +156,33 @@ describe("fix round 1 (R80): figure questions never become loose", () => {
     expect(classifyTopic("my earnings")).toBe("commission");
   });
 });
+
+describe("classifyTopic: what will I get is commission (final review B-M3)", () => {
+  it("commission verbs rank commission above standing", () => {
+    for (const q of [
+      "هاخد كام لو حققت التارجت؟",
+      "هاخد كام لو كملت تارجت المشروبات؟",
+      "هيدخلي كام آخر الشهر؟",
+      "فلوسي كام لحد دلوقتي؟",
+      "مستحقاتي كام؟",
+      "كم بيصير لي إذا وصلت التارجت؟",
+      "كم راح أحصل هالشهر؟",
+      "how much will I get if I hit the target?",
+      "how much do I get this month?",
+      "what will I take home?",
+      "How much money will I receive?",
+    ])
+      expect(classifyTopic(q), q).toBe("commission");
+  });
+
+  it("a commission question accepts only the commission figures", async () => {
+    const { judgeReply } = await import("./reply");
+    const q = "هاخد كام لو حققت التارجت؟";
+    const topic = classifyTopic(q);
+    expect(topic).toBe("commission");
+    const commissionFacts = new Set(["414", "3478.55", "6400"]);
+    const none = { sectionNumbers: new Map(), knownSections: new Set<string>() };
+    expect(judgeReply({ answer: "لو حققت التارجت هتاخد 6,400 ريال", citations: [], answerable: true }, { topic, question: q, factNumbers: commissionFacts, ...none }).kind).toBe("answer");
+    expect(judgeReply({ answer: "لو حققت التارجت هتاخد 3,000 ريال", citations: [], answerable: true }, { topic, question: q, factNumbers: commissionFacts, ...none }).kind).toBe("unverified_numbers");
+  });
+});
