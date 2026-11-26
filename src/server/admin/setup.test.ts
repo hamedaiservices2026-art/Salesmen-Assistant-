@@ -1,12 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq, sql } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/pglite";
+import { PGlite } from "@electric-sql/pglite";
 import { createTestDb } from "@/db/testing";
+import { migratePglite } from "@/db/migrate";
 import { seedDemo } from "@/db/seed";
 import type { Db } from "@/db/client";
 import * as s from "@/db/schema";
 import { acceptAdminInvite, peekAdminInvite } from "@/server/auth/invites";
 import { signInWithPassword } from "@/server/auth/sessions";
-import { createOwner } from "./bootstrap";
+import { OWNER_CREATION_LOCK_KEY, createOwner } from "./bootstrap";
 import {
   SETUP_FAIL_DELAY_MS,
   SETUP_LOCK_MS,
@@ -68,6 +71,27 @@ function form(fields: Record<string, string>): FormData {
   const f = new FormData();
   for (const [k, v] of Object.entries(fields)) f.set(k, v);
   return f;
+}
+
+/** Records, in order, the execute (as JSON) and select calls made inside db.transaction. */
+function recordTransactionStatements(): string[] {
+  const statements: string[] = [];
+  const origTx = db.transaction.bind(db);
+  vi.spyOn(db, "transaction").mockImplementation(((fn: (tx: Db) => Promise<unknown>) =>
+    origTx(async (tx) => {
+      const exec = tx.execute.bind(tx);
+      const select = tx.select.bind(tx);
+      (tx as unknown as { execute: typeof exec }).execute = ((q: Parameters<typeof exec>[0]) => {
+        statements.push(JSON.stringify(q));
+        return exec(q);
+      }) as typeof exec;
+      (tx as unknown as { select: typeof select }).select = ((...a: Parameters<typeof select>) => {
+        statements.push("select");
+        return select(...a);
+      }) as typeof select;
+      return fn(tx as unknown as Db);
+    })) as never);
+  return statements;
 }
 
 const run = (token: string, now = NOW, env: Record<string, string | undefined> = ENV) =>
@@ -208,6 +232,22 @@ describe("setupFirstOwner", () => {
     expect(await run(TOKEN)).toEqual({ status: "refused" });
   });
 
+  it("never hands the driver a raw Date (postgres-js cannot serialize one in a raw sql parameter)", async () => {
+    // PGlite accepts a Date where postgres-js (production) throws ERR_INVALID_ARG_TYPE, so record
+    // every parameter the queries carry and require strings for times.
+    const params: unknown[] = [];
+    const logged = drizzle(new PGlite(), { schema: s, logger: { logQuery: (_q, p) => params.push(...p) } });
+    await migratePglite(logged as never);
+    const ldb = logged as unknown as Db;
+    const go = (token: string, now: Date) => setupFirstOwner(ldb, { token, ...OWNER }, { env: ENV, now, sleep: noSleep });
+    params.length = 0;
+    for (let i = 0; i < SETUP_MAX_FAILURES; i++) expect(await go("wrong-token", NOW)).toEqual({ status: "refused" });
+    expect(await go(TOKEN, NOW)).toEqual({ status: "refused" });
+    expect((await go(TOKEN, new Date(NOW.getTime() + SETUP_LOCK_MS))).status).toBe("created");
+    expect(params.length).toBeGreaterThan(0);
+    expect(params.filter((p) => p instanceof Date)).toEqual([]);
+  });
+
   it("recreates the counter row if it was deleted", async () => {
     await db.delete(s.setupAttempts);
     expect(await run("wrong-token")).toEqual({ status: "refused" });
@@ -245,7 +285,29 @@ describe("setupFirstOwner", () => {
       })) as never);
     expect((await run(TOKEN)).status).toBe("created");
     expect(statements[0]).toMatch(/pg_advisory_xact_lock/);
+    expect(statements[0]).toContain(String(OWNER_CREATION_LOCK_KEY));
     expect(statements[1]).toBe("select");
+  });
+
+  it("admin:create-owner takes the same owner-creation lock first, so it cannot race /setup", async () => {
+    const statements = recordTransactionStatements();
+    await createOwner(db, { email: "cli@x.test", name: "Cli" });
+    expect(statements[0]).toMatch(/pg_advisory_xact_lock/);
+    expect(statements[0]).toContain(String(OWNER_CREATION_LOCK_KEY));
+  });
+
+  it("an owner made by admin:create-owner closes /setup, even after /setup passed its first owner check", async () => {
+    // /setup's early check sees no owner; the CLI then creates one before /setup's transaction:
+    // the re-check under the lock refuses instead of making a second owner.
+    const origTx = db.transaction.bind(db);
+    let injected = false;
+    vi.spyOn(db, "transaction").mockImplementation(((fn: (tx: Db) => Promise<unknown>) => {
+      if (injected) return origTx(fn as never);
+      injected = true;
+      return createOwner(db, { email: "cli@x.test", name: "Cli" }).then(() => origTx(fn as never));
+    }) as never);
+    expect(await run(TOKEN)).toEqual({ status: "refused" });
+    expect((await owners()).map((o) => o.login)).toEqual(["cli@x.test"]);
   });
 });
 
@@ -300,18 +362,14 @@ describe("/setup page", () => {
     await expect(SetupPage()).rejects.toBeInstanceOf(h.NotFound);
   });
 
-  it("sends no-store, no-referrer and noindex on /setup", async () => {
+  it("adds no /setup-only header rule, so a closed /setup 404 carries the headers of any unknown route", async () => {
     const rules = await nextConfig.headers!();
-    const setup = rules.filter((r) => r.source === "/setup" || r.source === "/setup/:path*");
-    const headers = Object.fromEntries(setup.flatMap((r) => r.headers.map((x) => [x.key, x.value])));
-    expect(headers).toMatchObject({
-      "Cache-Control": "no-store",
-      "Referrer-Policy": "no-referrer",
-      "X-Robots-Tag": "noindex",
-    });
-    // Listed after the global rule so its Referrer-Policy wins.
-    const globalAt = rules.findIndex((r) => r.source === "/:path*");
-    expect(rules.findIndex((r) => r.source === "/setup")).toBeGreaterThan(globalAt);
+    expect(rules.filter((r) => r.source.startsWith("/setup"))).toEqual([]);
+  });
+
+  it("asks search engines not to index the open page (noindex in its metadata, not in a header)", async () => {
+    const mod = await import("@/app/setup/page");
+    expect(mod.metadata).toMatchObject({ robots: { index: false, follow: false } });
   });
 });
 

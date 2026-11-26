@@ -151,8 +151,8 @@ async function setupPhase(env) {
   check("/setup opens on an empty database with SETUP_TOKEN set", first.status === 200, 200, first.status);
   const hdr = (name) => first.headers.get(name) ?? "";
   check("/setup sends Cache-Control no-store", hdr("cache-control").includes("no-store"), "no-store", hdr("cache-control"));
-  check("/setup sends Referrer-Policy no-referrer", hdr("referrer-policy") === "no-referrer", "no-referrer", hdr("referrer-policy"));
-  check("/setup sends X-Robots-Tag noindex", hdr("x-robots-tag") === "noindex", "noindex", hdr("x-robots-tag"));
+  const firstHtml = await first.text();
+  check("/setup asks not to be indexed (robots meta)", /<meta name="robots" content="noindex, nofollow"\/?>/.test(firstHtml), "noindex, nofollow", "missing");
 
   const browser2 = browser ?? (browser = await chromium.launch());
   const page = await (await browser2.newContext({ viewport: { width: 390, height: 844 } })).newPage();
@@ -207,6 +207,11 @@ async function setupPhase(env) {
   const after = await fetch(`${base}/setup`);
   check("/setup is 404 once the owner exists", after.status === 404, 404, after.status);
   check("the /setup 404 has the status of an unknown route", after.status === unknown.status, unknown.status, after.status);
+  // Same headers as an unknown route's 404 (Date and Next's preload Link aside): nothing in the
+  // headers says the setup feature is configured.
+  const comparable = (res) =>
+    JSON.stringify([...res.headers].filter(([k]) => !["date", "link", "content-length", "transfer-encoding"].includes(k)).sort());
+  check("the /setup 404 has the headers of an unknown route's 404", comparable(after) === comparable(unknown), comparable(unknown), comparable(after));
   const again = await fetch(`${base}/setup`, {
     method: "POST",
     headers: { ...replayHeaders, origin: base },

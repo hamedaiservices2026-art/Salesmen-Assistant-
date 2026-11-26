@@ -4,7 +4,7 @@ import type { Db } from "@/db/client";
 import * as s from "@/db/schema";
 import { invitePath } from "@/server/auth/invites";
 import { isEmail, normalizeEmail } from "@/server/auth/password";
-import { insertOwnerWithInvite } from "./bootstrap";
+import { insertOwnerWithInvite, lockOwnerCreation } from "./bootstrap";
 
 /**
  * The one-time `/setup` page: creates the first platform owner for someone who cannot run
@@ -22,8 +22,6 @@ const EMAIL_MAX = 254;
 const EMAIL_LOCAL_MAX = 64;
 const NAME_MAX = 100;
 const ROW_ID = 1;
-/** Fixed key of the advisory lock that serializes first-owner creation across instances. */
-const SETUP_LOCK_KEY = 7_311_000_019;
 
 type Env = Record<string, string | undefined>;
 
@@ -85,13 +83,16 @@ export function validOwnerEmail(raw: string): string | null {
  */
 async function reserveTry(db: Db, now: Date): Promise<number | null> {
   await db.insert(s.setupAttempts).values({ id: ROW_ID }).onConflictDoNothing();
-  const stale = new Date(now.getTime() - SETUP_LOCK_MS);
+  // Times go into the raw SQL as ISO strings with a cast: postgres-js (production) cannot serialize
+  // a Date handed to it as an untyped parameter (PGlite can, so only real Postgres would fail).
+  const at = sql`${now.toISOString()}::timestamptz`;
+  const stale = sql`${new Date(now.getTime() - SETUP_LOCK_MS).toISOString()}::timestamptz`;
   const restart = sql`(${s.setupAttempts.windowStartedAt} IS NULL OR ${s.setupAttempts.windowStartedAt} <= ${stale})`;
   const [row] = await db
     .update(s.setupAttempts)
     .set({
       failures: sql`CASE WHEN ${restart} THEN 1 ELSE ${s.setupAttempts.failures} + 1 END`,
-      windowStartedAt: sql`CASE WHEN ${restart} THEN ${now} ELSE ${s.setupAttempts.windowStartedAt} END`,
+      windowStartedAt: sql`CASE WHEN ${restart} THEN ${at} ELSE ${s.setupAttempts.windowStartedAt} END`,
     })
     .where(
       and(
@@ -157,9 +158,9 @@ export async function setupFirstOwner(
   await clearTries(db);
 
   const inviteToken = await db.transaction(async (tx) => {
-    // Transaction-scoped, so it also holds behind a transaction-mode pooler and is released on
-    // commit or rollback. A second submission waits here, then sees the committed owner.
-    await tx.execute(sql`select pg_advisory_xact_lock(${SETUP_LOCK_KEY})`);
+    // The owner-creation lock, shared with `pnpm admin:create-owner`: a second submission (or the
+    // command) waits here, then the re-check below takes a fresh snapshot and sees the owner.
+    await lockOwnerCreation(tx as unknown as Db);
     const [taken] = await tx
       .select({ role: s.users.role })
       .from(s.users)

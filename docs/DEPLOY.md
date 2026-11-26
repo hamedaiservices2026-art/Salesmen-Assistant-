@@ -33,7 +33,7 @@ Production never loads the demo: it has accounts whose passwords would be public
    4. Open `https://<your-vercel-domain>/setup`. Type the setup code, your email and your name, and press the button. The page shows your `/admin/invite/<token>` link once: open it, choose a password of at least 10 characters with at least 5 different characters, and you are signed in.
    5. **Delete `SETUP_TOKEN`** in Vercel and **redeploy** again.
 
-   `/setup` answers "page not found" while `SETUP_TOKEN` is missing or shorter than 32 characters, and forever once any owner exists, even if the variable is still set. A wrong code shows only "not accepted" after about a second; five wrong codes in 15 minutes lock the page for 15 minutes (even the right code is refused then; wait and try again). The link is shown once and never logged; if you lose it before opening it, use way B for a new link.
+   `/setup` answers "page not found" while `SETUP_TOKEN` is missing or shorter than 32 characters, and forever once any owner exists, even if the variable is still set. A wrong code shows only "not accepted" after about a second; five wrong codes in 15 minutes lock the page for 15 minutes (even the right code is refused then; wait and try again). The lock counts every visitor together, so a stranger who finds the open page can keep it locked by sending wrong codes; he cannot create the owner. If the page stays refused, use way B: the command does not go through the page's counter, so it is never locked out. The link is shown once and never logged; if you lose it before opening it, use way B for a new link.
 
    **B. With a command.** On any computer or cloud session that has the repo and Node 22 with pnpm (`pnpm install` first); `DATABASE_URL` is the string from step 1:
 
