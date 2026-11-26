@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -160,6 +160,39 @@ describe("browser code and the server (R43)", () => {
         if (imp.typeOnly) continue;
         if (target === "server/admin/upload-request-shared") continue;
         offenders.push(`${file}: ${imp.from}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("no client file reaches the AI or the file-storage modules through other modules (value imports, followed transitively; server actions are the boundary)", () => {
+    const fileOf = (target: string): string | null => {
+      for (const c of [`src/${target}.ts`, `src/${target}.tsx`, `src/${target}/index.ts`, `src/${target}/index.tsx`, `src/${target}`]) {
+        if (/\.tsx?$/.test(c) && existsSync(path.join(ROOT, c))) return c;
+      }
+      return null;
+    };
+    const offenders: string[] = [];
+    for (const start of clientFiles) {
+      const seen = new Set<string>([start]);
+      const queue: { file: string; via: string[] }[] = [{ file: start, via: [start] }];
+      while (queue.length > 0) {
+        const { file, via } = queue.shift()!;
+        for (const imp of importsOf(read(file))) {
+          if (imp.typeOnly) continue;
+          const target = resolveSrc(file, imp.from);
+          if (target === null) continue;
+          if (/^server\/(?:ai|files)(?:\/|$)/.test(target)) {
+            offenders.push([...via, imp.from].join(" -> "));
+            continue;
+          }
+          const next = fileOf(target);
+          if (next === null || seen.has(next)) continue;
+          // A "use server" module reaches the browser only as action references, never as code.
+          if (/^["']use server["']/.test(read(next).replace(/^(?:\s|\/\/[^\n]*\n|\/\*[\s\S]*?\*\/)*/, ""))) continue;
+          seen.add(next);
+          queue.push({ file: next, via: [...via, next] });
+        }
       }
     }
     expect(offenders).toEqual([]);

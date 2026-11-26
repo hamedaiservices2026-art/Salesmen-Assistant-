@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chatReducer, counterVisible, initialChat, isBlocked, QUESTION_COUNTER_FROM, QUESTION_MAX, submitCheck, type ChatReply, type ChatState } from "./chat-state";
+import { chatReducer, counterAnnouncement, counterVisible, initialChat, isBlocked, QUESTION_COUNTER_FROM, QUESTION_MAX, submitCheck, type ChatReply, type ChatState } from "./chat-state";
 
 const answer: ChatReply = { ok: true, verdict: "answer", text: "الباقي 1,860 كرتونة", citations: [{ title: "سياسة", label: "بند" }] };
 const fresh = (over: Partial<ChatState> = {}): ChatState => ({ ...initialChat([]), ...over });
@@ -138,6 +138,19 @@ describe("question counter", () => {
     expect(QUESTION_COUNTER_FROM).toBe(400);
     expect(counterVisible("ا".repeat(399))).toBe(false);
     expect(counterVisible("ا".repeat(400))).toBe(true);
+  });
+
+  it("is announced only at 400, 450, 490 and 500, not on every key", () => {
+    const at = (n: number) => counterAnnouncement("ا".repeat(n));
+    expect(at(399)).toBe("");
+    expect(at(400)).toBe("400/500");
+    expect(at(449)).toBe("400/500");
+    expect(at(450)).toBe("450/500");
+    expect(at(489)).toBe("450/500");
+    expect(at(490)).toBe("490/500");
+    expect(at(499)).toBe("490/500");
+    expect(at(500)).toBe("500/500");
+    expect(counterAnnouncement("😀".repeat(450))).toBe("450/500");
   });
 });
 

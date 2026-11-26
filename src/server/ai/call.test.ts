@@ -70,8 +70,8 @@ async function dayCount(scope: string, kind = "chat") {
 }
 
 describe("aiAvailability", () => {
-  it("is AI_NOTICE_VERSION 2 (Task 8 added where photos are kept)", () => {
-    expect(AI_NOTICE_VERSION).toBe(2);
+  it("is AI_NOTICE_VERSION 3 (R83: storage wording corrected)", () => {
+    expect(AI_NOTICE_VERSION).toBe(3);
   });
 
   it("a rep of a company with AI off → company_off", async () => {

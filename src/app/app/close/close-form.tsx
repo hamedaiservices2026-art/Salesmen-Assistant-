@@ -254,7 +254,7 @@ export function CloseForm({
         error={err(it.name)}
         notes={notes.length > 0 ? notes : undefined}
         mark={shown ?? undefined}
-        markNote={shown === "low" ? t("draft.check") : undefined}
+        markNote={shown === "low" ? t("draft.check") : shown === "ai" ? t("draft.readMark") : undefined}
         ackLabel={t("draft.ok")}
         ackAria={t("draft.okFor", { label: it.label })}
         onAcknowledge={() => acknowledge(it.name)}

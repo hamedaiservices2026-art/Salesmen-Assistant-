@@ -34,7 +34,7 @@ export function AmountField({
   notes?: string[];
   /** The value came from a photo or voice note: "ai" (read with confidence) or "low" (the rep must check it; R60). */
   mark?: "ai" | "low";
-  /** Under the field, what the mark means (for example "from the photo"). */
+  /** What the mark means: under the field for "low"; for "ai" read to screen readers only, beside the tint (final review C6). */
   markNote?: string;
   /** A "low" mark with these shows a button that says the number is right. */
   ackLabel?: string;
@@ -73,7 +73,7 @@ export function AmountField({
       </div>
       {(mark || missingNote) && (
         <div id={`${id}-mark`} className="mt-1.5 flex items-center justify-between gap-3">
-          <span className={`text-[13px] ${mark === "low" || missingNote ? "font-semibold text-alert" : "text-brand"}`}>
+          <span className={`text-[13px] ${mark === "low" || missingNote ? "font-semibold text-alert" : "text-brand"} ${mark === "ai" ? "sr-only" : ""}`}>
             {mark ? markNote : missingNote}
           </span>
           {mark === "low" && onAcknowledge && ackLabel && (

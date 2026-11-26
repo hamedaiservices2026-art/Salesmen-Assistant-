@@ -10,6 +10,7 @@ import { AiUnavailable, type AiUnavailableReason } from "@/ui/components/AiUnava
 import { VoiceRecorder } from "@/ui/components/VoiceRecorder";
 import { readErrorKey, readFromAi, type CutReason, type ReadKind } from "@/ui/ai-client";
 import { downscalePhoto } from "@/ui/photo-client";
+import { westernDigits } from "@/domain/digits";
 
 export type AiStatus = { available: boolean; reason: AiUnavailableReason | null };
 
@@ -177,7 +178,7 @@ export function CloseMethods({
         }}
       />
 
-      {unavailable && <AiUnavailable reason={unavailable} />}
+      <AiUnavailable reason={unavailable} />
 
       {mode === "voice" && busy !== "voice" && <VoiceRecorder
           disabled={busy !== null}
@@ -218,7 +219,7 @@ export function CloseMethods({
           {failure.transcript && (
             <p className="m-0 font-normal text-ink">
               <span className="font-semibold">{t("draft.heard")}: </span>
-              <bdi dir="auto">{failure.transcript}</bdi>
+              <bdi dir="auto">{westernDigits(failure.transcript)}</bdi>
             </p>
           )}
         </div>

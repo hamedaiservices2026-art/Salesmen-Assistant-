@@ -2,12 +2,16 @@
 
 import Link from "next/link";
 import { Check, CircleCheck, Eraser, TriangleAlert } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
+import { westernDigits } from "@/domain/digits";
+import type { Locale } from "@/i18n/config";
+import { dayMonth } from "@/ui/intl-tag";
 
 /**
  * Above the form while a draft is being reviewed: what was read, how many fields could not be, a
  * date warning with a link to that day's close, and the button that throws the reading away. The
- * transcript and every other text from the model is shown as plain text inside `<bdi>`, never as HTML.
+ * transcript and every other text from the model is shown as plain text inside `<bdi>`, never as HTML,
+ * with Western digits (display only: the draft was read from the transcript as heard).
  */
 export function DraftBanner({
   source,
@@ -39,6 +43,7 @@ export function DraftBanner({
   onAcknowledgeDate: () => void;
 }) {
   const t = useTranslations("close.draft");
+  const locale = useLocale() as Locale;
   return (
     <div className="flex flex-col gap-2">
       <div role="status" className="flex flex-col gap-2 rounded-xl bg-brand-tint px-3.5 py-2.5 text-[13.5px] font-medium text-brand">
@@ -49,7 +54,7 @@ export function DraftBanner({
         {source === "voice" && transcript && (
           <p className="m-0 ps-[30px] font-normal text-ink">
             <span className="font-semibold">{t("heard")}: </span>
-            <bdi dir="auto">{transcript}</bdi>
+            <bdi dir="auto">{westernDigits(transcript)}</bdi>
           </p>
         )}
         {cut && <p className="m-0 ps-[30px] font-semibold text-ink">{t(cut === "limit" ? "cutLimit" : cut === "hidden" ? "cutHidden" : "cutEnded")}</p>}
@@ -60,7 +65,7 @@ export function DraftBanner({
         <p role="alert" className="m-0 flex flex-col gap-1.5 rounded-xl bg-alert-tint px-3.5 py-2.5 text-[13.5px] font-bold text-alert">
           <span className="flex items-center gap-2">
             <TriangleAlert aria-hidden="true" size={18} strokeWidth={2.2} className="shrink-0" />
-            <span>{t("dateMismatch", { date: `\u2066${reportDate}\u2069` })}</span>
+            <span>{t("dateMismatch", { date: `\u2068${dayMonth(reportDate, locale)}\u2069` })}</span>
           </span>
           {!dateAcknowledged && (
             <button

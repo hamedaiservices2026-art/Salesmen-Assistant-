@@ -122,7 +122,7 @@ export function NoVoiceHint({ className = "" }: { className?: string }) {
   );
 }
 
-/** The read-aloud button: nothing until the phone has a voice for the language. */
+/** The read-aloud button: nothing until the phone has a voice for the language. Its label says what a tap does ("listen" or "stop"), so it is not also a pressed toggle. */
 export function ReadAloud({ text, className = "" }: { text: string; className?: string }) {
   const t = useTranslations("assistant");
   const id = useId();
@@ -133,7 +133,6 @@ export function ReadAloud({ text, className = "" }: { text: string; className?: 
     <button
       type="button"
       onClick={() => api.toggle(id, text)}
-      aria-pressed={speaking}
       className={`inline-flex min-h-11 items-center justify-center gap-1.5 rounded-[10px] border border-line bg-white px-3.5 py-1.5 text-[14px] font-semibold text-brand focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand ${className}`}
     >
       {speaking ? <Square aria-hidden="true" size={16} strokeWidth={2} fill="currentColor" /> : <Volume2 aria-hidden="true" size={18} strokeWidth={1.9} />}

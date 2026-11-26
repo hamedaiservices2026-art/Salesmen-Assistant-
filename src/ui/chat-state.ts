@@ -70,6 +70,16 @@ const codePoints = (s: string): number => Array.from(s).length;
 export const counterVisible = (input: string): boolean => codePoints(input) >= QUESTION_COUNTER_FROM;
 export const counterText = (input: string): string => `${codePoints(input)}/${QUESTION_MAX}`;
 
+/** The counts at which the counter is read out (not every key: the live region changes only here). */
+export const COUNTER_ANNOUNCE_AT = [400, 450, 490, 500] as const;
+/** What the counter's live region holds: the last threshold reached, as `n/500`, or "" below the first. */
+export function counterAnnouncement(input: string): string {
+  const n = codePoints(input);
+  let reached: number | null = null;
+  for (const at of COUNTER_ANNOUNCE_AT) if (n >= at) reached = at;
+  return reached === null ? "" : `${reached}/${QUESTION_MAX}`;
+}
+
 /** Whether `raw` may be sent now, and the trimmed question when it may. */
 export function submitCheck(
   s: Pick<ChatState, "pending" | "blocked">,

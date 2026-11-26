@@ -141,6 +141,7 @@
     "clearNo": "Cancel",
     "retention": "Conversations are deleted automatically after 30 days",
     "cleared": "Deleted",
+    "clearFailed": "We could not delete the conversation. Try again.",
     "conversationLabel": "Conversation",
     "sourcesLabel": "Sources",
     "thinking": "Preparing the answer",
@@ -149,7 +150,6 @@
     "askPlaceholder": "Type your question or tap the microphone",
     "send": "Send",
     "mic": "Ask by voice",
-    "micClose": "Close recording",
     "counterLabel": "Characters",
     "who": {
       "user": "You",
@@ -270,6 +270,7 @@
       "bannerVoice": "Fields tinted blue were read from the recording. Check the numbers and fix any mistake.",
       "heard": "What we heard",
       "check": "Check this number",
+      "readMark": "Read from the photo/recording",
       "ok": "Right",
       "okFor": "Right, I checked {label}",
       "notRead": "Not read, type it",
@@ -1465,7 +1466,7 @@
     }
   },
   "photos": {
-    "keptRep": "Return photos and report photos are kept on the company's private cloud storage. Return photos stay 180 days and your supervisor and the admin can see them; report photos stay 30 days and only you can see them. A photo not saved with a close is deleted after a day.",
-    "keptAdmin": "Return photos and report photos are kept on the company's private cloud storage. Return photos stay 180 days and the rep, his supervisor and the admin can see them; report photos stay 30 days and only the rep can see them. A photo not saved with a close is deleted after a day."
+    "keptRep": "Return photos and report photos are kept on a private cloud storage service used by the app. Return photos stay 180 days and your supervisor and the admin can see them; report photos stay 30 days and only you can see them. A photo not saved with a close is deleted after a day.",
+    "keptAdmin": "Return photos and report photos are kept on a private cloud storage service used by the app. Return photos stay 180 days and the rep, his supervisor and the admin can see them; report photos stay 30 days and only the rep can see them. A photo not saved with a close is deleted after a day."
   }
 }

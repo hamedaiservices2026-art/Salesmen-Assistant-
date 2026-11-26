@@ -3,6 +3,12 @@
 @import "@fontsource/noto-nastaliq-urdu";
 @import "../ui/tokens.css";
 
+:root {
+  /* The rep's bottom navigation bar: its height, shared by bars that sit right above it (the assistant's input). */
+  /* 74px measured at 390 wide in ar, en and ur (the old fixed 68px let the input bar overlap it). */
+  --bottom-nav-h: 74px;
+}
+
 body {
   background: var(--color-white);
   color: var(--color-ink);

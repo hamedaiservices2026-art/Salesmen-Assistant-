@@ -20,7 +20,7 @@ export function BottomNav({ showTeam = false }: { showTeam?: boolean }) {
   const t = useTranslations();
   const pathname = usePathname();
   return (
-    <nav aria-label={t("home.navLabel")} className="sticky bottom-0 flex border-t border-line bg-white px-2 pb-3 pt-1.5">
+    <nav aria-label={t("home.navLabel")} className="sticky bottom-0 box-border flex min-h-[var(--bottom-nav-h)] border-t border-line bg-white px-2 pb-3 pt-1.5">
       {(showTeam ? [...items, teamItem] : items).map(({ href, key, Icon }) => {
         const current = href === "/app" ? pathname === "/app" : pathname.startsWith(href);
         return (

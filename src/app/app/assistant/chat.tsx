@@ -11,6 +11,7 @@ import { VoiceRecorder } from "@/ui/components/VoiceRecorder";
 import { readErrorKey, transcribeAudio } from "@/ui/ai-client";
 import {
   chatReducer,
+  counterAnnouncement,
   counterText,
   counterVisible,
   initialChat,
@@ -291,7 +292,7 @@ export function Chat({
           )}
         </div>
 
-        {state.notice !== null && state.notice !== blocked && <AssistantUnavailable reason={state.notice} />}
+        <AssistantUnavailable reason={state.notice !== null && state.notice !== blocked ? state.notice : null} />
 
         {blocked !== null && (
           <div className="flex flex-col gap-2">
@@ -331,8 +332,8 @@ export function Chat({
         <div ref={end} />
       </main>
 
-      <div className="sticky bottom-[68px] z-10 flex flex-col gap-2 border-t border-line bg-white px-4 py-2.5">
-        {voiceUnavailable && <AssistantUnavailable kind="transcribe" reason={voiceUnavailable} />}
+      <div className="sticky bottom-[var(--bottom-nav-h)] z-10 flex flex-col gap-2 border-t border-line bg-white px-4 py-2.5">
+        <AssistantUnavailable kind="transcribe" reason={voiceUnavailable || null} />
         {voiceOpen && <VoiceRecorder hint={t("hint")} onRecorded={(blob) => void onRecorded(blob)} />}
         <div role="status">
           {hearing && (
@@ -389,8 +390,12 @@ export function Chat({
               onChange={(e) => dispatch({ type: "input", text: e.target.value })}
               className="h-12 w-full rounded-xl border border-line bg-white px-3.5 text-[14.5px] text-ink placeholder:text-ink-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:opacity-60"
             />
-            <span id="assistant-counter" role="status" aria-label={t("counterLabel")} dir="ltr" className="pointer-events-none absolute -top-5 end-1 rounded bg-white px-1 text-[12px] tabular-nums text-ink-2">
+            <span id="assistant-counter" aria-label={t("counterLabel")} dir="ltr" className="pointer-events-none absolute -top-5 end-1 rounded bg-white px-1 text-[12px] tabular-nums text-ink-2">
               {counterVisible(state.input) ? counterText(state.input) : ""}
+            </span>
+            {/* Read out only at 400, 450, 490 and 500 characters, not on every key. */}
+            <span role="status" className="sr-only">
+              {counterAnnouncement(state.input) === "" ? "" : `${t("counterLabel")}: ${counterAnnouncement(state.input)}`}
             </span>
           </div>
           <button

@@ -27,6 +27,8 @@ try {
 
 // Interface copy comes from the Arabic catalogue, so a reworded button does not break this script.
 const catalogue = JSON.parse(readFileSync(new URL("../src/i18n/messages/ar.json", import.meta.url), "utf8"));
+/** A report date as the draft banner shows it: day and month in Arabic, Western digits. */
+const shownDate = (iso) => new Intl.DateTimeFormat("ar-EG-u-nu-latn", { day: "numeric", month: "long", timeZone: "UTC" }).format(new Date(`${iso}T00:00:00Z`));
 const copy = (key) => {
   const v = key.split(".").reduce((a, k) => a?.[k], catalogue);
   if (typeof v !== "string") throw new Error(`Missing catalogue key ${key}`);
@@ -270,7 +272,7 @@ async function main() {
   check("collection was not read", (await value(ahmed, "line.coll")) === "", "empty", await value(ahmed, "line.coll"));
   let text = await body(ahmed);
   has("the page says what could not be read", text, copy("close.draft.notRead"));
-  has("the banner says the report is dated 12 November", text, copy("close.draft.dateMismatch").replace("{date}", "2026-11-12"));
+  has("the banner says the report is dated 12 November", text, copy("close.draft.dateMismatch").replace("{date}", shownDate("2026-11-12")));
   const submit = ahmed.locator('form button[type="submit"]');
   check("confirm is disabled until the date is acknowledged", await submit.isDisabled(), "disabled", "enabled");
   await ahmed.getByRole("button", { name: copy("close.draft.dateOk") }).click();
@@ -338,7 +340,7 @@ async function main() {
     const [chooser] = await Promise.all([demo.waitForEvent("filechooser"), demo.locator("#file-daily").click()]);
     await chooser.setFiles(xlsxPath);
     await demo.locator('form:has(#file-daily) button[type="submit"]').click();
-    await demo.locator('[aria-live="polite"]', { hasText: "اتطبّق" }).first().waitFor({ timeout: 30000 });
+    await demo.locator('[aria-live="polite"]', { hasText: copy("admin.uploads.recent.status.applied") }).first().waitFor({ timeout: 30000 });
   }
   await goto(ahmed, "/app");
   has("home shows beverages 1,294 after the upload replaced 84 with 120", await body(ahmed), "1,294");
@@ -349,7 +351,7 @@ async function main() {
   text = await body(ahmed);
   has("the admin's note is still there after the photo fill", text, adminNote);
   has("the photo's own beverages figure is shown beside it, not applied", text, copy("close.draft.photoRead").replace("{amount}", "118 كرتونة"));
-  has("the report date (today) differs from the day being closed", text, copy("close.draft.dateMismatch").replace("{date}", TODAY));
+  has("the report date (today) differs from the day being closed", text, copy("close.draft.dateMismatch").replace("{date}", shownDate(TODAY)));
   await ahmed.getByRole("button", { name: copy("close.draft.dateOk") }).click();
   for (let i = 0; i < 12 && (await ahmed.locator('[data-ack="pending"]').count()) > 0; i++) await ahmed.locator('[data-ack="pending"]').first().click();
   await Promise.all([ahmed.waitForURL(/\/app$/, { timeout: 20000 }), submit.click()]);
@@ -495,8 +497,16 @@ async function main() {
   has("the explain question is the catalogue's", plain(await log.innerText()), copy("assistant.explainQuestion"));
   check("the explain query is removed from the address", !ahmed.url().includes("explain="), "no explain= in the URL", ahmed.url());
   const stored = await bubbles.count();
+  // A reload must send no ask: count the page's POSTs until the network is quiet (no fixed wait).
+  let postsAfterReload = 0;
+  const countPost = (req) => {
+    if (req.method() === "POST") postsAfterReload++;
+  };
+  ahmed.on("request", countPost);
   await ahmed.reload({ waitUntil: "load" });
-  await ahmed.waitForTimeout(1000);
+  await ahmed.waitForLoadState("networkidle");
+  ahmed.off("request", countPost);
+  check("reloading sends no ask", postsAfterReload === 0, "0 POSTs after the reload", postsAfterReload);
   check("reloading does not ask again", (await bubbles.count()) === stored, `${stored} bubbles`, await bubbles.count());
 
   // A refused ask (rate limit) keeps the question in the input and stores no rows (R81, R82).

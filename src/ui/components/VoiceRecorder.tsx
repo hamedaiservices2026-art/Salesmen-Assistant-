@@ -39,6 +39,12 @@ export function VoiceRecorder({ onRecorded, disabled = false, hint }: { onRecord
   const support = useSyncExternalStore(noSubscription, browserSupport, serverSupport);
 
   const control = useRef<ReturnType<typeof createRecorder> | null>(null);
+  // Focus follows the recorder (final review C4): the stop button while recording, the send button
+  // on the kept panel, the start button again when a recording ends here. Never lost to the body.
+  const stopEl = useRef<HTMLButtonElement>(null);
+  const sendKeptEl = useRef<HTMLButtonElement>(null);
+  const startEl = useRef<HTMLButtonElement>(null);
+  const wasRecording = useRef(false);
   const emit = useRef(onRecorded);
   useEffect(() => {
     emit.current = onRecorded;
@@ -98,14 +104,26 @@ export function VoiceRecorder({ onRecorded, disabled = false, hint }: { onRecord
   const message = error === "denied" ? t("denied") : error === "dismissed" ? t("dismissed") : error === "failed" ? t("failed") : null;
   const recording = phase === "recording" || phase === "stopping";
 
+  useEffect(() => {
+    if (kept) sendKeptEl.current?.focus();
+    else if (phase === "recording") stopEl.current?.focus();
+    else if (wasRecording.current && !recording) startEl.current?.focus();
+    wasRecording.current = recording;
+  }, [phase, kept, recording]);
+
   return (
     <div className="flex flex-col gap-3 rounded-[14px] border border-line bg-white p-4">
+      {/* Always mounted, so the recorder's state is announced when it changes. */}
+      <p role="status" className="sr-only">
+        {kept ? (kept.reason === "hidden" ? t("hiddenStopped") : t("endedStopped")) : recording ? t("recording") : ""}
+      </p>
       {kept ? (
         <div className="flex flex-col gap-3" role="group" aria-label={kept.reason === "hidden" ? t("hiddenStopped") : t("endedStopped")}>
-          <p role="status" className="m-0 rounded-xl bg-brand-tint px-3.5 py-2.5 text-[13.5px] font-semibold text-ink">
+          <p className="m-0 rounded-xl bg-brand-tint px-3.5 py-2.5 text-[13.5px] font-semibold text-ink">
             {kept.reason === "hidden" ? t("hiddenStopped") : t("endedStopped")}
           </p>
           <button
+            ref={sendKeptEl}
             type="button"
             disabled={disabled}
             onClick={() => {
@@ -130,6 +148,7 @@ export function VoiceRecorder({ onRecorded, disabled = false, hint }: { onRecord
             <span className="text-[16px] font-medium text-ink-2"> / {elapsedLabel(MAX_RECORD_MS)}</span>
           </p>
           <button
+            ref={stopEl}
             type="button"
             disabled={phase === "stopping"}
             onClick={() => control.current?.stop()}
@@ -151,6 +170,7 @@ export function VoiceRecorder({ onRecorded, disabled = false, hint }: { onRecord
         </label>
       ) : (
         <button
+          ref={startEl}
           type="button"
           onClick={start}
           disabled={disabled || phase === "asking" || support === null}

@@ -32,7 +32,8 @@ Status words: **SEEN** = stated in a search summary of the official page named i
 | Inline audio size | UNVERIFIED (20 MB figure not confirmed) | |
 | Training on free data | Yes: pricing page lists "Content used to improve our products" as Yes for the free tier, No for paid | SEEN, `https://ai.google.dev/gemini-api/docs/pricing`, `https://ai.google.dev/gemini-api/terms` ("Unpaid Services") |
 | Availability from Saudi Arabia / hosting region | UNVERIFIED (no supported-regions page read) | |
-| Accepted audio list for `acceptsAudio` (R48) | `audio/webm`, `audio/ogg`, `audio/aac`, `audio/m4a`, `audio/wav`, `audio/mp3`, `audio/mpeg`, `audio/flac` (not `audio/mp4`) | SEEN (audio page) |
+| Audio types the provider accepts | `audio/webm`, `audio/ogg`, `audio/aac`, `audio/m4a`, `audio/wav`, `audio/mp3`, `audio/mpeg`, `audio/flac` (not `audio/mp4`) | SEEN (audio page) |
+| Audio types the app sends (`ACCEPTED_AUDIO` in `gemini.ts`, `acceptsAudio`; R48) | `audio/webm`, `audio/ogg` (the server sniffs only `audio/mp4`, `audio/webm`, `audio/ogg`; an iPhone's `audio/mp4` is never sent to Gemini) | code |
 | Requests per minute used for `AI_GLOBAL_MINUTE_*` | none verified, default `null` | UNVERIFIED |
 
 ## Groq (speech to text)
@@ -43,7 +44,8 @@ Status words: **SEEN** = stated in a search summary of the official page named i
 | Auth | `Authorization: Bearer <key>` | UNVERIFIED (not seen in a summary) |
 | Model ids | `whisper-large-v3`, `whisper-large-v3-turbo` | SEEN, `https://console.groq.com/docs/model/whisper-large-v3`, `.../whisper-large-v3-turbo` |
 | Accepted types | flac, mp3, mp4, mpeg, mpga, m4a, ogg, wav, webm | SEEN, `https://console.groq.com/docs/speech-to-text` |
-| Accepted audio list for `acceptsAudio` (R48) | `audio/mp4`, `audio/webm`, `audio/ogg`, `audio/mpeg`, `audio/mp3`, `audio/wav`, `audio/flac`, `audio/m4a` | SEEN as above |
+| Audio types the provider accepts | `audio/mp4`, `audio/webm`, `audio/ogg`, `audio/mpeg`, `audio/mp3`, `audio/wav`, `audio/flac`, `audio/m4a` | SEEN as above |
+| Audio types the app sends (`ACCEPTED_AUDIO` in `groq.ts`, `acceptsAudio`; R48) | `audio/mp4`, `audio/webm`, `audio/ogg` (the three types the server sniffs) | code |
 | Max upload | 25 MB free tier, 100 MB dev tier | SEEN, speech-to-text page; our cap is 3 000 000 bytes |
 | Rate limits (whisper-large-v3) | Developer plan base: 20 RPM, 2 000 RPD, 7 200 audio seconds per hour, 28 800 per day. Free-plan numbers not seen. | UNVERIFIED for the free plan; the rate-limits page is marked old in the summary, and an older models page gave different numbers. Read the org's limits page in the Groq console. |
 | Training on free data | UNVERIFIED (no page read) | |
@@ -95,7 +97,7 @@ Each adapter keeps its base URL, API version, path pieces, auth header and accep
 
 | Adapter | Constants | Request (UNVERIFIED) |
 |---|---|---|
-| `gemini.ts` | `BASE`, `API_VERSION` (`v1beta`), `GENERATE_SUFFIX` (`:generateContent`), `KEY_HEADER` (`x-goog-api-key`), `ACCEPTED_AUDIO` (webm, ogg) | `POST {BASE}/{API_VERSION}/models/{encoded model}:generateContent`; `systemInstruction`, `contents` with `inlineData`, `generationConfig` with `temperature` and (vision, chat) `responseMimeType: application/json`; no tools. Reply text from `candidates[0].content.parts[].text`, tokens from `usageMetadata`. |
+| `gemini.ts` | `BASE`, `API_VERSION` (`v1beta`), `GENERATE_SUFFIX` (`:generateContent`), `KEY_HEADER` (`x-goog-api-key`), `ACCEPTED_AUDIO` (webm, ogg: what the app sends) | `POST {BASE}/{API_VERSION}/models/{encoded model}:generateContent`; `systemInstruction`, `contents` with `inlineData`, `generationConfig` with `temperature` and (vision, chat) `responseMimeType: application/json`; no tools. Reply text from `candidates[0].content.parts[].text`, tokens from `usageMetadata`. |
 | `groq.ts` | `BASE`, `TRANSCRIPTIONS_PATH` (`/openai/v1/audio/transcriptions`), `AUTH_HEADER`, `FILE_NAME` (m4a, webm, ogg), `ACCEPTED_AUDIO` | multipart `file`, `model`, `language`, `response_format=json`, `temperature=0`; reply `{ text }`. |
 | `openrouter.ts` | `BASE`, `CHAT_PATH` (`/api/v1/chat/completions`), `AUTH_HEADER`, `IMAGE_URL_PREFIX` | `model`, `messages` (JPEG as a data URL part), `max_tokens`, `temperature`; no tools; reply `choices[0].message.content`, tokens from `usage`. |
 

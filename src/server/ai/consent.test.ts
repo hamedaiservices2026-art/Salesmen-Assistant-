@@ -72,10 +72,10 @@ describe("rep notice", () => {
   it("accepting the current version makes the rep available; withdrawing takes it back", async () => {
     expect(await aiAvailability(ahmed(), "chat", FAKE)).toEqual({ ok: false, reason: "no_notice" });
     const now = new Date("2026-11-14T07:00:00Z");
-    expect(await acceptAiNotice(ahmed(), 2, now)).toEqual({ ok: true });
+    expect(await acceptAiNotice(ahmed(), 3, now)).toEqual({ ok: true });
     expect(await aiAvailability(ahmed(), "chat", FAKE)).toEqual({ ok: true });
     const [u] = await db.select().from(s.users).where(eq(s.users.id, "ahmed"));
-    expect(u!.aiNoticeVersion).toBe(2);
+    expect(u!.aiNoticeVersion).toBe(3);
     expect(u!.aiNoticeAt).toEqual(now);
     expect(await withdrawAiNotice(ahmed())).toEqual({ ok: true });
     expect(await aiAvailability(ahmed(), "chat", FAKE)).toEqual({ ok: false, reason: "no_notice" });
@@ -86,7 +86,8 @@ describe("rep notice", () => {
   it("a stale or future version is refused and records nothing", async () => {
     expect(await acceptAiNotice(ahmed(), 0)).toEqual({ ok: false, error: "stale_version" });
     expect(await acceptAiNotice(ahmed(), 1)).toEqual({ ok: false, error: "stale_version" });
-    expect(await acceptAiNotice(ahmed(), 3)).toEqual({ ok: false, error: "stale_version" });
+    expect(await acceptAiNotice(ahmed(), 2)).toEqual({ ok: false, error: "stale_version" });
+    expect(await acceptAiNotice(ahmed(), 4)).toEqual({ ok: false, error: "stale_version" });
     const [u] = await db.select().from(s.users).where(eq(s.users.id, "ahmed"));
     expect(u!.aiNoticeVersion).toBe(0);
   });
@@ -94,15 +95,15 @@ describe("rep notice", () => {
   it("consent cannot be recorded for someone else: acting contexts, admins and owners are refused", async () => {
     const acting = await repCtx(admin(), "ahmed");
     expect(acting).not.toBeNull();
-    await expect(acceptAiNotice(acting!, 2)).rejects.toBeInstanceOf(Forbidden);
+    await expect(acceptAiNotice(acting!, 3)).rejects.toBeInstanceOf(Forbidden);
     await expect(withdrawAiNotice(acting!)).rejects.toBeInstanceOf(Forbidden);
-    await expect(acceptAiNotice(admin(), 2)).rejects.toBeInstanceOf(Forbidden);
+    await expect(acceptAiNotice(admin(), 3)).rejects.toBeInstanceOf(Forbidden);
     const [u] = await db.select().from(s.users).where(eq(s.users.id, "ahmed"));
     expect(u!.aiNoticeVersion).toBe(0);
   });
 
   it("accepting touches only the signed-in rep", async () => {
-    await acceptAiNotice(ahmed(), 2);
+    await acceptAiNotice(ahmed(), 3);
     const [k] = await db.select().from(s.users).where(eq(s.users.id, "khaled"));
     expect(k!.aiNoticeVersion).toBe(0);
   });
@@ -111,7 +112,7 @@ describe("rep notice", () => {
 describe("supervisor and form wrapper", () => {
   it("a supervisor can accept for himself", async () => {
     const sami = ctxOf("sami", "supervisor");
-    expect(await acceptAiNotice(sami, 2)).toEqual({ ok: true });
+    expect(await acceptAiNotice(sami, 3)).toEqual({ ok: true });
     expect(await aiNoticeAccepted(sami)).toBe(true);
   });
 
@@ -123,22 +124,22 @@ describe("supervisor and form wrapper", () => {
     }
     expect(await aiNoticeAccepted(ahmed())).toBe(false);
     const good = new FormData();
-    good.set("version", "2");
+    good.set("version", "3");
     expect(await acceptAiNoticeFromForm(ahmed(), good)).toEqual({ ok: true });
     expect(await aiNoticeAccepted(ahmed())).toBe(true);
   });
 });
 
-describe("notice version 2 (Task 8: photos are kept)", () => {
-  it("is the current version, and a rep who accepted version 1 must accept again", async () => {
-    expect(AI_NOTICE_VERSION).toBe(2);
-    await db.update(s.users).set({ aiNoticeVersion: 1, aiNoticeAt: new Date() }).where(eq(s.users.id, "ahmed"));
+describe("notice version 3 (R83: the storage wording names no owner)", () => {
+  it("is the current version, and a rep who accepted version 2 must accept again", async () => {
+    expect(AI_NOTICE_VERSION).toBe(3);
+    await db.update(s.users).set({ aiNoticeVersion: 2, aiNoticeAt: new Date() }).where(eq(s.users.id, "ahmed"));
     expect(await aiNoticeAccepted(ahmed())).toBe(false);
     expect(await aiAvailability(ahmed(), "chat", FAKE)).toEqual({ ok: false, reason: "no_notice" });
     const old = new FormData();
-    old.set("version", "1");
+    old.set("version", "2");
     expect(await acceptAiNoticeFromForm(ahmed(), old)).toEqual({ ok: false, error: "stale_version" });
-    expect(await acceptAiNotice(ahmed(), 2)).toEqual({ ok: true });
+    expect(await acceptAiNotice(ahmed(), 3)).toEqual({ ok: true });
     expect(await aiNoticeAccepted(ahmed())).toBe(true);
   });
 });
@@ -152,7 +153,7 @@ describe("aiNoticeAccepted", () => {
 
   it("follows accept and withdraw", async () => {
     expect(await aiNoticeAccepted(ahmed())).toBe(false);
-    await acceptAiNotice(ahmed(), 2);
+    await acceptAiNotice(ahmed(), 3);
     expect(await aiNoticeAccepted(ahmed())).toBe(true);
     await withdrawAiNotice(ahmed());
     expect(await aiNoticeAccepted(ahmed())).toBe(false);
@@ -162,8 +163,21 @@ describe("aiNoticeAccepted", () => {
 describe("aiStatus", () => {
   it("wraps availability for the kind", async () => {
     expect(await aiStatus(ahmed(), "chat", FAKE)).toEqual({ available: false, reason: "no_notice" });
-    await acceptAiNotice(ahmed(), 2);
+    await acceptAiNotice(ahmed(), 3);
     expect(await aiStatus(ahmed(), "vision", FAKE)).toEqual({ available: true, reason: null });
     expect(await aiStatus(ahmed(), "chat", readAiConfig({ AI_DISABLED: "1" }))).toEqual({ available: false, reason: "disabled" });
+  });
+});
+
+describe("the photo storage wording (R83)", () => {
+  it("says the photos are on a private cloud storage service the app uses, and names no owner", async () => {
+    const { readFileSync } = await import("node:fs");
+    const read = (l: string) => JSON.parse(readFileSync(`src/i18n/messages/${l}.json`, "utf8")).photos as { keptRep: string; keptAdmin: string };
+    const en = read("en");
+    for (const k of ["keptRep", "keptAdmin"] as const) expect(en[k]).toContain("on a private cloud storage service used by the app");
+    for (const l of ["ar", "en", "ur"]) {
+      const p = read(l);
+      for (const text of [p.keptRep, p.keptAdmin]) expect(text).not.toMatch(/company|بالشركة|الشركة|کمپنی/);
+    }
   });
 });

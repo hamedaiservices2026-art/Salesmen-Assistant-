@@ -5,6 +5,7 @@ import { z } from "zod";
 import type { ISODate } from "@/domain/calendar";
 import { maxAmountFor, parseAmount, type Unit } from "@/domain/money";
 import { draftKeys, lineKey, LOW_CONFIDENCE, type CloseDraft, type DraftField, type DraftKey, type DraftLine, type DraftProblem } from "./draft";
+import { westernDigits } from "@/domain/digits";
 
 export const ExtractionSchema = z
   .object({
@@ -25,10 +26,6 @@ const OTHER_WHITESPACE = /[^\S \u00A0\u202F]/;
 const SEPARATOR = /[,٬ \u00A0\u202F]/g;
 // Above this many significant digits a value is beyond every cap; BigInt is not needed to know it.
 const LONGEST_COMPARED = 20;
-
-function westernDigits(s: string): string {
-  return s.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660)).replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x06f0));
-}
 
 /**
  * Reads one value text in `unit`, in the order of R31: (1) sign, (2) magnitude of the integer part

@@ -6,8 +6,8 @@ import { readAiConfig, type AiConfig, type AiKind } from "./config";
 import { getProviders } from "./providers";
 import type { AiProvider } from "./types";
 
-/** The version of the one-time notice a rep accepts before his first AI request. */
-export const AI_NOTICE_VERSION = 2;
+/** The version of the one-time notice a rep accepts before his first AI request (3: the storage wording names no owner; R83). */
+export const AI_NOTICE_VERSION = 3;
 
 export type AiUnavailable = "disabled" | "company_off" | "no_notice" | "no_provider";
 

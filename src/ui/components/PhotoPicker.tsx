@@ -122,7 +122,7 @@ export function PhotoPicker({
             </li>
           ))}
           {Array.from({ length: uploading }, (_, i) => (
-            <li key={`up-${i}`} className="flex size-[72px] flex-col items-center justify-center gap-1 rounded-[10px] border border-dashed border-line text-[12px] text-ink-2" aria-live="polite">
+            <li key={`up-${i}`} className="flex size-[72px] flex-col items-center justify-center gap-1 rounded-[10px] border border-dashed border-line text-[12px] text-ink-2">
               <LoaderCircle aria-hidden="true" size={18} strokeWidth={2} className="animate-spin" />
               {t("uploading")}
             </li>
@@ -138,6 +138,10 @@ export function PhotoPicker({
         )}
         {ids.length > 0 && <span className="text-[13px] text-ink-2">{t("count", { n: ids.length })}</span>}
       </div>
+      {/* Always mounted, so "uploading" is announced when a photo starts (final review C7). */}
+      <p role="status" className="sr-only">
+        {uploading > 0 ? t("uploading") : ""}
+      </p>
       {/* Where the photos are kept and who sees them, always in view (R71). */}
       <p className="m-0 text-[12.5px] text-ink-2">{t("hint")}</p>
       <input
