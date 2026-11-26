@@ -98,7 +98,7 @@ Upload templates: `/admin/uploads` offers a downloadable `.xlsx` template for ea
 | `AI_GEMINI_THINKING` | `off` (default), `low`, `default` or a whole token budget: how Gemini's thinking tokens are limited. |
 | `AI_CONTEXT_MAX` | Characters of context one assistant question may send, 5000 to 60000 (default 60000). Lower it if the chat provider's tokens-per-minute limit is hit. |
 | `AI_GLOBAL_DAY_VISION`, `AI_GLOBAL_DAY_STT`, `AI_GLOBAL_DAY_CHAT` | Daily requests for the whole deployment, per kind (photos, voice, questions). Defaults 400, 600, 800. |
-| `AI_GLOBAL_MINUTE_VISION`, `AI_GLOBAL_MINUTE_STT`, `AI_GLOBAL_MINUTE_CHAT` | Requests per minute for the whole deployment, per kind. No default (no deployment-wide minute limit until set). Set each to about 80 percent of the provider's own limit. |
+| `AI_GLOBAL_MINUTE_VISION`, `AI_GLOBAL_MINUTE_STT`, `AI_GLOBAL_MINUTE_CHAT` | Requests per minute for the whole deployment, per kind. No default (no deployment-wide minute limit until set). One request can make up to 4 provider calls (two attempts on the primary, two on the fallback) while counting once, so set each to about 40 percent of the provider's verified per-minute limit. |
 | `STORAGE_DRIVER` | `local` (default) or `supabase`: where private photos are kept. |
 | `FILES_DIR` | Folder for the local driver. Default `.data/files`. |
 | `ALLOW_LOCAL_FILES` | `1` lets a production build use the local folder (a single server with a lasting disk, or `pnpm e2e` and `pnpm e2e:ai`). A production build otherwise refuses it. Not for Vercel. |

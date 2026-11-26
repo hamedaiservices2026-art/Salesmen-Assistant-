@@ -325,7 +325,7 @@ describe("draftFromPhoto: refusals", () => {
     expect(await usageRows()).toEqual([]);
   });
 
-  it("the 21st photo of the day → quota; its photo soft-deleted and no provider call (R41, R54)", async () => {
+  it("the 21st photo of the day → quota before any upload: no file, no upload slot, no provider call (final review A-L4)", async () => {
     const spy = spiedFake();
     const bytes = await grey(640);
     for (let i = 0; i < 20; i++) {
@@ -337,19 +337,17 @@ describe("draftFromPhoto: refusals", () => {
     const r = await draftFromPhoto(ahmed(), { date: TODAY, bytes }, opts({ now: new Date(NOW.getTime() + 7 * MINUTE), providers: [spy.provider] }));
     expect(r).toEqual({ ok: false, reason: "quota" });
     expect(spy.vision).toHaveBeenCalledTimes(20);
-    const files = await db.select().from(s.files).orderBy(s.files.createdAt);
-    expect(files).toHaveLength(21);
-    expect(files.filter((f) => f.deletedAt !== null)).toHaveLength(1);
-    expect(files[20]!.deletedAt).not.toBeNull();
+    expect(await db.select().from(s.files)).toHaveLength(20);
+    const [upload] = await db.select({ count: s.aiCounters.count }).from(s.aiCounters).where(and(eq(s.aiCounters.kind, "upload"), eq(s.aiCounters.scope, "user:ahmed")));
+    expect(upload!.count).toBe(20);
     expect(await draftRows()).toHaveLength(20);
   });
 
-  it("the 4th photo within one minute → rate_limited, its photo soft-deleted", async () => {
+  it("the 4th photo within one minute → rate_limited before any upload: no file stored", async () => {
     const bytes = await grey(640);
     for (let i = 0; i < 3; i++) expect((await draftFromPhoto(ahmed(), { date: TODAY, bytes }, opts())).ok).toBe(true);
     expect(await draftFromPhoto(ahmed(), { date: TODAY, bytes }, opts())).toEqual({ ok: false, reason: "rate_limited" });
-    const files = await db.select().from(s.files).orderBy(s.files.createdAt);
-    expect(files[3]!.deletedAt).not.toBeNull();
+    expect(await db.select().from(s.files)).toHaveLength(3);
   });
 
   it("an SVG → unsupported_type, no provider call, nothing stored", async () => {
@@ -488,6 +486,24 @@ describe("POST /app/ai/close-photo (handleClosePhotoPost)", () => {
     expect((await fileRows())[0]!.deletedAt).not.toBeNull();
     expect(logged).toHaveBeenCalledTimes(1);
     expect(JSON.stringify(logged.mock.calls)).not.toMatch(/ai_drafts|relation/);
+  });
+
+  it("a rep at his daily upload limit is refused with quota before any of the body is read (final review A-L3)", async () => {
+    await db.insert(s.aiCounters).values({ scope: "user:ahmed", bucket: TODAY, kind: "upload", companyId: "demo-co", count: 40 });
+    const form = new FormData();
+    form.set("date", TODAY);
+    form.set("file", new Blob([(await grey(640)) as BlobPart], { type: "image/jpeg" }), "r.jpg");
+    const encoded = new Response(form);
+    const body = new Uint8Array(await encoded.arrayBuffer());
+    const req = new Request(URL_, {
+      method: "POST",
+      body,
+      headers: { origin: "http://localhost:3000", host: "localhost:3000", "x-requested-with": AI_REQUESTED_WITH, "content-type": encoded.headers.get("content-type")!, "content-length": String(body.byteLength) },
+    });
+    const res = await handleClosePhotoPost(req, ahmed(), opts());
+    expect([res.status, await res.json()]).toEqual([429, { reason: "quota" }]);
+    expect(req.bodyUsed).toBe(false);
+    expect(await fileRows()).toEqual([]);
   });
 
   it("no file → 400; a refusal comes back as { reason }", async () => {

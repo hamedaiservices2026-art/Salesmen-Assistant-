@@ -1,10 +1,12 @@
 import type { ISODate } from "@/domain/calendar";
 import { PHOTO_MAX_BYTES, PHOTO_REQUESTED_WITH } from "@/domain/files";
 import type { Ctx } from "@/server/ctx";
+import { peekUpload } from "@/server/ai/quota";
 import { checkPostHeaders, readCappedBody } from "@/server/http/guarded-post";
 import { currentDay } from "@/server/today";
 import { readFile, saveUpload, type SaveUploadError } from "./files";
 import type { FileStore } from "./store";
+import { takeUploadSlot, UPLOAD_BUSY_RETRY_AFTER_SECONDS } from "./in-flight";
 
 export { PHOTO_REQUESTED_WITH };
 /** The photo limit plus room for the multipart framing and the other form fields. */
@@ -34,8 +36,10 @@ const STATUS: Record<SaveUploadError, number> = {
 /**
  * POST /app/files: a rep or supervisor stores one return photo (R51: report photos enter only
  * through the photo-reading flow). No session → 401; another role → 403; then the headers are
- * checked before any of the body is read, and the body is read with a hard cap. Replies
- * `{ id, width, height }` or `{ error }`, never cached. `busy` is a retryable 503 with Retry-After.
+ * checked before any of the body is read, and the body is read with a hard cap. Before the body
+ * too (final review A-L3): at most two uploads of one rep in flight on this instance (the third gets
+ * a retryable 429 `busy`), and a rep at his daily upload limit gets `quota` (a read-only peek).
+ * Replies `{ id, width, height }` or `{ error }`, never cached. `busy` is retryable, with Retry-After.
  */
 export async function handleFilePost(request: Request, ctx: Ctx | null, deps: Deps = {}): Promise<Response> {
   if (!ctx) return json(401, { error: "unauthorized" });
@@ -43,23 +47,35 @@ export async function handleFilePost(request: Request, ctx: Ctx | null, deps: De
   const bad = checkPostHeaders(request.headers, { requestedWith: PHOTO_REQUESTED_WITH, maxBody: FILE_POST_MAX_BODY, requestUrl: request.url });
   if (bad === "too_large") return json(413, { error: "too_large" });
   if (bad) return json(403, { error: "bad_request" });
+  const giveBack = takeUploadSlot(ctx);
+  if (!giveBack) return json(429, { error: "busy" }, { "Retry-After": String(UPLOAD_BUSY_RETRY_AFTER_SECONDS) });
+  try {
+    return await afterSlot(request, ctx, deps);
+  } finally {
+    giveBack();
+  }
+}
 
-  let form: FormData;
+async function afterSlot(request: Request, ctx: Ctx, deps: Deps): Promise<Response> {
+  const today = deps.today ?? currentDay(ctx.timeZone);
+  if (!(await peekUpload(ctx, today))) return json(429, { error: "quota" });
+
+  let file: FormDataEntryValue | null;
+  let date: FormDataEntryValue | null;
   try {
     const body = await readCappedBody(request, FILE_POST_MAX_BODY);
     if (body === null) return json(413, { error: "too_large" });
-    form = await new Response(body as BodyInit, { headers: request.headers }).formData();
+    const form = await new Response(body as BodyInit, { headers: request.headers }).formData();
+    if (form.get("kind") !== "return") return json(400, { error: "bad_kind" });
+    date = form.get("date");
+    file = form.get("file");
   } catch {
     return json(400, { error: "bad_request" });
   }
-  if (form.get("kind") !== "return") return json(400, { error: "bad_kind" });
-  const date = form.get("date");
-  const file = form.get("file");
   if (!(file instanceof File) || file.size === 0) return json(400, { error: "no_file" });
   if (typeof date !== "string") return json(400, { error: "bad_date" });
   if (file.size > PHOTO_MAX_BYTES) return json(413, { error: "too_large" });
 
-  const today = deps.today ?? currentDay(ctx.timeZone);
   const r = await saveUpload(ctx, { kind: "return", date, bytes: new Uint8Array(await file.arrayBuffer()) }, { ...deps, today });
   if (r.ok) return json(200, { id: r.id, width: r.width, height: r.height });
   return json(STATUS[r.error], { error: r.error }, r.error === "busy" ? { "Retry-After": String(BUSY_RETRY_AFTER_SECONDS) } : {});

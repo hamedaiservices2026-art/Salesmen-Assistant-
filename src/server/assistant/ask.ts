@@ -184,6 +184,22 @@ async function store(ctx: Ctx, now: Date, question: string, answer: { text: stri
 export async function ask(ctx: Ctx, input: AskInput, opts: AskOpts = {}): Promise<AskResult> {
   assertRole(ctx, ["rep", "supervisor"]);
   assertOwnContext(ctx);
+  // One ask per rep at a time on this instance (final review A-L2): a burst sent at once cannot build
+  // the context many times over before the counters catch up. A second one is refused like a limit.
+  const key = `${ctx.companyId}\u0000${ctx.userId}`;
+  if (IN_FLIGHT.has(key)) return { ok: false, reason: "rate_limited" };
+  IN_FLIGHT.add(key);
+  try {
+    return await askOnce(ctx, input, opts);
+  } finally {
+    IN_FLIGHT.delete(key);
+  }
+}
+
+/** Reps with an ask in flight on this instance. */
+const IN_FLIGHT = new Set<string>();
+
+async function askOnce(ctx: Ctx, input: AskInput, opts: AskOpts): Promise<AskResult> {
   const explain = input?.explain;
   // An explain request carries no wording from the browser: the question is written below from the
   // catalog and the incentive's title.

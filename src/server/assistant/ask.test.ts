@@ -254,6 +254,21 @@ describe("ask", () => {
     expect(await usage()).toHaveLength(6);
   });
 
+  it("one ask in flight per rep: ten at once make one context build and one provider call (final review A-L2)", async () => {
+    const sp = spied();
+    const results = await Promise.all(Array.from({ length: 10 }, () => ask(ahmed(), { question: "باقي لي كام على تارجت المشروبات؟" }, opts(sp))));
+    expect(results.filter((r) => r.ok)).toHaveLength(1);
+    expect(results.filter((r) => !r.ok).every((r) => !r.ok && r.reason === "rate_limited")).toBe(true);
+    expect(sp.chat).toHaveLength(1);
+    expect(await messages()).toHaveLength(2);
+    // released when done (also after a failure): the next ask goes through
+    expect((await ask(ahmed(), { question: "[[fake:fail]] عمولتي كام؟" }, opts(sp, new Date(NOW.getTime() + 1000)))).ok).toBe(false);
+    expect((await ask(ahmed(), { question: "عمولتي كام؟" }, opts(sp, new Date(NOW.getTime() + 2000)))).ok).toBe(true);
+    // another rep is not held by Ahmed's ask
+    const both = await Promise.all([ask(ahmed(), { question: "عمولتي كام؟" }, opts(sp, new Date(NOW.getTime() + 3000))), ask(khaled(), { question: "عمولتي كام؟" }, opts(sp, new Date(NOW.getTime() + 3000)))]);
+    expect(both.every((r) => r.ok)).toBe(true);
+  });
+
   it("a day quota refusal is answered before any context is built and stores nothing", async () => {
     await db.insert(s.aiCounters).values({ scope: "user:ahmed", bucket: "2026-11-14", kind: "chat", companyId: "demo-co", count: 50 });
     const sp = spied();

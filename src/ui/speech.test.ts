@@ -20,6 +20,16 @@ describe("pickVoice", () => {
     expect(pickVoice([{ lang: "ar-AE", name: "a", localService: true }, { lang: "AR-sa", name: "b" }], "ar")).toBe(1);
     expect(pickVoice([{ lang: "arc-IR", name: "x" }, { lang: "ur-PK", name: "u" }], "ar")).toBeNull();
   });
+  it("never picks an online voice, even ar-SA (R86)", () => {
+    const voices = [
+      { lang: "ar-EG", name: "Local Arabic (device)", localService: true, default: true },
+      { lang: "ar-SA", name: "Microsoft Hamed Online (Natural) - Arabic (Saudi Arabia)", localService: false },
+    ];
+    expect(pickVoice(voices, "ar")).toBe(0);
+    expect(pickVoice([{ lang: "ar-SA", name: "online", localService: false }], "ar")).toBeNull();
+    // a browser that does not say (undefined) is taken as on-device
+    expect(pickVoice([{ lang: "ar-SA", name: "x" }], "ar")).toBe(0);
+  });
   it("a voice without a usable lang is ignored", () => {
     expect(pickVoice([{ lang: "", name: "x" }, { lang: undefined as unknown as string, name: "y" }, { lang: "ur-IN", name: "z" }], "ur")).toBe(2);
   });

@@ -5,7 +5,7 @@ import { isFileId, storageKey, type FileKind } from "@/domain/files";
 import type { Db } from "@/db/client";
 import * as s from "@/db/schema";
 import { UPLOADS_USER_DAY } from "@/server/ai/limits";
-import { release, reserve } from "@/server/ai/quota";
+import { release, reserve, UPLOAD_COUNTER } from "@/server/ai/quota";
 import { assertOwnContext, assertRole } from "@/server/auth/roles";
 import type { Ctx } from "@/server/ctx";
 import { normalisePhoto } from "./image";
@@ -20,8 +20,6 @@ export const RETURN_PHOTOS_MAX = 3;
 export const CLOSE_PHOTOS_MAX = 12;
 /** A photo may be dated at most this many days before today. */
 const MAX_DAYS_BACK = 62;
-/** The counter kind for photo uploads (scope `user:<id>`, the company's day). */
-const UPLOAD_COUNTER = "upload";
 const SWEEP_LIMIT = 50;
 /** After this many failed removals the sweep leaves a row alone (it is logged, never retried forever; R70). */
 export const SWEEP_MAX_ATTEMPTS = 5;

@@ -13,13 +13,15 @@ const region = (lang: unknown): string => (typeof lang === "string" ? lang.repla
 /**
  * The index of the best voice for `locale`: its language must be `ar`, `en` or `ur` as the locale
  * says (tags like `ar_SA` count). For Arabic `ar-SA` comes first, then voices that run on the
- * phone itself, then the phone's default voice, then the first. Null when no voice speaks it.
+ * phone itself, then the phone's default voice, then the first. A voice the browser marks as an
+ * online service (`localService === false`) is never chosen: the answer would leave the phone (R86);
+ * a browser that does not say is taken as on-device. Null when no on-device voice speaks it.
  */
 export function pickVoice(voices: readonly VoiceLike[], locale: Locale): number | null {
   let best: number | null = null;
   let bestScore = -1;
   voices.forEach((v, i) => {
-    if (primary(v.lang) !== locale) return;
+    if (primary(v.lang) !== locale || v.localService === false) return;
     const score = (locale === "ar" && region(v.lang) === "ar-sa" ? 4 : 0) + (v.localService === true ? 2 : 0) + (v.default === true ? 1 : 0);
     if (score > bestScore) {
       best = i;

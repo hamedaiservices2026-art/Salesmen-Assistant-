@@ -177,6 +177,53 @@ describe("handleFilePost", () => {
   });
 });
 
+describe("handleFilePost: cheap refusals before the body (final review A-L3)", () => {
+  it("a rep at his daily upload limit is refused with quota before any of the body is read", async () => {
+    await db.insert(s.aiCounters).values({ scope: "user:ahmed", bucket: "2026-11-14", kind: "upload", companyId: "demo-co", count: 40 });
+    const req = await postRequest({ kind: "return", date: "2026-11-14", file: new File([await grey(10, 10)], "x.jpg") });
+    const r = await handleFilePost(req, ahmed(), deps());
+    expect([r.status, await r.json()]).toEqual([429, { error: "quota" }]);
+    expect(req.bodyUsed).toBe(false);
+  });
+
+  it("at most two uploads in flight per rep: the third gets 429 busy with Retry-After; the slots come back", async () => {
+    const jpeg = await grey(10, 10);
+    const full = await postRequest({ kind: "return", date: "2026-11-14", file: new File([jpeg], "x.jpg") });
+    const bytes = new Uint8Array(await full.arrayBuffer());
+    let open!: () => void;
+    const gate = new Promise<void>((resolve) => (open = resolve));
+    const slow = () =>
+      new Request(`${BASE}/app/files`, {
+        method: "POST",
+        headers: full.headers,
+        body: new ReadableStream<Uint8Array>({
+          async pull(c) {
+            await gate;
+            c.enqueue(bytes);
+            c.close();
+          },
+        }),
+        duplex: "half",
+      } as RequestInit);
+    const first = handleFilePost(slow(), ahmed(), deps());
+    const second = handleFilePost(slow(), ahmed(), deps());
+    // let both reach the body read
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const thirdReq = await postRequest({ kind: "return", date: "2026-11-14", file: new File([jpeg], "x.jpg") });
+    const third = await handleFilePost(thirdReq, ahmed(), deps());
+    expect(third.status).toBe(429);
+    expect(third.headers.get("retry-after")).toBe("5");
+    expect(await third.json()).toEqual({ error: "busy" });
+    expect(thirdReq.bodyUsed).toBe(false);
+    // another rep is not held
+    expect((await handleFilePost(await postRequest({ kind: "return", date: "2026-11-14", file: new File([jpeg], "x.jpg") }), ctxOf("khaled"), deps())).status).toBe(200);
+    open();
+    expect((await first).status).toBe(200);
+    expect((await second).status).toBe(200);
+    expect((await handleFilePost(await postRequest({ kind: "return", date: "2026-11-14", file: new File([jpeg], "x.jpg") }), ahmed(), deps())).status).toBe(200);
+  });
+});
+
 describe("handleFilePost when the decoder is busy (R69)", () => {
   it("answers a retryable 503 { error: busy } with Retry-After, and stores nothing", async () => {
     const jpeg = await grey(10, 10);

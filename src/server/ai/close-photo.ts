@@ -7,12 +7,14 @@ import { assertOwnContext, assertRole } from "@/server/auth/roles";
 import type { Ctx } from "@/server/ctx";
 import { removeOwnFile, saveUpload } from "@/server/files/files";
 import type { FileStore } from "@/server/files/store";
+import { takeUploadSlot, UPLOAD_BUSY_RETRY_AFTER_SECONDS } from "@/server/files/in-flight";
 import { checkPostHeaders, readCappedBody } from "@/server/http/guarded-post";
 import { closeDateError } from "@/server/repos/closes";
 import { loadLines } from "@/server/repos/month-data";
 import { currentDay } from "@/server/today";
 import { aiAvailability } from "./availability";
-import { aiCall, type AiCallFail } from "./call";
+import { aiCall, logRejection, type AiCallFail } from "./call";
+import { peekAi, peekUpload } from "./quota";
 import { readAiConfig, type AiConfig } from "./config";
 import { createDraftReceipt } from "./drafts";
 import { loadVocabulary } from "./field-map";
@@ -73,8 +75,10 @@ export async function draftLines(ctx: Ctx): Promise<DraftLine[]> {
  * `aiAvailability` (so nothing is stored when AI is off or the notice is not accepted); the photo
  * is stored as a `report` file (`saveUpload` checks, decodes and re-encodes it: the provider is
  * shown only that JPEG); one `aiCall` of kind vision whose reply must pass `toDraft`; then a
- * receipt without values. Every failure after the upload soft-deletes the photo, a quota or rate
- * refusal included (which makes no provider call; R54). No close is written: the draft goes back
+ * receipt without values. A request the AI counters would refuse is refused before the upload (a
+ * read-only peek, as `ask` does; final review A-L4), so it costs no upload slot, decode or storage;
+ * a refusal that races past the peek, and every other failure after the upload, soft-deletes the
+ * photo (R54). No close is written: the draft goes back
  * to the rep's screen, and only his confirm saves a close.
  */
 export async function draftFromPhoto(ctx: Ctx, input: { date: ISODate; bytes: Uint8Array }, opts: ClosePhotoOpts = {}): Promise<ClosePhotoResult> {
@@ -91,6 +95,12 @@ export async function draftFromPhoto(ctx: Ctx, input: { date: ISODate; bytes: Ui
 
   const available = await aiAvailability(ctx, "vision", config, opts.providers);
   if (!available.ok) return fail(available.reason);
+  const peek = await peekAi(ctx, "vision", now, { day: config.globalDay.vision, minute: config.globalMinute.vision });
+  if (peek === "rate_limited") return fail("rate_limited");
+  if (peek !== "ok") {
+    await logRejection(ctx, "vision", "close_photo", null, peek, now);
+    return fail("quota");
+  }
 
   const upload = await saveUpload(ctx, { kind: "report", date: input.date, bytes: input.bytes }, { store: opts.store, now, today });
   if (!upload.ok) return fail(upload.error);
@@ -179,22 +189,32 @@ async function handle(request: Request, ctx: Ctx | null, deps: ClosePhotoOpts): 
   const bad = checkPostHeaders(request.headers, { requestedWith: AI_REQUESTED_WITH, maxBody: CLOSE_PHOTO_MAX_BODY, requestUrl: request.url });
   if (bad === "too_large") return json(413, { reason: "too_large" });
   if (bad) return json(403, { reason: "bad_request" });
-
-  let form: FormData;
+  // Before the body (final review A-L3): two uploads of one rep in flight at most, and a rep at his
+  // daily upload limit is refused with a read-only peek.
+  const giveBack = takeUploadSlot(ctx);
+  if (!giveBack) return json(429, { reason: "busy" }, { "Retry-After": String(UPLOAD_BUSY_RETRY_AFTER_SECONDS) });
   try {
-    const body = await readCappedBody(request, CLOSE_PHOTO_MAX_BODY);
-    if (body === null) return json(413, { reason: "too_large" });
-    form = await new Response(body as BodyInit, { headers: request.headers }).formData();
-  } catch {
-    return json(400, { reason: "bad_request" });
-  }
-  const date = form.get("date");
-  const file = form.get("file");
-  if (!(file instanceof File) || file.size === 0) return json(400, { reason: "no_file" });
-  if (typeof date !== "string") return json(400, { reason: "bad_date" });
-  if (file.size > PHOTO_MAX_BYTES) return json(413, { reason: "too_large" });
+    if (!(await peekUpload(ctx, deps.today ?? currentDay(ctx.timeZone)))) return json(429, { reason: "quota" });
 
-  const r = await draftFromPhoto(ctx, { date, bytes: new Uint8Array(await file.arrayBuffer()) }, { ...deps, deadlineAt });
-  if (r.ok) return json(200, { draft: r.draft, draftId: r.draftId });
-  return json(STATUS[r.reason], { reason: r.reason }, r.reason === "busy" ? { "Retry-After": String(BUSY_RETRY_AFTER_SECONDS) } : {});
+    let date: FormDataEntryValue | null;
+    let file: FormDataEntryValue | null;
+    try {
+      const body = await readCappedBody(request, CLOSE_PHOTO_MAX_BODY);
+      if (body === null) return json(413, { reason: "too_large" });
+      const form = await new Response(body as BodyInit, { headers: request.headers }).formData();
+      date = form.get("date");
+      file = form.get("file");
+    } catch {
+      return json(400, { reason: "bad_request" });
+    }
+    if (!(file instanceof File) || file.size === 0) return json(400, { reason: "no_file" });
+    if (typeof date !== "string") return json(400, { reason: "bad_date" });
+    if (file.size > PHOTO_MAX_BYTES) return json(413, { reason: "too_large" });
+
+    const r = await draftFromPhoto(ctx, { date, bytes: new Uint8Array(await file.arrayBuffer()) }, { ...deps, deadlineAt });
+    if (r.ok) return json(200, { draft: r.draft, draftId: r.draftId });
+    return json(STATUS[r.reason], { reason: r.reason }, r.reason === "busy" ? { "Retry-After": String(BUSY_RETRY_AFTER_SECONDS) } : {});
+  } finally {
+    giveBack();
+  }
 }

@@ -14,7 +14,7 @@ Status words: **SEEN** = stated in a search summary of the official page named i
 2. **Free-tier Gemini limits have changed repeatedly** (forum reports: Flash 250 to 20 requests per day in Dec 2025; flash-lite 500 per day). The design's 400/600/800 deployment-wide daily defaults cannot be checked against a verified figure, so they are kept and flagged. Gemini's daily quota is per project and per model; the three Gemini jobs share one model by default, so the sum of the Gemini-backed jobs (vision plus chat) may exceed it. UNVERIFIED; set `AI_GLOBAL_DAY_*` after reading the live quota page in AI Studio.
 3. **Gemini free-tier content may be used to improve Google's products** (pricing page and Additional Terms, see below). This matters for report photos and questions; the notice (Task 5) must say so, or a billed project must be used.
 4. **OpenRouter has no verified free vision or chat model id** in this research, so `openrouter.visionModel` and `chatModel` default to `null` (the fallback is disabled until an operator sets `AI_OPENROUTER_*_MODEL` after reading `https://openrouter.ai/collections/free-models`).
-5. **Per-minute limits were not verified for any provider**, so `globalMinute` defaults to `null` for all three kinds (no deployment-wide minute counter until the operator sets `AI_GLOBAL_MINUTE_*`; R65).
+5. **Per-minute limits were not verified for any provider**, so `globalMinute` defaults to `null` for all three kinds (no deployment-wide minute counter until the operator sets `AI_GLOBAL_MINUTE_*`; R65). One request in this app can make up to 4 provider calls (2 attempts on the primary provider, then 2 on the fallback; `MAX_ATTEMPTS_PER_PROVIDER` in `src/server/ai/run.ts`), while the counters count it once, so set each `AI_GLOBAL_MINUTE_*` to about 40 percent of the provider's verified per-minute limit (not 80 percent).
 6. **Supabase is retiring the `service_role` and anon keys by the end of 2026** in favour of `sb_secret_...` and `sb_publishable_...` keys. The adapter (Task 6) must handle both forms (R49).
 7. **Vercel accepts request bodies up to 4.5 MB by default**, so the 4 000 000 byte upload limit stands. A 20 MiB opt-in beta exists but is not used.
 
@@ -130,7 +130,7 @@ The model id is also checked in the adapter before it goes into a URL path (`mod
 
 ## Still to confirm (before real use)
 
-1. Read the live Gemini rate-limit page and AI Studio quota for the chosen model; set `AI_GLOBAL_DAY_*` and `AI_GLOBAL_MINUTE_*` to 80 percent of them.
+1. Read the live Gemini rate-limit page and AI Studio quota for the chosen model; set `AI_GLOBAL_DAY_*` to 80 percent of the daily quota and `AI_GLOBAL_MINUTE_*` to 40 percent of the per-minute limit (one request can make up to 4 provider calls).
 2. Confirm flash-lite accepts image and audio input and that `gemini-3.5-flash-lite` is not itself deprecated.
 3. Pick a free OpenRouter vision and chat model and set the ids.
 4. Read Groq's free-plan limits in the console.

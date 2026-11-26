@@ -5,7 +5,7 @@ import * as s from "@/db/schema";
 import { assertOwnContext } from "@/server/auth/roles";
 import type { Ctx } from "@/server/ctx";
 import type { AiKind } from "./config";
-import { DEFAULT_LIMITS, type AiLimits } from "./limits";
+import { DEFAULT_LIMITS, UPLOADS_USER_DAY, type AiLimits } from "./limits";
 
 export type QuotaResult = "ok" | "rate_limited" | "user_quota" | "company_quota" | "global_quota";
 
@@ -117,6 +117,24 @@ export async function peekAi(
     if (count >= limit) return refusal;
   }
   return "ok";
+}
+
+/** The counter kind for photo uploads (scope `user:<id>`, bucket the company's day). */
+export const UPLOAD_COUNTER = "upload";
+
+/**
+ * Read-only: true while the caller's upload counter for `today` (his company's day) is below its
+ * limit. Lets an upload route refuse a rep at his limit before reading the body (final review A-L3);
+ * `saveUpload`'s reservation stays the authority.
+ */
+export async function peekUpload(ctx: Ctx, today: string, limit: number = UPLOADS_USER_DAY): Promise<boolean> {
+  assertOwnContext(ctx);
+  if (!Number.isSafeInteger(limit) || limit <= 0) return false;
+  const [row] = await ctx.db
+    .select({ count: s.aiCounters.count })
+    .from(s.aiCounters)
+    .where(and(eq(s.aiCounters.scope, userScope(ctx.userId)), eq(s.aiCounters.bucket, today), eq(s.aiCounters.kind, UPLOAD_COUNTER)));
+  return (row?.count ?? 0) < limit;
 }
 
 class Refused extends Error {
